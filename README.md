@@ -2,9 +2,6 @@
 
 This template should help get you started developing with Vue 3 in Vite.
 
-This is a TodoList.
-gh-page:https://lemoncat0817.github.io/Vue-TodoList/
-
 ## Recommended IDE Setup
 
 [VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
