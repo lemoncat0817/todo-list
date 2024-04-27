@@ -1,15 +1,15 @@
 <template>
   <div class="content">
-    <input type="checkbox" class="allBtn" v-show="filteredTodos.length !== 0"  @click="changeAll"
-      v-model="isAll">
+    <input type="checkbox" class="allBtn" v-show="filteredTodos.length !== 0" @click="changeAll" v-model="isAll">
     <li v-for="item in filteredTodos" :key="item.id">
-      <input type="checkbox" :checked="item.isCompleted"  @click="emit('completed', item.id)" />
+      <input type="checkbox" :checked="item.isCompleted" @click="emit('completed', item.id)" />
       <span class="taskName" :class="{ completed: item.isCompleted }">
         {{ item.taskname }}
       </span>
-      <input maxlength="10" class="editInput" v-if="item.isEditing" v-model="item.taskname" @blur="emit('saveEdit',item.id)" @keyup.enter="emit('saveEdit',item.id)">
+      <input maxlength="20" class="editInput" v-if="item.isEditing" v-model="item.taskname"
+        @blur="emit('saveEdit', item.id)" @keyup.enter="emit('saveEdit', item.id)">
       <button class="delBtn" @click="emit('delTask', item.id)">刪除</button>
-      <button class="editBtn" @click="emit('startEdit',item.id)">編輯</button>
+      <button class="editBtn" @click="emit('startEdit', item.id)">編輯</button>
     </li>
   </div>
 </template>
@@ -19,7 +19,7 @@ import { computed } from "vue"
 
 
 const props = defineProps(['list', 'filteredTodos'])
-const emit = defineEmits(['completed', 'delTask', 'changeAll','saveEdit','startEdit'])
+const emit = defineEmits(['completed', 'delTask', 'changeAll', 'saveEdit', 'startEdit'])
 
 
 
@@ -28,9 +28,9 @@ const emit = defineEmits(['completed', 'delTask', 'changeAll','saveEdit','startE
 const isAll = computed({
   get() {
     if (!Array.isArray(props.list)) {
-    // 如果 props.list 不是陣列，將其轉換為陣列
-    props.list = [props.list];
-}
+      // 如果 props.list 不是陣列，將其轉換為陣列
+      props.list = [props.list];
+    }
     return props.list.every(item => item.isCompleted)
   },
   set(val) {
@@ -81,10 +81,11 @@ const isAll = computed({
   background-color: #39474e21;
   border-radius: 30px;
   text-align: center;
-  font-weight: bold;  
+  font-weight: bold;
+  overflow: auto;
 }
 
-.content li .taskName{
+.content li .taskName {
   line-height: 30px;
 }
 
@@ -97,8 +98,8 @@ const isAll = computed({
   cursor: pointer;
 }
 
-.content .editInput{
-  width: 70px; 
+.content .editInput {
+  width: 70px;
 }
 
 .content li .editBtn {
@@ -110,12 +111,13 @@ const isAll = computed({
   border-radius: 10px;
   cursor: pointer;
   border-top-right-radius: 0px;
-  border-bottom-right-radius: 0px; 
-  background-color: #c4ee07; 
+  border-bottom-right-radius: 0px;
+  background-color: #c4ee07;
 }
 
 .content li .editBtn:hover {
-  background-color: #c4ee0752;;
+  background-color: #c4ee0752;
+  ;
 }
 
 .content li .editBtn:active {
@@ -147,6 +149,4 @@ const isAll = computed({
 .completed {
   text-decoration: line-through;
 }
-
-
 </style>
