@@ -98,6 +98,8 @@ const clearList = () => {
     list.value = [list.value];
   }
   list.value = list.value.filter(item => !item.isCompleted)
+  templist.value = list.value.filter(item => !item.isCompleted)
+  handleSearchTask(keyword.value)
 }
 //編輯todo
 const startEditing = (id) => {
@@ -116,6 +118,7 @@ const handleEdit = (id) => {
   }
   const editList = list.value.find(item => item.id === id)
   editList.isEditing = false
+  handleSearchTask(keyword.value)
 }
 
 const handleSearchTask = (searchText) => {
@@ -172,20 +175,20 @@ watch(searchlist, () => {
 
 <style scoped>
 .app {
-  width: 100%;
-  height: 943px;
+  width: 100vw;
+  height: 100vh;
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(250deg, #e901da80, #5932596c);
+  background: linear-gradient(250deg, #e901da80, #5932596c) no-repeat;
   background-blend-mode: multiply;
 
 }
 
 .container {
-  width: 500px;
-  height: 500px;
-  background-color: #52acb86c;
+  width: 650px;
+  height: 650px;
+  background: linear-gradient(0deg, #f07b7b, #ec3c3c9b);
   border-radius: 50px;
   box-shadow: 0px 0px 10px black;
   display: flex;

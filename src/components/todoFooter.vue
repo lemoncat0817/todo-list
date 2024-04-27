@@ -1,14 +1,14 @@
 <template>
   <div class="footerContent">
     <div class="footerText">
-      <span  :class="{display: active === '已完成' && '全部'}">代辦事項數量: {{ leftCount }}</span>
-      <span :class="{display: active === '未完成' && '全部'}">已完成事項數量: {{ completedCount }}</span>
+      <span :class="{ display: active === '已完成' && '全部' }">代辦事項數量: {{ leftCount }}</span>
+      <span :class="{ display: active === '未完成' && '全部' }">已完成事項數量: {{ completedCount }}</span>
     </div>
     <div class="footerContentli">
       <li v-for="item in filter" :key="item"><a :class="{ selected: item === active }"
           @click="emit('changeActive', item)">{{ item }}</a></li>
     </div>
-    <button class="clearBtn" @click="emit('clearCompleted')">清除已完成</button>
+    <button class="clearBtn" @click="emit('clearCompleted')">清除所有已完成事項</button>
   </div>
 
 </template>
@@ -19,8 +19,8 @@ const props = defineProps(['list', 'filter', 'active'])
 const emit = defineEmits(['changeActive', 'clearCompleted'])
 
 if (!Array.isArray(props.list)) {
-    // 如果 props.list 不是陣列，將其轉換為陣列
-    props.list = [props.list];
+  // 如果 props.list 不是陣列，將其轉換為陣列
+  props.list = [props.list];
 }
 
 //篩選出代辦事情的數量
@@ -50,16 +50,18 @@ const completedCount = computed(() => props.list.filter(item => item.isCompleted
   margin: 3px;
 }
 
-.footerText{
+.footerText {
+  margin-left: -30px;
   display: flex;
   flex-direction: column;
 }
 
 .clearBtn {
+  margin-right: -30px;
   border: none;
   cursor: pointer;
   border-radius: 30px;
-  font-size: 15px;
+  font-size: 14px;
   background: #a5070759;
 }
 
@@ -83,8 +85,7 @@ const completedCount = computed(() => props.list.filter(item => item.isCompleted
   background-color: rgba(255, 228, 196, 0.541);
 }
 
-.display{
+.display {
   display: none;
 }
-
 </style>

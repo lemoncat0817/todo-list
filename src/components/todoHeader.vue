@@ -8,11 +8,11 @@
     <div class="content">
       <div class="empty"></div>
       <div v-if="!model" class="bar">
-        <input maxlength="10" type="text" placeholder="請輸入代辦事項..." v-model.trim="taskname" @keyup.enter="handleTask" />
+        <input maxlength="20" type="text" placeholder="請輸入代辦事項..." v-model.trim="taskname" @keyup.enter="handleTask" />
         <button class="Btn" @click="handleTask">添加</button>
       </div>
       <div v-else class="bar">
-        <input maxlength="10" type="text" placeholder="請輸入搜尋關鍵字..." v-model.trim="tasknameKeyword"
+        <input maxlength="20" type="text" placeholder="請輸入搜尋關鍵字..." v-model.trim="tasknameKeyword"
           @keyup.enter="searchTask" />
         <button class="Btn" @click="searchTask">🔎</button>
       </div>
@@ -70,6 +70,9 @@ watch(() => tasknameKeyword.value, () => {
   margin: 20px 0px;
 }
 
+.headerTitle {
+  color: rgba(97, 29, 116, 0.505);
+}
 
 .toggleBtn {
   margin-right: -130px;
