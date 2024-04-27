@@ -69,7 +69,11 @@ const handleAllTask = (val) => {
     // 如果 props.list 不是陣列，將其轉換為陣列
     list.value = [list.value];
   }
-  list.value.forEach(item => item.isCompleted = val)
+  if (keyword.value.length > 0) {
+    searchlist.value.forEach(item => item.isCompleted = val)
+  } else {
+    list.value.forEach(item => item.isCompleted = val)
+  }
 }
 //切換選擇的狀態選單
 const handleActive = (nowActive) => {
@@ -98,7 +102,7 @@ const clearList = () => {
     list.value = [list.value];
   }
   list.value = list.value.filter(item => !item.isCompleted)
-  templist.value = list.value.filter(item => !item.isCompleted)
+  templist.value = templist.value.filter(item => !item.isCompleted)
   handleSearchTask(keyword.value)
 }
 //編輯todo
@@ -148,9 +152,6 @@ const handelToggle = (model, searchText) => {
     }
   }
   if (model) {
-    console.log('list', list.value);
-    console.log('templist', templist.value);
-    console.log('searchlist', searchlist.value);
     list.value = templist.value
   }
 }
