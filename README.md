@@ -6,9 +6,7 @@ This is a TodoList.
 
 gh-page:
 
-```sh
 https://lemoncat0817.github.io/Vue-TodoList/
-```
 
 ## Recommended IDE Setup
 
