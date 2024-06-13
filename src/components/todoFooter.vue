@@ -1,91 +1,38 @@
 <template>
-  <div class="footerContent">
-    <div class="footerText">
-      <span :class="{ display: active === '已完成' && '全部' }">代辦事項數量: {{ leftCount }}</span>
-      <span :class="{ display: active === '未完成' && '全部' }">已完成事項數量: {{ completedCount }}</span>
+  <div class="w-full h-[100px] flex items-center justify-around">
+    <div class="sm:w-[400px] h-[100px] sm:flex items-center justify-around">
+      <div class="bg-blue-500 border-2 border-solid border-black rounded-lg px-2 text-white font-bold text-lg mb-2">{{
+        `全部:
+        ${todoTaskStore.todoList.length} 項` }}</div>
+      <div class="bg-blue-500 border-2 border-solid border-black rounded-lg px-2 text-white font-bold text-lg mb-2">{{
+        `未完成:
+        ${todoTaskStore.todoList.filter((item) => !item.isCompleted).length} 項` }}</div>
+      <div class="bg-blue-500 border-2 border-solid border-black rounded-lg px-2 text-white font-bold text-lg mb-2">{{
+        `已完成:
+        ${todoTaskStore.todoList.filter((item) => item.isCompleted).length} 項` }}</div>
     </div>
-    <div class="footerContentli">
-      <li v-for="item in filter" :key="item"><a :class="{ selected: item === active }"
-          @click="emit('changeActive', item)">{{ item }}</a></li>
-    </div>
-    <button class="clearBtn" @click="emit('clearCompleted')">清除所有已完成事項</button>
+    <button @click="clearTask"
+      class="bg-blue-800 border-2 border-solid border-black rounded-lg px-2 text-white font-bold text-lg select-none hover:bg-blue-700 active:bg-blue-900">清除已完成代辦事項</button>
   </div>
-
 </template>
 
 <script setup>
-import { computed } from "vue";
-const props = defineProps(['list', 'filter', 'active'])
-const emit = defineEmits(['changeActive', 'clearCompleted'])
+import { useTodoTaskStore } from '@/stores/todoTask'
+const todoTaskStore = useTodoTaskStore()
 
-if (!Array.isArray(props.list)) {
-  // 如果 props.list 不是陣列，將其轉換為陣列
-  props.list = [props.list];
+const clearTask = () => {
+  const completedTask = todoTaskStore.todoList.filter((item) => item.isCompleted)
+  if (completedTask.length === 0) {
+    return alert('目前沒有已完成的代辦事項')
+  }
+  let isClear = confirm('確定要清除所有已完成代辦事項嗎？')
+  if (isClear) {
+    todoTaskStore.todoList = todoTaskStore.todoList.filter((item) => !item.isCompleted)
+    alert('清除成功')
+  } else {
+    alert('取消操作')
+  }
 }
-
-//篩選出代辦事情的數量
-const leftCount = computed(() => props.list.filter(item => !item.isCompleted).length)
-//篩選出完成事情的數量
-const completedCount = computed(() => props.list.filter(item => item.isCompleted).length)
-
-
-
 </script>
 
-<style scoped>
-.footerContent {
-  width: 400px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  height: 50px;
-}
-
-.footerContentli {
-  display: flex;
-}
-
-.footerContent li {
-  list-style: none;
-  margin: 3px;
-}
-
-.footerText {
-  margin-left: -30px;
-  display: flex;
-  flex-direction: column;
-}
-
-.clearBtn {
-  margin-right: -30px;
-  border: none;
-  cursor: pointer;
-  border-radius: 30px;
-  font-size: 14px;
-  background: #a5070759;
-}
-
-.clearBtn:hover {
-  background-color: #44434394;
-}
-
-.clearBtn:active {
-  background-color: #333131be;
-}
-
-.footerContentli a {
-  cursor: pointer;
-}
-
-.selected {
-  border-style: solid;
-  border-color: #6666663f;
-  border-radius: 30px;
-  padding: 3px;
-  background-color: rgba(255, 228, 196, 0.541);
-}
-
-.display {
-  display: none;
-}
-</style>
+<style scoped></style>

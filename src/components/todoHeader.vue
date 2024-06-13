@@ -1,149 +1,65 @@
 <template>
-  <div class="headerContainer">
-    <div class="headerTop">
-      <h1 class="headerTitle">Todo List</h1>
-      <button v-if="!model" class="toggleBtn" @click="toggle">切換成搜尋模式</button>
-      <button v-else class="toggleBtn" @click="toggle">切換成添加模式</button>
+  <div class="w-full h-[150px] pt-6">
+    <div class="w-4/5 m-auto flex justify-between items-center">
+      <h1 class="text-black text-3xl font-bold">Todo List</h1>
+      <button @click="searchMode"
+        class="border-2 border-solid border-black rounded-lg px-1 text-white sm:text-2xl font-bold bg-green-500 ease-in-out duration-300 select-none hover:scale-[1.2] hover:bg-green-600 active:bg-green-800">搜尋模式🔍</button>
     </div>
-    <div class="content">
-      <div class="empty"></div>
-      <div v-if="!model" class="bar">
-        <input maxlength="20" type="text" placeholder="請輸入代辦事項..." v-model.trim="taskname" @keyup.enter="handleTask" />
-        <button class="Btn" @click="handleTask">添加</button>
+    <div class="w-4/5 m-auto flex justify-center items-center mt-6 px-2">
+      <input v-model="isAll" type="checkbox" class="w-10 h-10 cursor-pointer"
+        :class="{ 'invisible': todoTaskStore.todoList.length === 0 }">
+      <div v-if="!todoTaskStore.isSearch" class="w-full flex justify-center items-center"
+        :class="{ 'invisible': todoTaskStore.isSearch }">
+        <input placeholder="請輸入代辦事項" v-model.trim="task" @keyup.enter="addTask"
+          class="text-center w-1/3 h-10 text-blue-600 font-bold text-lg px-2 border-2 border-black rounded-lg ease-in-out duration-500 focus:w-1/2 focus:border-blue-500 focus:outline-none">
+        <button @click="addTask"
+          class="w-10 h-10 bg-blue-500 text-3xl text-white rounded-md ml-2 ease-in-out duration-300 hover:scale-[1.2] hover:bg-blue-600 active:bg-blue-800 select-none">
+          +
+        </button>
       </div>
-      <div v-else class="bar">
-        <input maxlength="20" type="text" placeholder="請輸入搜尋關鍵字..." v-model.trim="tasknameKeyword"
-          @keyup.enter="searchTask" />
-        <button class="Btn" @click="searchTask">🔎</button>
+      <div v-else class="w-full flex justify-center items-center">
+        <input placeholder="請輸入關鍵字" v-model.trim="todoTaskStore.keyword"
+          class="text-center w-1/3 h-10 text-blue-600 font-bold text-lg px-2 border-2 border-black rounded-lg ease-in-out duration-500 focus:w-1/2 focus:border-blue-500 focus:outline-none">
       </div>
     </div>
   </div>
-
-
-
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from "vue"
+import { ref, computed } from 'vue'
+import { useTodoTaskStore } from '@/stores/todoTask'
+const todoTaskStore = useTodoTaskStore()
 
-
-const emit = defineEmits(['addTask', 'searchTask', 'toggle'])
-
-const taskname = ref('')
-const tasknameKeyword = ref('')
-const model = ref(false)
-
-//回傳新增的task給根組件並將輸入task的input給清空
-const handleTask = () => {
-  emit('addTask', taskname.value)
-  taskname.value = ''
+const task = ref('')
+const addTask = () => {
+  if (task.value === '') {
+    return alert('請輸入代辦事項')
+  }
+  todoTaskStore.todoList.push({
+    id: Date.now(),
+    taskName: task.value,
+    isCompleted: false,
+    isEdit: false
+  })
+  task.value = ''
 }
 
-const toggle = () => {
-  // false = 搜尋模式
-  // true = 新增模式
-  emit('toggle', model.value, tasknameKeyword.value)
-  model.value = !model.value
-  tasknameKeyword.value = ''
-  taskname.value = ''
-}
-
-
-
-watch(() => tasknameKeyword.value, () => {
-  emit('searchTask', tasknameKeyword.value)
+const isAll = computed({
+  get: () => {
+    return todoTaskStore.todoList.every(item => item.isCompleted)
+  },
+  set: (newValue) => {
+    todoTaskStore.todoList.forEach(item => {
+      item.isCompleted = newValue
+    })
+  }
 })
 
+const searchMode = () => {
+  todoTaskStore.isSearch = !todoTaskStore.isSearch
+  todoTaskStore.keyword = ''
+  task.value = ''
+}
 </script>
 
-<style scoped>
-.headerContainer {
-  height: 120px;
-}
-
-.headerTop {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  font-size: 30px;
-  margin: 20px 0px;
-}
-
-.headerTitle {
-  color: rgba(97, 29, 116, 0.505);
-}
-
-.toggleBtn {
-  margin-right: -130px;
-  margin-left: 30px;
-  height: 40px;
-  width: 120px;
-  border: none;
-  border-radius: 30px;
-  background-color: #6666661a;
-  cursor: pointer;
-  font-weight: bold;
-}
-
-.toggleBtn:hover {
-  background-color: #66666698;
-}
-
-.toggleBtn:active {
-  background-color: #66666698;
-}
-
-
-
-.content {
-  display: flex;
-  flex-direction: row;
-  width: 400px;
-  height: 40px;
-}
-
-.empty {
-  width: 50px;
-  height: 40px;
-}
-
-
-.bar {
-  height: 40px;
-}
-
-.bar input {
-  border: none;
-  padding: 0;
-  height: 40px;
-  width: 300px;
-  font-size: 15px;
-  margin-bottom: 20px;
-  text-align: center;
-  border-radius: 30px;
-  border-top-right-radius: 0px;
-  border-bottom-right-radius: 0px;
-  font-weight: bold;
-}
-
-.bar .Btn {
-  width: 50px;
-  height: 40px;
-  padding: 0px;
-  border: none;
-  border-radius: 30px;
-  border-top-left-radius: 0px;
-  border-bottom-left-radius: 0px;
-  cursor: pointer;
-  font-weight: bold;
-}
-
-.bar .Btn:hover {
-  background-color: #6666661a;
-}
-
-.bar .Btn:active {
-  background-color: #66666698;
-}
-</style>
+<style scoped></style>
