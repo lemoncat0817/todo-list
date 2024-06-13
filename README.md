@@ -1,49 +1,29 @@
-# Todo List
+# todolist
 
-這是一個使用Vue3、JavaScript、Pinia、和Vite構建的代辦事項清單網站。
+This template should help get you started developing with Vue 3 in Vite.
 
+## Recommended IDE Setup
 
-# Demo網站
+[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
 
-https://lemoncat0817.github.io/Vue-TodoList/
+## Customize configuration
 
-# 安裝與運行
+See [Vite Configuration Reference](https://vitejs.dev/config/).
 
-確保你已安裝了Node.js和pnpm。
-
-# 安裝依賴
-
-```sh
-pnpm install
-```
-
-# 開發模式啟動服務器
+## Project Setup
 
 ```sh
-pnpm dev
+npm install
 ```
 
-# 生產模式構建
+### Compile and Hot-Reload for Development
 
 ```sh
-pnpm build
+npm run dev
 ```
 
-# 功能特色
+### Compile and Minify for Production
 
-1.基本的增、刪、改、查代辦事項功能
-
-2.分類未完成、已完成的代辦事項
-
-3.一鍵清除所有完成代辦事項
-
-4.一鍵全選/全取消
-
-# 使用的技術
-
-1.框架採用 Vue3 。
-
-2.利用 Pinia 進行狀態管理。
-
-3.使用 Vite 作為快速的 Vue 開發工具。
-
+```sh
+npm run build
+```
