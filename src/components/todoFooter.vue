@@ -1,13 +1,13 @@
 <template>
   <div class="w-full h-[100px] flex items-center justify-around">
     <div class="sm:w-[400px] h-[100px] sm:flex items-center justify-around">
-      <div class="bg-blue-500 border-2 border-solid border-black rounded-lg px-2 text-white font-bold text-lg mb-2">{{
+      <div class="bg-blue-500 border-2 border-solid border-black rounded-lg px-2 text-white font-bold text-lg mt-2">{{
         `全部:
         ${todoTaskStore.todoList.length} 項` }}</div>
-      <div class="bg-blue-500 border-2 border-solid border-black rounded-lg px-2 text-white font-bold text-lg mb-2">{{
+      <div class="bg-blue-500 border-2 border-solid border-black rounded-lg px-2 text-white font-bold text-lg mt-2">{{
         `未完成:
         ${todoTaskStore.todoList.filter((item) => !item.isCompleted).length} 項` }}</div>
-      <div class="bg-blue-500 border-2 border-solid border-black rounded-lg px-2 text-white font-bold text-lg mb-2">{{
+      <div class="bg-blue-500 border-2 border-solid border-black rounded-lg px-2 text-white font-bold text-lg mt-2">{{
         `已完成:
         ${todoTaskStore.todoList.filter((item) => item.isCompleted).length} 項` }}</div>
     </div>
