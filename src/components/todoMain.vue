@@ -15,7 +15,8 @@
       <div v-for="item in taskList" :key="item.id"
         class="w-full bg-gray-300 border-2 border-white border-solid rounded-lg p-2 mb-2 flex justify-between items-center">
         <input v-model="item.isCompleted" type="checkbox" class="w-6 h-6 cursor-pointer">
-        <p v-if="!item.isEdit" class="sm:w-[300px] w-[100px] h-full text-xl font-bold text-blue-700 text-center break-all"
+        <p v-if="!item.isEdit"
+          class="sm:w-[300px] w-[100px] h-full text-xl font-bold text-blue-700 text-center break-all"
           :class="{ 'line-through': item.isCompleted }">
           {{ item.taskName }}
         </p>
@@ -92,7 +93,7 @@ const checkNotCompletedTask = () => {
 }
 
 const checkCompletedTask = () => {
-  if (todoTaskStore.todoList.some((item) => !item.isCompleted)) {
+  if (todoTaskStore.todoList.some((item) => item.isCompleted)) {
     todoTaskStore.pages = 2
   } else {
     alert('暫無完成事項，請先添加')
