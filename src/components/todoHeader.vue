@@ -3,7 +3,9 @@
     <div class="w-4/5 m-auto flex justify-between items-center">
       <h1 class="text-black text-3xl font-bold">Todo List</h1>
       <button @click="searchMode"
-        class="border-2 border-solid border-black rounded-lg px-1 text-white sm:text-2xl font-bold bg-green-500 ease-in-out duration-300 select-none hover:scale-[1.2] hover:bg-green-600 active:bg-green-800">搜尋模式🔍</button>
+        class="border-2 border-solid border-black rounded-lg px-1 text-white sm:text-2xl font-bold bg-green-500 ease-in-out duration-300 select-none hover:scale-[1.2] hover:bg-green-600 active:bg-green-800">
+        {{ !todoTaskStore.isSearch ? '搜尋模式🔍' : '回列表模式📋' }}
+      </button>
     </div>
     <div class="w-4/5 m-auto flex justify-center items-center mt-6 px-2">
       <input v-model="isAll" type="checkbox" class="w-10 h-10 cursor-pointer"
