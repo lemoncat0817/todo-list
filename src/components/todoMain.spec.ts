@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import todoMain from '@/components/todoMain.vue'
 import { useTodoTaskStore } from '@/stores/todoTask'
 import type { Pinia } from 'pinia'
-import type { TaskFilter } from '@/router'
+import type { TaskFilter } from '@/router/filters'
 import {
   freshPinia, mountWith, stubDialogs, makeTask, at, asInput, testRouter,
   type Wrapper, type DialogLog,
@@ -20,6 +20,8 @@ describe('todoMain.vue', () => {
   beforeEach(() => {
     pinia = freshPinia()
     store = useTodoTaskStore()
+    // 元件測試針對已載入完成的狀態；載入流程由 db 層的測試負責。
+    store.isLoading = false
     dialogs = stubDialogs()
   })
   afterEach(() => vi.restoreAllMocks())
@@ -28,9 +30,9 @@ describe('todoMain.vue', () => {
   const names = (w: Wrapper) => rows(w).map((r) => r.find('p').text())
   const seed = () => {
     store.todoList = [
-      makeTask('Buy Milk', false, { id: 1 }),
-      makeTask('buy milk', true, { id: 2 }),
-      makeTask('寫測試', false, { id: 3 }),
+      makeTask('Buy Milk', false, { id: '1' }),
+      makeTask('buy milk', true, { id: '2' }),
+      makeTask('寫測試', false, { id: '3' }),
     ]
   }
   describe('taskList 過濾（由路由 filter prop 驅動）', () => {
@@ -190,7 +192,7 @@ describe('todoMain.vue', () => {
     it('重新載入後回到閱讀狀態，原文字完好且清單未被鎖住（稽核 P1 已修正）', async () => {
       // 模擬「編輯中重新整理」：持久化的資料裡不再帶有編輯狀態，
       // 新掛載的元件一律從閱讀狀態開始。
-      store.todoList = [makeTask('原本的內容', false, { id: 1 }), makeTask('另一筆', false, { id: 2 })]
+      store.todoList = [makeTask('原本的內容', false, { id: '1' }), makeTask('另一筆', false, { id: '2' })]
       const w = mountWith(todoMain, pinia, { router: testRouter() })
 
       // 原文字看得見，沒有殘留的空白輸入框
@@ -220,15 +222,15 @@ describe('todoMain.vue', () => {
       const w = mountWith(todoMain, pinia, { router: testRouter() })
       await deleteBtn(w, 0).trigger('click')
 
-      expect(store.todoList.map((t) => t.id)).toEqual([2, 3])
+      expect(store.todoList.map((t) => t.id)).toEqual(['2', '3'])
     })
 
     it('[現況] id 碰撞時，刪除一筆會連帶刪掉另一筆（稽核 P17 的實際危害）', async () => {
       // Date.now() 當 id，同毫秒新增的兩筆會拿到相同的值
       store.todoList = [
-        makeTask('同毫秒 A', false, { id: 1_700_000_000_000 }),
-        makeTask('同毫秒 B', false, { id: 1_700_000_000_000 }),
-        makeTask('不相干', false, { id: 1_700_000_000_001 }),
+        makeTask('同毫秒 A', false, { id: '1700000000000' }),
+        makeTask('同毫秒 B', false, { id: '1700000000000' }),
+        makeTask('不相干', false, { id: '1700000000001' }),
       ]
       const w = mountWith(todoMain, pinia, { router: testRouter() })
       await deleteBtn(w, 0).trigger('click')

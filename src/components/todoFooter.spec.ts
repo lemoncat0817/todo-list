@@ -15,6 +15,8 @@ describe('todoFooter.vue', () => {
   beforeEach(() => {
     pinia = freshPinia()
     store = useTodoTaskStore()
+    // 元件測試針對已載入完成的狀態；載入流程由 db 層的測試負責。
+    store.isLoading = false
   })
   afterEach(() => vi.restoreAllMocks())
 
@@ -64,28 +66,28 @@ describe('todoFooter.vue', () => {
     it('確認後移除全部已完成項目，保留未完成', async () => {
       const dialogs = stubDialogs({ confirmReturns: true })
       store.todoList = [
-        makeTask('done-1', true, { id: 1 }),
-        makeTask('todo-1', false, { id: 2 }),
-        makeTask('done-2', true, { id: 3 }),
+        makeTask('done-1', true, { id: '1' }),
+        makeTask('todo-1', false, { id: '2' }),
+        makeTask('done-2', true, { id: '3' }),
       ]
       const w = mountWith(todoFooter, pinia)
       await clearButton(w).trigger('click')
 
       expect(dialogs.confirms).toEqual(['確定要清除所有已完成代辦事項嗎？'])
-      expect(store.todoList.map((t) => t.id)).toEqual([2])
+      expect(store.todoList.map((t) => t.id)).toEqual(['2'])
       expect(dialogs.alerts).toEqual(['清除成功'])
     })
 
     it('取消確認時不改動任何資料', async () => {
       const dialogs = stubDialogs({ confirmReturns: false })
       store.todoList = [
-        makeTask('done-1', true, { id: 1 }),
-        makeTask('todo-1', false, { id: 2 }),
+        makeTask('done-1', true, { id: '1' }),
+        makeTask('todo-1', false, { id: '2' }),
       ]
       const w = mountWith(todoFooter, pinia)
       await clearButton(w).trigger('click')
 
-      expect(store.todoList.map((t) => t.id)).toEqual([1, 2])
+      expect(store.todoList.map((t) => t.id)).toEqual(['1', '2'])
       expect(dialogs.alerts).toEqual(['取消操作'])
     })
 

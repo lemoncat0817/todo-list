@@ -1,9 +1,35 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 
 /**
  * 稽核報告 U3：Demo 的實際互動走查。
- * 同時在真實瀏覽器中重現 P1 與 P2，作為 Phase 1 修正前的基準證據。
+ * 同時在真實瀏覽器中驗證 P1 / P2 / P17 的修正結果。
  */
+
+interface IDBTaskRow {
+  id: string
+  taskName: string
+  isCompleted: boolean
+  order: number
+  [key: string]: unknown
+}
+
+/** 直接從瀏覽器的 IndexedDB 讀出任務，驗證實際落地的形狀。 */
+async function readTasksFromIDB(page: Page): Promise<IDBTaskRow[]> {
+  return page.evaluate<IDBTaskRow[]>(
+    () =>
+      new Promise((resolve, reject) => {
+        const open = indexedDB.open('todolist')
+        open.onerror = () => reject(open.error)
+        open.onsuccess = () => {
+          const db = open.result
+          const tx = db.transaction('tasks', 'readonly')
+          const req = tx.objectStore('tasks').getAll()
+          req.onsuccess = () => resolve(req.result as IDBTaskRow[])
+          req.onerror = () => reject(req.error)
+        }
+      }),
+  )
+}
 
 // 每個 test 都有獨立的 browser context，localStorage 本來就是乾淨的。
 // 不要用 addInitScript 清除 —— 它在每次 navigation 都會執行，reload 時會把資料一併清掉。
@@ -115,22 +141,47 @@ test('升級路徑：既有使用者的舊格式資料（含 isEdit）仍可正�
   await expect(page.getByText('全部: 2 項')).toBeVisible()
   await expect(page.getByText('已完成: 1 項')).toBeVisible()
 
-  // 後續寫回的資料已是新形狀
+  // 後續寫回的資料已是新形狀，且落在 IndexedDB
   await page.getByPlaceholder('請輸入代辦事項').fill('新增一筆')
   await page.getByRole('button', { name: '+' }).click()
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('todoTask') ?? '{}'))
-  expect(stored.todoList.some((t: Record<string, unknown>) => 'isEdit' in t), '舊的 isEdit 欄位應已消失').toBe(false)
+  await expect(page.getByText('全部: 3 項')).toBeVisible()
+
+  const rows = await readTasksFromIDB(page)
+  expect(rows).toHaveLength(3)
+  expect(rows.some((t) => 'isEdit' in t), '舊的 isEdit 欄位應已消失').toBe(false)
+  expect(rows.every((t) => typeof t.order === 'number'), '每一列都要有排序鍵').toBe(true)
+
+  // 原始 localStorage 資料保留，讓回滾舊版仍讀得到
+  const legacy = await page.evaluate(() => localStorage.getItem('todoTask'))
+  expect(legacy, '不刪除舊資料').not.toBeNull()
 })
 
-test('P1 已修正：isEdit 不再被寫進 localStorage', async ({ page }) => {
+test('P1 已修正：編輯狀態不落地，儲存形狀乾淨', async ({ page }) => {
   await page.goto('/')
   await page.getByPlaceholder('請輸入代辦事項').fill('檢查持久化形狀')
   await page.getByRole('button', { name: '+' }).click()
+  await expect(page.getByText('全部: 1 項')).toBeVisible()
   await page.locator('div.bg-gray-300').first().getByRole('button', { name: '編輯' }).click()
 
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('todoTask') ?? '{}'))
-  expect(stored.todoList[0]).not.toHaveProperty('isEdit')
-  expect(Object.keys(stored.todoList[0]).sort()).toEqual(['id', 'isCompleted', 'taskName'])
+  const rows = await readTasksFromIDB(page)
+  expect(rows).toHaveLength(1)
+  expect(Object.keys(rows[0] ?? {}).sort()).toEqual(['id', 'isCompleted', 'order', 'taskName'])
+})
+
+test('P17 已修正：id 為 UUID，不再是可能碰撞的時間戳', async ({ page }) => {
+  await page.goto('/')
+  for (const name of ['一', '二', '三']) {
+    await page.getByPlaceholder('請輸入代辦事項').fill(name)
+    await page.getByRole('button', { name: '+' }).click()
+  }
+  await expect(page.getByText('全部: 3 項')).toBeVisible()
+
+  const rows = await readTasksFromIDB(page)
+  const ids = rows.map((t) => t.id)
+  expect(new Set(ids).size, 'id 必須互異').toBe(3)
+  for (const id of ids) {
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
+  }
 })
 
 /**

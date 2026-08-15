@@ -4,7 +4,7 @@ import { vi } from 'vitest'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import type { Component } from 'vue'
 import { routes as appRoutes } from '@/router'
-import type { Task, TaskId } from '@/stores/sanitize'
+import type { StoredTask } from '@/db/schema'
 
 /**
  * 每個測試都用全新的 pinia，且刻意不掛 persistedstate plugin，
@@ -72,14 +72,20 @@ export function stubDialogs({ confirmReturns = true } = {}): DialogLog {
   return { alerts, confirms }
 }
 
-/** 領域模型不含 isEdit —— 編輯狀態自 P1 修正後改由元件區域管理。 */
+let orderSeq = 0
+
+/**
+ * 領域模型不含 isEdit —— 編輯狀態自 P1 修正後改由元件區域管理。
+ * id 為字串（crypto.randomUUID 的形狀），order 為排序鍵。
+ */
 export function makeTask(
   taskName: string,
   isCompleted = false,
-  extra: Partial<Task> & Record<string, unknown> = {},
-): Task {
-  const id: TaskId = (extra.id as TaskId | undefined) ?? Math.floor(Math.random() * 1e12)
-  return { id, taskName, isCompleted, ...extra }
+  extra: Partial<StoredTask> & Record<string, unknown> = {},
+): StoredTask {
+  const id = String(extra.id ?? `task-${++orderSeq}`)
+  const order = typeof extra.order === 'number' ? extra.order : orderSeq
+  return { ...extra, id, taskName, isCompleted, order }
 }
 
 /**

@@ -14,6 +14,7 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
+    setupFiles: ['src/test/setup.ts'],
     // e2e 由 Playwright 執行，不要讓 Vitest 收進來。
     include: ['src/**/*.spec.ts'],
   },
