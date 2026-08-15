@@ -1,16 +1,16 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { sanitizeState, type Pages, type Task } from './sanitize'
+import { sanitizeState, type Task } from './sanitize'
 
 export const useTodoTaskStore = defineStore(
   'todoTask',
   () => {
-    const isEdit = ref(false)
+    // 稽核 P14：原本這裡還有一個 store 層級的 isEdit，宣告並匯出卻無人使用。
+    // pages 移除後它更顯突兀，一併清掉（原訂 Phase 9，提前於此處理）。
     const todoList = ref<Task[]>([])
-    const pages = ref<Pages>(0)
     const isSearch = ref(false)
     const keyword = ref('')
-    return { isEdit, todoList, pages, isSearch, keyword }
+    return { todoList, isSearch, keyword }
   },
   {
     // 稽核 P2：還原時做形狀驗證，壞資料不再進入 store。

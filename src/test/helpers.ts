@@ -1,7 +1,9 @@
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import { vi } from 'vitest'
+import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import type { Component } from 'vue'
+import { routes as appRoutes } from '@/router'
 import type { Task, TaskId } from '@/stores/sanitize'
 
 /**
@@ -14,8 +16,27 @@ export function freshPinia(): Pinia {
   return pinia
 }
 
-export function mountWith(component: Component, pinia: Pinia) {
-  return mount(component, { global: { plugins: [pinia] } })
+export interface MountOptions {
+  props?: Record<string, unknown>
+  /** 需要 RouterLink / RouterView 的元件請傳入測試用 router。 */
+  router?: Router
+}
+
+export function mountWith(component: Component, pinia: Pinia, options: MountOptions = {}) {
+  const plugins: (Pinia | Router)[] = [pinia]
+  if (options.router) plugins.push(options.router)
+  return mount(component, {
+    global: { plugins },
+    ...(options.props ? { props: options.props } : {}),
+  })
+}
+
+/**
+ * 測試用 router：路由表與正式版相同，但改用 memory history，
+ * 不需要真實的網址列，也不會在測試之間互相汙染。
+ */
+export function testRouter(): Router {
+  return createRouter({ history: createMemoryHistory(), routes: appRoutes })
 }
 
 /** 掛載後的 wrapper 型別，供各 spec 的區域 helper 標註參數。 */

@@ -18,12 +18,8 @@ export interface Task {
   isCompleted: boolean
 }
 
-/** 分頁：0 全部、1 未完成、2 已完成。 */
-export type Pages = 0 | 1 | 2
-
 export interface PersistedState {
   todoList: Task[]
-  pages: Pages
   isSearch: boolean
   keyword: string
 }
@@ -57,11 +53,6 @@ export function sanitizeTask(raw: unknown): Task | null {
   }
 }
 
-/** pages 只有 0/1/2 三個合法值（稽核 P3 的另一半防線）。 */
-function isValidPages(v: unknown): v is Pages {
-  return v === 0 || v === 1 || v === 2
-}
-
 /**
  * 整份持久化狀態的驗證。
  * 只挑出通過驗證的欄位；其餘一律不覆寫，讓 store 保留自己的預設值。
@@ -75,7 +66,6 @@ export function sanitizeState(raw: unknown): Partial<PersistedState> {
       .map(sanitizeTask)
       .filter((t): t is Task => t !== null)
   }
-  if (isValidPages(raw.pages)) state.pages = raw.pages
   if (typeof raw.isSearch === 'boolean') state.isSearch = raw.isSearch
   if (typeof raw.keyword === 'string') state.keyword = raw.keyword
 
