@@ -16,7 +16,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { useTodoTaskStore } from '@/stores/todoTask'
 const todoTaskStore = useTodoTaskStore()
 
@@ -25,7 +25,7 @@ const clearTask = () => {
   if (completedTask.length === 0) {
     return alert('目前沒有已完成的代辦事項')
   }
-  let isClear = confirm('確定要清除所有已完成代辦事項嗎？')
+  const isClear = confirm('確定要清除所有已完成代辦事項嗎？')
   if (isClear) {
     todoTaskStore.todoList = todoTaskStore.todoList.filter((item) => !item.isCompleted)
     alert('清除成功')

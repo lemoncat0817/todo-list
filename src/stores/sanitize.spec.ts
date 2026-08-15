@@ -15,9 +15,9 @@ describe('sanitizeTask', () => {
   })
 
   it('isCompleted 缺失或非 true 時一律視為未完成', () => {
-    expect(sanitizeTask({ id: 1, taskName: 'a' }).isCompleted).toBe(false)
-    expect(sanitizeTask({ id: 1, taskName: 'a', isCompleted: 'yes' }).isCompleted).toBe(false)
-    expect(sanitizeTask({ id: 1, taskName: 'a', isCompleted: 1 }).isCompleted).toBe(false)
+    expect(sanitizeTask({ id: 1, taskName: 'a' })?.isCompleted).toBe(false)
+    expect(sanitizeTask({ id: 1, taskName: 'a', isCompleted: 'yes' })?.isCompleted).toBe(false)
+    expect(sanitizeTask({ id: 1, taskName: 'a', isCompleted: 1 })?.isCompleted).toBe(false)
   })
 
   it('不再輸出 isEdit —— 編輯狀態不屬於領域資料（稽核 P1）', () => {

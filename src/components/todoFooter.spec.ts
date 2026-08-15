@@ -1,15 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import todoFooter from '@/components/todoFooter.vue'
 import { useTodoTaskStore } from '@/stores/todoTask'
-import { freshPinia, mountWith, stubDialogs, makeTask } from '@/test/helpers'
+import type { Pinia } from 'pinia'
+import { freshPinia, mountWith, stubDialogs, makeTask, at, type Wrapper } from '@/test/helpers'
 
 /**
  * 鎖定 todoFooter.vue 的既有行為。
  * clearTask 是稽核報告點名要先補測試的狀態轉換邏輯。
  */
 describe('todoFooter.vue', () => {
-  let pinia
-  let store
+  let pinia: Pinia
+  let store: ReturnType<typeof useTodoTaskStore>
 
   beforeEach(() => {
     pinia = freshPinia()
@@ -17,8 +18,8 @@ describe('todoFooter.vue', () => {
   })
   afterEach(() => vi.restoreAllMocks())
 
-  const counters = (w) => w.findAll('div.bg-blue-500').map((d) => d.text().replace(/\s+/g, ''))
-  const clearButton = (w) => w.find('button')
+  const counters = (w: Wrapper) => w.findAll('div.bg-blue-500').map((d) => d.text().replace(/\s+/g, ''))
+  const clearButton = (w: Wrapper) => w.find('button')
 
   describe('統計數字（todoFooter.vue:4-12）', () => {
     it('空清單時三個計數都是 0', () => {
@@ -42,7 +43,7 @@ describe('todoFooter.vue', () => {
       const w = mountWith(todoFooter, pinia)
       expect(counters(w)).toEqual(['全部:1項', '未完成:1項', '已完成:0項'])
 
-      store.todoList[0].isCompleted = true
+      at(store.todoList, 0).isCompleted = true
       await w.vm.$nextTick()
       expect(counters(w)).toEqual(['全部:1項', '未完成:0項', '已完成:1項'])
     })

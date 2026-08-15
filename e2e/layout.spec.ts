@@ -15,7 +15,7 @@ test('U1: 各裝置寬度下的水平溢出量測', async ({ page }) => {
     await page.waitForSelector('h1')
 
     const m = await page.evaluate(() => {
-      const box = document.querySelector('.app > div')
+      const box = document.querySelector('.app > div') as HTMLElement
       const r = box.getBoundingClientRect()
       return {
         docScrollWidth: document.documentElement.scrollWidth,
@@ -82,7 +82,7 @@ test('U2: 100vh vs 視窗高度', async ({ page }) => {
   await page.goto('/')
 
   const m = await page.evaluate(() => {
-    const app = document.querySelector('.app')
+    const app = document.querySelector('.app') as HTMLElement
     return {
       appHeight: Math.round(app.getBoundingClientRect().height),
       innerHeight: window.innerHeight,

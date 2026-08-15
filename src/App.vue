@@ -8,7 +8,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import todoHeader from './components/todoHeader.vue'
 import todoMain from './components/todoMain.vue'
 import todoFooter from './components/todoFooter.vue'

@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import todoHeader from '@/components/todoHeader.vue'
 import { useTodoTaskStore } from '@/stores/todoTask'
-import { freshPinia, mountWith, stubDialogs, makeTask } from '@/test/helpers'
+import type { Pinia } from 'pinia'
+import { freshPinia, mountWith, stubDialogs, makeTask, at, asInput, type Wrapper, type DialogLog } from '@/test/helpers'
 
 /**
  * 鎖定 todoHeader.vue 的既有行為。
@@ -9,9 +10,9 @@ import { freshPinia, mountWith, stubDialogs, makeTask } from '@/test/helpers'
  * 之後的階段修正時這些測試會轉紅，那正是我們要的改變證明。
  */
 describe('todoHeader.vue', () => {
-  let pinia
-  let store
-  let dialogs
+  let pinia: Pinia
+  let store: ReturnType<typeof useTodoTaskStore>
+  let dialogs: DialogLog
 
   beforeEach(() => {
     pinia = freshPinia()
@@ -20,8 +21,8 @@ describe('todoHeader.vue', () => {
   })
   afterEach(() => vi.restoreAllMocks())
 
-  const textInput = (w) => w.find('input[placeholder="請輸入代辦事項"]')
-  const addButton = (w) => w.find('button.bg-blue-500')
+  const textInput = (w: Wrapper) => w.find('input[placeholder="請輸入代辦事項"]')
+  const addButton = (w: Wrapper) => w.find('button.bg-blue-500')
 
   describe('addTask（todoHeader.vue:36-47）', () => {
     it('輸入內容後新增，並清空輸入框', async () => {
@@ -30,13 +31,13 @@ describe('todoHeader.vue', () => {
       await addButton(w).trigger('click')
 
       expect(store.todoList).toHaveLength(1)
-      expect(store.todoList[0]).toMatchObject({
+      expect(at(store.todoList, 0)).toMatchObject({
         taskName: '寫測試',
         isCompleted: false,
       })
       // P1 修正後不再把編輯狀態寫進領域資料
-      expect(store.todoList[0]).not.toHaveProperty('isEdit')
-      expect(textInput(w).element.value).toBe('')
+      expect(at(store.todoList, 0)).not.toHaveProperty('isEdit')
+      expect(asInput(textInput(w)).value).toBe('')
     })
 
     it('空字串不新增，改跳 alert', async () => {
@@ -62,7 +63,7 @@ describe('todoHeader.vue', () => {
       await textInput(w).trigger('keyup.enter')
 
       expect(store.todoList).toHaveLength(1)
-      expect(store.todoList[0].taskName).toBe('用 Enter 新增')
+      expect(at(store.todoList, 0).taskName).toBe('用 Enter 新增')
     })
 
     it('[現況] id 直接取自 Date.now()，因此同毫秒新增必然碰撞（稽核 P17）', async () => {
@@ -74,24 +75,24 @@ describe('todoHeader.vue', () => {
 
       // id 落在呼叫前後的時間區間內，證明它就是一個毫秒時間戳，
       // 沒有任何額外的唯一性來源 —— 同毫秒的兩次新增必然拿到同一個值。
-      expect(store.todoList[0].id).toBeGreaterThanOrEqual(before)
-      expect(store.todoList[0].id).toBeLessThanOrEqual(after)
+      expect(at(store.todoList, 0).id).toBeGreaterThanOrEqual(before)
+      expect(at(store.todoList, 0).id).toBeLessThanOrEqual(after)
     })
   })
 
   describe('isAll 全選 computed（todoHeader.vue:49-58）', () => {
-    const checkbox = (w) => w.find('input[type="checkbox"]')
+    const checkbox = (w: Wrapper) => w.find('input[type="checkbox"]')
 
     it('全部完成時為已勾選', () => {
       store.todoList = [makeTask('a', true), makeTask('b', true)]
       const w = mountWith(todoHeader, pinia)
-      expect(checkbox(w).element.checked).toBe(true)
+      expect(asInput(checkbox(w)).checked).toBe(true)
     })
 
     it('有任一未完成時為未勾選', () => {
       store.todoList = [makeTask('a', true), makeTask('b', false)]
       const w = mountWith(todoHeader, pinia)
-      expect(checkbox(w).element.checked).toBe(false)
+      expect(asInput(checkbox(w)).checked).toBe(false)
     })
 
     it('勾選時將全部標記為完成', async () => {
@@ -111,7 +112,7 @@ describe('todoHeader.vue', () => {
     it('[現況] 清單為空時 every() 回傳 true，全選框呈現已勾選（稽核 P13）', () => {
       const w = mountWith(todoHeader, pinia)
       expect(store.todoList).toHaveLength(0)
-      expect(checkbox(w).element.checked).toBe(true)
+      expect(asInput(checkbox(w)).checked).toBe(true)
     })
 
     it('[現況] 清單為空時全選框加上 invisible（僅視覺隱藏）', () => {
@@ -121,7 +122,7 @@ describe('todoHeader.vue', () => {
   })
 
   describe('searchMode 切換（todoHeader.vue:60-64）', () => {
-    const modeButton = (w) => w.find('button.bg-green-500')
+    const modeButton = (w: Wrapper) => w.find('button.bg-green-500')
 
     it('切換 isSearch，並顯示對應字樣', async () => {
       const w = mountWith(todoHeader, pinia)

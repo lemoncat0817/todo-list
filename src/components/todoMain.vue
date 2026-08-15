@@ -35,17 +35,18 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useTodoTaskStore } from '@/stores/todoTask'
+import type { Task, TaskId } from '@/stores/sanitize'
 const todoTaskStore = useTodoTaskStore()
 
 // 稽核 P1：編輯狀態是 UI 暫態，改為元件區域狀態，不再隨 todoList 被持久化。
 // 這樣重新整理後一律回到閱讀狀態，原文字完好，也不會鎖住整份清單。
-const editingId = ref(null)
+const editingId = ref<TaskId | null>(null)
 const editTaskName = ref('')
 
-const editTask = (task) => {
+const editTask = (task: Task) => {
   if (editingId.value !== null) {
     alert('有待辦事項尚未保存，請先完成編輯')
     return
@@ -53,7 +54,7 @@ const editTask = (task) => {
   editingId.value = task.id
   editTaskName.value = task.taskName
 }
-const saveTask = (task) => {
+const saveTask = (task: Task) => {
   if (editTaskName.value === '') {
     alert('請輸入編輯內容')
     return
@@ -63,7 +64,7 @@ const saveTask = (task) => {
   editTaskName.value = ''
 }
 
-const deleteTask = (id) => {
+const deleteTask = (id: TaskId) => {
   // 刪掉的正好是編輯中的那筆時，一併結束編輯狀態
   if (editingId.value === id) {
     editingId.value = null
