@@ -77,3 +77,21 @@ export const safeSerializer = {
   serialize: (value: unknown): string => JSON.stringify(value),
   deserialize: (raw: string): Partial<PersistedState> => sanitizeState(JSON.parse(raw)),
 }
+
+export interface UiPrefs {
+  isSearch: boolean
+  keyword: string
+}
+
+/**
+ * 留在 localStorage 的只剩搜尋這類 UI 偏好；任務本體已移往 IndexedDB。
+ * 同樣要驗證形狀——這是稽核 P2 的教訓，任何外部來源都不能直接信任。
+ */
+export function sanitizeUiPrefs(raw: unknown): Partial<UiPrefs> {
+  if (!isRecord(raw)) return {}
+
+  const prefs: Partial<UiPrefs> = {}
+  if (typeof raw.isSearch === 'boolean') prefs.isSearch = raw.isSearch
+  if (typeof raw.keyword === 'string') prefs.keyword = raw.keyword
+  return prefs
+}

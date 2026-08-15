@@ -27,7 +27,7 @@ const clearTask = () => {
   }
   const isClear = confirm('確定要清除所有已完成代辦事項嗎？')
   if (isClear) {
-    todoTaskStore.todoList = todoTaskStore.todoList.filter((item) => !item.isCompleted)
+    todoTaskStore.clearCompleted()
     alert('清除成功')
   } else {
     alert('取消操作')

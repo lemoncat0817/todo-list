@@ -37,12 +37,7 @@ const addTask = () => {
   if (task.value === '') {
     return alert('請輸入代辦事項')
   }
-  // 稽核 P1：不再寫入 isEdit，編輯狀態已改由 todoMain 以區域狀態管理
-  todoTaskStore.todoList.push({
-    id: Date.now(),
-    taskName: task.value,
-    isCompleted: false
-  })
+  todoTaskStore.addTask(task.value)
   task.value = ''
 }
 
@@ -51,9 +46,7 @@ const isAll = computed({
     return todoTaskStore.todoList.every(item => item.isCompleted)
   },
   set: (newValue: boolean) => {
-    todoTaskStore.todoList.forEach(item => {
-      item.isCompleted = newValue
-    })
+    todoTaskStore.setAllCompleted(newValue)
   }
 })
 

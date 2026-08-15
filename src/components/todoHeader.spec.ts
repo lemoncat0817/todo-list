@@ -17,6 +17,8 @@ describe('todoHeader.vue', () => {
   beforeEach(() => {
     pinia = freshPinia()
     store = useTodoTaskStore()
+    // 元件測試針對已載入完成的狀態；載入流程由 db 層的測試負責。
+    store.isLoading = false
     dialogs = stubDialogs()
   })
   afterEach(() => vi.restoreAllMocks())
@@ -66,17 +68,28 @@ describe('todoHeader.vue', () => {
       expect(at(store.todoList, 0).taskName).toBe('用 Enter 新增')
     })
 
-    it('[現況] id 直接取自 Date.now()，因此同毫秒新增必然碰撞（稽核 P17）', async () => {
+    it('id 改用 randomUUID，不再是時間戳（稽核 P17 已修正）', async () => {
       const w = mountWith(todoHeader, pinia)
-      const before = Date.now()
-      await textInput(w).setValue('看看 id 從哪來')
+      await textInput(w).setValue('第一筆')
       await addButton(w).trigger('click')
-      const after = Date.now()
+      await textInput(w).setValue('第二筆')
+      await addButton(w).trigger('click')
 
-      // id 落在呼叫前後的時間區間內，證明它就是一個毫秒時間戳，
-      // 沒有任何額外的唯一性來源 —— 同毫秒的兩次新增必然拿到同一個值。
-      expect(at(store.todoList, 0).id).toBeGreaterThanOrEqual(before)
-      expect(at(store.todoList, 0).id).toBeLessThanOrEqual(after)
+      const ids = store.todoList.map((t) => t.id)
+      expect(ids).toHaveLength(2)
+      for (const id of ids) {
+        expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
+      }
+      expect(new Set(ids).size, '不同筆必須是不同 id').toBe(2)
+    })
+
+    it('新增時給定遞增的排序鍵', async () => {
+      const w = mountWith(todoHeader, pinia)
+      for (const name of ['一', '二', '三']) {
+        await textInput(w).setValue(name)
+        await addButton(w).trigger('click')
+      }
+      expect(store.todoList.map((t) => t.order)).toEqual([0, 1, 2])
     })
   })
 
