@@ -27,7 +27,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useTodoTaskStore } from '@/stores/todoTask'
 const todoTaskStore = useTodoTaskStore()
@@ -50,7 +50,7 @@ const isAll = computed({
   get: () => {
     return todoTaskStore.todoList.every(item => item.isCompleted)
   },
-  set: (newValue) => {
+  set: (newValue: boolean) => {
     todoTaskStore.todoList.forEach(item => {
       item.isCompleted = newValue
     })

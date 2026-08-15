@@ -118,8 +118,8 @@ test('升級路徑：既有使用者的舊格式資料（含 isEdit）仍可正�
   // 後續寫回的資料已是新形狀
   await page.getByPlaceholder('請輸入代辦事項').fill('新增一筆')
   await page.getByRole('button', { name: '+' }).click()
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('todoTask')))
-  expect(stored.todoList.some((t) => 'isEdit' in t), '舊的 isEdit 欄位應已消失').toBe(false)
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('todoTask') ?? '{}'))
+  expect(stored.todoList.some((t: Record<string, unknown>) => 'isEdit' in t), '舊的 isEdit 欄位應已消失').toBe(false)
 })
 
 test('P1 已修正：isEdit 不再被寫進 localStorage', async ({ page }) => {
@@ -128,7 +128,7 @@ test('P1 已修正：isEdit 不再被寫進 localStorage', async ({ page }) => {
   await page.getByRole('button', { name: '+' }).click()
   await page.locator('div.bg-gray-300').first().getByRole('button', { name: '編輯' }).click()
 
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('todoTask')))
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('todoTask') ?? '{}'))
   expect(stored.todoList[0]).not.toHaveProperty('isEdit')
   expect(Object.keys(stored.todoList[0]).sort()).toEqual(['id', 'isCompleted', 'taskName'])
 })
@@ -139,7 +139,7 @@ test('P1 已修正：isEdit 不再被寫進 localStorage', async ({ page }) => {
  */
 // Phase 1 之後：全部 10 種壞資料都應正常渲染，無效項目被靜靜濾除。
 // 第四欄 = 修正後應顯示的列數。
-const BAD_PAYLOADS = [
+const BAD_PAYLOADS: Array<[label: string, payload: string, expectedRows: number]> = [
   ['todoList 為 null', '{"todoList":null}', 0],
   ['todoList 為字串', '{"todoList":"oops"}', 0],
   ['todoList 為數字', '{"todoList":42}', 0],
@@ -156,8 +156,8 @@ const BAD_PAYLOADS = [
 
 for (const [label, payload, expectedRows] of BAD_PAYLOADS) {
   test(`P2 已修正：${label} → 正常渲染，顯示 ${expectedRows} 列`, async ({ page }) => {
-    const uncaught = []
-    const consoleErrors = []
+    const uncaught: string[] = []
+    const consoleErrors: string[] = []
     page.on('pageerror', (e) => uncaught.push(e.message))
     page.on('console', (m) => {
       if (m.type() === 'error') consoleErrors.push(m.text())
@@ -170,7 +170,7 @@ for (const [label, payload, expectedRows] of BAD_PAYLOADS) {
     await page.waitForTimeout(300)
 
     const state = await page.evaluate(() => ({
-      appLen: document.querySelector('#app').innerHTML.length,
+      appLen: (document.querySelector('#app') as HTMLElement).innerHTML.length,
       hasHeader: !!document.querySelector('h1'),
       hasTabs: document.querySelectorAll('div.w-20').length,
       hasFooter: !!document.querySelector('button.bg-blue-800'),
@@ -187,7 +187,7 @@ for (const [label, payload, expectedRows] of BAD_PAYLOADS) {
     const verdict = state.appLen === 0 ? '完全白畫面' : state.hasFooter ? '完整渲染' : '部分渲染失敗'
     console.log(
       `  P2 [${label.padEnd(18)}] ${verdict.padEnd(12)} ${parts}` +
-        `  console: ${consoleErrors.length ? consoleErrors[0].slice(0, 45) : '無'}`,
+        `  console: ${consoleErrors[0]?.slice(0, 45) ?? '無'}`,
     )
 
     // 稽核 P2 已修正：壞資料在進入 store 之前就被濾掉，畫面一律完整渲染

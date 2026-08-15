@@ -1,16 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import todoMain from '@/components/todoMain.vue'
 import { useTodoTaskStore } from '@/stores/todoTask'
-import { freshPinia, mountWith, stubDialogs, makeTask } from '@/test/helpers'
+import type { Pinia } from 'pinia'
+import type { Pages } from '@/stores/sanitize'
+import { freshPinia, mountWith, stubDialogs, makeTask, at, asInput, type Wrapper, type DialogLog } from '@/test/helpers'
 
 /**
  * 鎖定 todoMain.vue 的既有行為。
  * 標示 [現況] 的案例記錄稽核報告指出的缺陷，修正後應轉紅。
  */
 describe('todoMain.vue', () => {
-  let pinia
-  let store
-  let dialogs
+  let pinia: Pinia
+  let store: ReturnType<typeof useTodoTaskStore>
+  let dialogs: DialogLog
 
   beforeEach(() => {
     pinia = freshPinia()
@@ -19,8 +21,8 @@ describe('todoMain.vue', () => {
   })
   afterEach(() => vi.restoreAllMocks())
 
-  const rows = (w) => w.findAll('div.bg-gray-300')
-  const names = (w) => rows(w).map((r) => r.find('p').text())
+  const rows = (w: Wrapper) => w.findAll('div.bg-gray-300')
+  const names = (w: Wrapper) => rows(w).map((r) => r.find('p').text())
   const seed = () => {
     store.todoList = [
       makeTask('Buy Milk', false, { id: 1 }),
@@ -83,7 +85,7 @@ describe('todoMain.vue', () => {
 
     it('pages 為非預期值時退回完整清單，不再靜默清空（稽核 P3 已修正）', () => {
       seed()
-      store.pages = 7
+      store.pages = 7 as unknown as Pages
       const w = mountWith(todoMain, pinia)
       expect(names(w)).toEqual(['Buy Milk', 'buy milk', '寫測試'])
     })
@@ -91,7 +93,7 @@ describe('todoMain.vue', () => {
     it('有 keyword 且 pages 為非預期值時仍套用關鍵字（稽核 P3 已修正）', () => {
       seed()
       store.keyword = 'buy'
-      store.pages = 7
+      store.pages = 7 as unknown as Pages
       const w = mountWith(todoMain, pinia)
       expect(names(w)).toEqual(['buy milk'])
     })
@@ -100,7 +102,7 @@ describe('todoMain.vue', () => {
       'pages=%s 一律退回完整清單而非 undefined（稽核 P3 已修正）',
       (bad) => {
         seed()
-        store.pages = bad
+        store.pages = bad as unknown as Pages
         const w = mountWith(todoMain, pinia)
         expect(rows(w)).toHaveLength(3)
       },
@@ -108,7 +110,7 @@ describe('todoMain.vue', () => {
   })
 
   describe('分頁切換守衛（todoMain.vue:87-101）', () => {
-    const tab = (w, i) => w.findAll('div.w-20')[i]
+    const tab = (w: Wrapper, i: number) => at(w.findAll('div.w-20'), i)
 
     it('點「全部」直接切到 pages=0', async () => {
       seed()
@@ -152,9 +154,9 @@ describe('todoMain.vue', () => {
   })
 
   describe('編輯與保存（todoMain.vue:45-61）', () => {
-    const editBtn = (w, i) => rows(w)[i].findAll('button')[0]
-    const deleteBtn = (w, i) => rows(w)[i].findAll('button')[1]
-    const editInput = (w, i) => rows(w)[i].find('input[placeholder="請輸入編輯內容"]')
+    const editBtn = (w: Wrapper, i: number) => at(at(rows(w), i).findAll('button'), 0)
+    const deleteBtn = (w: Wrapper, i: number) => at(at(rows(w), i).findAll('button'), 1)
+    const editInput = (w: Wrapper, i: number) => at(rows(w), i).find('input[placeholder="請輸入編輯內容"]')
 
     it('點編輯後顯示輸入框，且帶入原本的內容', async () => {
       seed()
@@ -163,10 +165,10 @@ describe('todoMain.vue', () => {
 
       // 斷言行為（畫面切到編輯狀態），而非 store 內部欄位
       expect(editInput(w, 0).exists()).toBe(true)
-      expect(editInput(w, 0).element.value).toBe('Buy Milk')
-      expect(rows(w)[0].find('p').exists()).toBe(false)
+      expect(asInput(editInput(w, 0)).value).toBe('Buy Milk')
+      expect(at(rows(w), 0).find('p').exists()).toBe(false)
       // P1 修正後編輯狀態不再寫進領域資料
-      expect(store.todoList[0]).not.toHaveProperty('isEdit')
+      expect(at(store.todoList, 0)).not.toHaveProperty('isEdit')
     })
 
     it('保存後寫回新內容並離開編輯狀態', async () => {
@@ -174,11 +176,11 @@ describe('todoMain.vue', () => {
       const w = mountWith(todoMain, pinia)
       await editBtn(w, 0).trigger('click')
       await editInput(w, 0).setValue('Buy Oat Milk')
-      await rows(w)[0].findAll('button')[0].trigger('click')
+      await at(at(rows(w), 0).findAll('button'), 0).trigger('click')
 
-      expect(store.todoList[0].taskName).toBe('Buy Oat Milk')
+      expect(at(store.todoList, 0).taskName).toBe('Buy Oat Milk')
       expect(editInput(w, 0).exists(), '應離開編輯狀態').toBe(false)
-      expect(rows(w)[0].find('p').text()).toBe('Buy Oat Milk')
+      expect(at(rows(w), 0).find('p').text()).toBe('Buy Oat Milk')
     })
 
     it('編輯內容清空時保存被擋下，仍留在編輯狀態', async () => {
@@ -186,10 +188,10 @@ describe('todoMain.vue', () => {
       const w = mountWith(todoMain, pinia)
       await editBtn(w, 0).trigger('click')
       await editInput(w, 0).setValue('')
-      await rows(w)[0].findAll('button')[0].trigger('click')
+      await at(at(rows(w), 0).findAll('button'), 0).trigger('click')
 
       expect(editInput(w, 0).exists(), '仍留在編輯狀態').toBe(true)
-      expect(store.todoList[0].taskName).toBe('Buy Milk')
+      expect(at(store.todoList, 0).taskName).toBe('Buy Milk')
       expect(dialogs.alerts).toEqual(['請輸入編輯內容'])
     })
 
@@ -210,12 +212,12 @@ describe('todoMain.vue', () => {
       const w = mountWith(todoMain, pinia)
 
       // 原文字看得見，沒有殘留的空白輸入框
-      expect(rows(w)[0].find('p').text()).toBe('原本的內容')
+      expect(at(rows(w), 0).find('p').text()).toBe('原本的內容')
       expect(w.find('input[placeholder="請輸入編輯內容"]').exists()).toBe(false)
 
       // 任何一筆都能正常進入編輯
       await editBtn(w, 1).trigger('click')
-      expect(editInput(w, 1).element.value).toBe('另一筆')
+      expect(asInput(editInput(w, 1)).value).toBe('另一筆')
       expect(dialogs.alerts).toEqual([])
     })
 
@@ -266,15 +268,15 @@ describe('todoMain.vue', () => {
     it('勾選 checkbox 會更新該項目的 isCompleted', async () => {
       seed()
       const w = mountWith(todoMain, pinia)
-      await rows(w)[0].find('input[type="checkbox"]').setValue(true)
-      expect(store.todoList[0].isCompleted).toBe(true)
+      await at(rows(w), 0).find('input[type="checkbox"]').setValue(true)
+      expect(at(store.todoList, 0).isCompleted).toBe(true)
     })
 
     it('已完成的項目加上刪除線', () => {
       seed()
       const w = mountWith(todoMain, pinia)
-      expect(rows(w)[1].find('p').classes()).toContain('line-through')
-      expect(rows(w)[0].find('p').classes()).not.toContain('line-through')
+      expect(at(rows(w), 1).find('p').classes()).toContain('line-through')
+      expect(at(rows(w), 0).find('p').classes()).not.toContain('line-through')
     })
   })
 })
