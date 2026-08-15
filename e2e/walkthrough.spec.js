@@ -66,7 +66,7 @@ test('U3b: 重新整理後資料仍在（持久化生效）', async ({ page }) =
   await expect(page.getByText('持久化測試')).toBeVisible()
 })
 
-test('P1 基準：編輯中重新整理會清空輸入框並鎖住清單', async ({ page }) => {
+test('P1 已修正：編輯中重新整理會回到閱讀狀態，原文字完好', async ({ page }) => {
   await page.goto('/')
   for (const t of ['原本的內容', '另一筆']) {
     await page.getByPlaceholder('請輸入代辦事項').fill(t)
@@ -78,48 +78,84 @@ test('P1 基準：編輯中重新整理會清空輸入框並鎖住清單', async
 
   await page.reload()
 
-  // 稽核 P1：isEdit 被持久化，但編輯暫存值不是
-  const editBox = page.getByPlaceholder('請輸入編輯內容')
-  await expect(editBox).toBeVisible()
-  await expect(editBox, 'P1：重新整理後編輯框是空的，原文字看不見了').toHaveValue('')
-  await expect(page.getByText('原本的內容')).toHaveCount(0)
+  // 編輯狀態不再被持久化：重新整理後回到閱讀狀態
+  await expect(page.getByPlaceholder('請輸入編輯內容'), '不應殘留編輯框').toHaveCount(0)
+  await expect(page.getByText('原本的內容'), '原文字完好').toBeVisible()
 
-  // 保存被擋下，仍在編輯狀態
-  await page.locator('div.bg-gray-300').first().getByRole('button', { name: '保存' }).click()
-  await expect(page.getByPlaceholder('請輸入編輯內容'), 'P1：無法離開編輯狀態').toBeVisible()
-
-  // 另一筆也不能編輯，整份清單卡住
-  await expect(
-    page.locator('div.bg-gray-300').nth(1).getByRole('button', { name: '編輯' }),
-  ).toBeVisible()
+  // 兩筆都能正常進入編輯，清單沒有被鎖住
   await page.locator('div.bg-gray-300').nth(1).getByRole('button', { name: '編輯' }).click()
-  await expect(
-    page.locator('div.bg-gray-300').nth(1).getByRole('button', { name: '保存' }),
-    'P1：其他項目也被守衛擋下',
-  ).toHaveCount(0)
+  await expect(page.getByPlaceholder('請輸入編輯內容')).toHaveValue('另一筆')
+  await page.getByPlaceholder('請輸入編輯內容').fill('改過的內容')
+  await page.locator('div.bg-gray-300').nth(1).getByRole('button', { name: '保存' }).click()
+  await expect(page.getByText('改過的內容')).toBeVisible()
+})
+
+test('升級路徑：既有使用者的舊格式資料（含 isEdit）仍可正常讀取', async ({ page }) => {
+  // 舊版寫入的形狀，其中一筆正卡在 isEdit:true —— 也就是 P1 的受害狀態
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'todoTask',
+      JSON.stringify({
+        todoList: [
+          { id: 1, taskName: '舊資料一', isCompleted: false, isEdit: true },
+          { id: 2, taskName: '舊資料二', isCompleted: true, isEdit: false },
+        ],
+        pages: 0,
+        isSearch: false,
+        keyword: '',
+      }),
+    )
+  })
+  await page.goto('/')
+
+  // 兩筆都在，且都以閱讀狀態呈現 —— 卡住的編輯狀態被自動解除
+  await expect(page.getByText('舊資料一')).toBeVisible()
+  await expect(page.getByText('舊資料二')).toBeVisible()
+  await expect(page.getByPlaceholder('請輸入編輯內容')).toHaveCount(0)
+  await expect(page.getByText('全部: 2 項')).toBeVisible()
+  await expect(page.getByText('已完成: 1 項')).toBeVisible()
+
+  // 後續寫回的資料已是新形狀
+  await page.getByPlaceholder('請輸入代辦事項').fill('新增一筆')
+  await page.getByRole('button', { name: '+' }).click()
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('todoTask')))
+  expect(stored.todoList.some((t) => 'isEdit' in t), '舊的 isEdit 欄位應已消失').toBe(false)
+})
+
+test('P1 已修正：isEdit 不再被寫進 localStorage', async ({ page }) => {
+  await page.goto('/')
+  await page.getByPlaceholder('請輸入代辦事項').fill('檢查持久化形狀')
+  await page.getByRole('button', { name: '+' }).click()
+  await page.locator('div.bg-gray-300').first().getByRole('button', { name: '編輯' }).click()
+
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('todoTask')))
+  expect(stored.todoList[0]).not.toHaveProperty('isEdit')
+  expect(Object.keys(stored.todoList[0]).sort()).toEqual(['id', 'isCompleted', 'taskName'])
 })
 
 /**
  * P2 調查：在真實瀏覽器的完整流程下，各種壞資料實際會發生什麼事。
  * 稽核報告的 P2 是用 node 層直接呼叫 $patch 重現的；這裡驗證真實路徑。
  */
-// 第三欄 = 目前（Phase 1 修正前）的實測行為基準。
-// Phase 1 修好之後，broken 的那幾條會轉紅 —— 那正是修正生效的證明。
+// Phase 1 之後：全部 10 種壞資料都應正常渲染，無效項目被靜靜濾除。
+// 第四欄 = 修正後應顯示的列數。
 const BAD_PAYLOADS = [
-  ['todoList 為 null', '{"todoList":null}', 'broken', 0],
-  ['todoList 為字串', '{"todoList":"oops"}', 'broken', 4],
-  ['todoList 為數字', '{"todoList":42}', 'broken', 42],
-  ['todoList 為物件', '{"todoList":{"a":1}}', 'broken', 1],
-  ['項目為 null', '{"todoList":[null]}', 'broken', 0],
-  ['項目缺 taskName', '{"todoList":[{"id":1,"isCompleted":false}]}', 'ok', 1],
-  ['taskName 為數字', '{"todoList":[{"id":1,"taskName":123,"isCompleted":false}]}', 'ok', 1],
-  ['pages 超出範圍', '{"todoList":[{"id":1,"taskName":"a","isCompleted":false}],"pages":7}', 'ok', 0],
-  ['整份不是物件', '"just a string"', 'ok', 0],
-  ['JSON 語法錯誤', '{todoList: [}', 'ok', 0],
+  ['todoList 為 null', '{"todoList":null}', 0],
+  ['todoList 為字串', '{"todoList":"oops"}', 0],
+  ['todoList 為數字', '{"todoList":42}', 0],
+  ['todoList 為物件', '{"todoList":{"a":1}}', 0],
+  ['項目為 null', '{"todoList":[null]}', 0],
+  ['項目缺 taskName', '{"todoList":[{"id":1,"isCompleted":false}]}', 0],
+  ['taskName 為數字', '{"todoList":[{"id":1,"taskName":123,"isCompleted":false}]}', 0],
+  ['pages 超出範圍', '{"todoList":[{"id":1,"taskName":"a","isCompleted":false}],"pages":7}', 1],
+  ['整份不是物件', '"just a string"', 0],
+  ['JSON 語法錯誤', '{todoList: [}', 0],
+  ['混合有效與無效項目',
+    '{"todoList":[{"id":1,"taskName":"有效","isCompleted":false},null,{"id":2,"taskName":99}]}', 1],
 ]
 
-for (const [label, payload, baseline, expectedRows] of BAD_PAYLOADS) {
-  test(`P2 基準：${label} → ${baseline === 'broken' ? '部分渲染失敗' : '正常渲染'}`, async ({ page }) => {
+for (const [label, payload, expectedRows] of BAD_PAYLOADS) {
+  test(`P2 已修正：${label} → 正常渲染，顯示 ${expectedRows} 列`, async ({ page }) => {
     const uncaught = []
     const consoleErrors = []
     page.on('pageerror', (e) => uncaught.push(e.message))
@@ -150,26 +186,16 @@ for (const [label, payload, baseline, expectedRows] of BAD_PAYLOADS) {
 
     const verdict = state.appLen === 0 ? '完全白畫面' : state.hasFooter ? '完整渲染' : '部分渲染失敗'
     console.log(
-      `  P2 [${label.padEnd(16)}] ${verdict.padEnd(12)} ${parts}` +
+      `  P2 [${label.padEnd(18)}] ${verdict.padEnd(12)} ${parts}` +
         `  console: ${consoleErrors.length ? consoleErrors[0].slice(0, 45) : '無'}`,
     )
 
-    // 實測結論：Vue 會攔截 render 錯誤並記到 console，不會產生未捕捉例外，
-    // 因此使用者看到的是「元件消失」而非瀏覽器報錯。
-    expect(uncaught, '不會產生未捕捉的例外').toEqual([])
-
-    if (baseline === 'broken') {
-      // 新增輸入框所在的 header 與統計所在的 footer 整區消失 —— App 實質不可用
-      expect(state.hasHeader, `${label}：header 應消失（現況缺陷）`).toBe(false)
-      expect(state.hasFooter, `${label}：footer 應消失（現況缺陷）`).toBe(false)
-      expect(consoleErrors.join('\n')).toMatch(/TypeError/)
-      // 非陣列的 todoList 被 v-for 硬走訪，產生垃圾列
-      expect(state.rows, `${label}：列數`).toBe(expectedRows)
-    } else {
-      expect(state.hasHeader, `${label}：header 正常`).toBe(true)
-      expect(state.hasFooter, `${label}：footer 正常`).toBe(true)
-      expect(consoleErrors, `${label}：無 console 錯誤`).toEqual([])
-      expect(state.rows, `${label}：列數`).toBe(expectedRows)
-    }
+    // 稽核 P2 已修正：壞資料在進入 store 之前就被濾掉，畫面一律完整渲染
+    expect(uncaught, `${label}：無未捕捉例外`).toEqual([])
+    expect(consoleErrors, `${label}：無 console 錯誤`).toEqual([])
+    expect(state.hasHeader, `${label}：header 正常渲染`).toBe(true)
+    expect(state.hasTabs, `${label}：分頁列正常渲染`).toBe(3)
+    expect(state.hasFooter, `${label}：footer 正常渲染`).toBe(true)
+    expect(state.rows, `${label}：顯示列數`).toBe(expectedRows)
   })
 }

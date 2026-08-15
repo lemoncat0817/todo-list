@@ -30,12 +30,12 @@ export function stubDialogs({ confirmReturns = true } = {}) {
   return { alerts, confirms }
 }
 
+/** 領域模型不含 isEdit —— 編輯狀態自 P1 修正後改由元件區域管理。 */
 export function makeTask(taskName, isCompleted = false, extra = {}) {
   return {
     id: extra.id ?? Math.floor(Math.random() * 1e12),
     taskName,
     isCompleted,
-    isEdit: false,
     ...extra,
   }
 }
