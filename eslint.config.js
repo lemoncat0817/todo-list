@@ -68,6 +68,8 @@ export default defineConfigWithVueTs(
     rules: {
       // 測試中會刻意餵入違反型別契約的資料來驗證執行期韌性
       '@typescript-eslint/no-explicit-any': 'off',
+      // 測試會建立多個 createApp 樁來安裝 pinia，這條規則在此是誤判
+      'vue/one-component-per-file': 'off',
     },
   },
 )
