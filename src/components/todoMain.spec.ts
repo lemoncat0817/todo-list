@@ -108,6 +108,28 @@ describe('todoMain.vue', () => {
     )
   })
 
+  describe('子任務不出現在頂層清單', () => {
+    it('只顯示 parentId 為 null 的項目', () => {
+      store.todoList = [
+        makeTask('父項', false, { id: 'p', order: 0 }),
+        makeTask('子項', false, { id: 'c', parentId: 'p', order: 1 }),
+        makeTask('另一個頂層', false, { id: 'x', order: 2 }),
+      ]
+      const w = mountWith(todoMain, pinia, { props: { filter: 'all' }, router: testRouter() })
+      expect(names(w), '子任務應跟著父項呈現，不佔頂層一列').toEqual(['父項', '另一個頂層'])
+    })
+
+    it('清單依 order 排序而非插入順序', () => {
+      store.todoList = [
+        makeTask('第三', false, { id: 'c', order: 30 }),
+        makeTask('第一', false, { id: 'a', order: 10 }),
+        makeTask('第二', false, { id: 'b', order: 20 }),
+      ]
+      const w = mountWith(todoMain, pinia, { props: { filter: 'all' }, router: testRouter() })
+      expect(names(w)).toEqual(['第一', '第二', '第三'])
+    })
+  })
+
   describe('分頁導覽（改為路由連結）', () => {
     const tabs = (w: Wrapper) => w.findAll('nav a')
 
