@@ -21,8 +21,8 @@ describe('todoTask store', () => {
   describe('init', () => {
     it('從 IndexedDB 載入任務並解除載入中狀態', async () => {
       await db.saveTasks([
-        { id: 'a', taskName: '已存在的', isCompleted: false, order: 0 },
-        { id: 'b', taskName: '第二筆', isCompleted: true, order: 1 },
+        makeTask('已存在的', false, { id: 'a', order: 0 }),
+        makeTask('第二筆', true, { id: 'b', order: 1 }),
       ])
 
       const store = setup()
@@ -174,7 +174,7 @@ describe('todoTask store', () => {
 
   describe('載入期間不回寫', () => {
     it('init 尚未完成時的初始空陣列不會覆蓋既有資料', async () => {
-      await db.saveTasks([{ id: 'a', taskName: '不可以不見', isCompleted: false, order: 0 }])
+      await db.saveTasks([makeTask('不可以不見', false, { id: 'a', order: 0 })])
       const spy = vi.spyOn(db, 'saveTasks')
 
       const store = setup()

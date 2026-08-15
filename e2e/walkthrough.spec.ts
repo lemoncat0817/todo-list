@@ -45,42 +45,42 @@ test('U3: 增刪改查完整走查', async ({ page }) => {
   await page.getByRole('button', { name: '+' }).click()
   await page.getByPlaceholder('請輸入代辦事項').fill('寫報告')
   await page.getByRole('button', { name: '+' }).click()
-  await expect(page.locator('div.bg-gray-300')).toHaveCount(2)
+  await expect(page.locator('li.bg-gray-300')).toHaveCount(2)
   await expect(page.getByText('全部: 2 項')).toBeVisible()
 
   // 完成
-  await page.locator('div.bg-gray-300').first().locator('input[type=checkbox]').check()
+  await page.locator('li.bg-gray-300').first().locator('input[type=checkbox]').check()
   await expect(page.getByText('已完成: 1 項')).toBeVisible()
-  await expect(page.locator('div.bg-gray-300').first().locator('p')).toHaveClass(/line-through/)
+  await expect(page.locator('li.bg-gray-300').first().locator('p.break-all')).toHaveClass(/line-through/)
 
   // 編輯
-  await page.locator('div.bg-gray-300').nth(1).getByRole('button', { name: '編輯' }).click()
+  await page.locator('li.bg-gray-300').nth(1).getByRole('button', { name: '編輯' }).click()
   await page.getByPlaceholder('請輸入編輯內容').fill('寫稽核報告')
-  await page.locator('div.bg-gray-300').nth(1).getByRole('button', { name: '保存' }).click()
-  await expect(page.getByText('寫稽核報告')).toBeVisible()
+  await page.locator('li.bg-gray-300').nth(1).getByRole('button', { name: '保存' }).click()
+  await expect(page.locator('p.break-all', { hasText: '寫稽核報告' })).toBeVisible()
 
   // 分頁
   await page.getByRole('link', { name: '未完成' }).click()
-  await expect(page.locator('div.bg-gray-300')).toHaveCount(1)
+  await expect(page.locator('li.bg-gray-300')).toHaveCount(1)
   await page.getByRole('link', { name: '完成', exact: true }).click()
-  await expect(page.locator('div.bg-gray-300')).toHaveCount(1)
+  await expect(page.locator('li.bg-gray-300')).toHaveCount(1)
   await page.getByRole('link', { name: '全部' }).click()
-  await expect(page.locator('div.bg-gray-300')).toHaveCount(2)
+  await expect(page.locator('li.bg-gray-300')).toHaveCount(2)
 
   // 搜尋
   await page.getByRole('button', { name: '搜尋模式🔍' }).click()
   await page.getByPlaceholder('請輸入關鍵字').fill('牛奶')
-  await expect(page.locator('div.bg-gray-300')).toHaveCount(1)
+  await expect(page.locator('li.bg-gray-300')).toHaveCount(1)
   await page.getByRole('button', { name: '回列表模式📋' }).click()
-  await expect(page.locator('div.bg-gray-300')).toHaveCount(2)
+  await expect(page.locator('li.bg-gray-300')).toHaveCount(2)
 
   // 清除已完成
   await page.getByRole('button', { name: '清除已完成代辦事項' }).click()
-  await expect(page.locator('div.bg-gray-300')).toHaveCount(1)
+  await expect(page.locator('li.bg-gray-300')).toHaveCount(1)
 
   // 刪除
-  await page.locator('div.bg-gray-300').first().getByRole('button', { name: '刪除' }).click()
-  await expect(page.locator('div.bg-gray-300')).toHaveCount(0)
+  await page.locator('li.bg-gray-300').first().getByRole('button', { name: '刪除' }).click()
+  await expect(page.locator('li.bg-gray-300')).toHaveCount(0)
 })
 
 test('U3b: 重新整理後資料仍在（持久化生效）', async ({ page }) => {
@@ -89,7 +89,7 @@ test('U3b: 重新整理後資料仍在（持久化生效）', async ({ page }) =
   await page.getByRole('button', { name: '+' }).click()
 
   await page.reload()
-  await expect(page.getByText('持久化測試')).toBeVisible()
+  await expect(page.locator('p.break-all', { hasText: '持久化測試' })).toBeVisible()
 })
 
 test('P1 已修正：編輯中重新整理會回到閱讀狀態，原文字完好', async ({ page }) => {
@@ -99,21 +99,21 @@ test('P1 已修正：編輯中重新整理會回到閱讀狀態，原文字完�
     await page.getByRole('button', { name: '+' }).click()
   }
 
-  await page.locator('div.bg-gray-300').first().getByRole('button', { name: '編輯' }).click()
+  await page.locator('li.bg-gray-300').first().getByRole('button', { name: '編輯' }).click()
   await expect(page.getByPlaceholder('請輸入編輯內容')).toHaveValue('原本的內容')
 
   await page.reload()
 
   // 編輯狀態不再被持久化：重新整理後回到閱讀狀態
   await expect(page.getByPlaceholder('請輸入編輯內容'), '不應殘留編輯框').toHaveCount(0)
-  await expect(page.getByText('原本的內容'), '原文字完好').toBeVisible()
+  await expect(page.locator('p.break-all', { hasText: '原本的內容' }), '原文字完好').toBeVisible()
 
   // 兩筆都能正常進入編輯，清單沒有被鎖住
-  await page.locator('div.bg-gray-300').nth(1).getByRole('button', { name: '編輯' }).click()
+  await page.locator('li.bg-gray-300').nth(1).getByRole('button', { name: '編輯' }).click()
   await expect(page.getByPlaceholder('請輸入編輯內容')).toHaveValue('另一筆')
   await page.getByPlaceholder('請輸入編輯內容').fill('改過的內容')
-  await page.locator('div.bg-gray-300').nth(1).getByRole('button', { name: '保存' }).click()
-  await expect(page.getByText('改過的內容')).toBeVisible()
+  await page.locator('li.bg-gray-300').nth(1).getByRole('button', { name: '保存' }).click()
+  await expect(page.locator('p.break-all', { hasText: '改過的內容' })).toBeVisible()
 })
 
 test('升級路徑：既有使用者的舊格式資料（含 isEdit）仍可正常讀取', async ({ page }) => {
@@ -135,8 +135,8 @@ test('升級路徑：既有使用者的舊格式資料（含 isEdit）仍可正�
   await page.goto('/')
 
   // 兩筆都在，且都以閱讀狀態呈現 —— 卡住的編輯狀態被自動解除
-  await expect(page.getByText('舊資料一')).toBeVisible()
-  await expect(page.getByText('舊資料二')).toBeVisible()
+  await expect(page.locator('p.break-all', { hasText: '舊資料一' })).toBeVisible()
+  await expect(page.locator('p.break-all', { hasText: '舊資料二' })).toBeVisible()
   await expect(page.getByPlaceholder('請輸入編輯內容')).toHaveCount(0)
   await expect(page.getByText('全部: 2 項')).toBeVisible()
   await expect(page.getByText('已完成: 1 項')).toBeVisible()
@@ -161,11 +161,17 @@ test('P1 已修正：編輯狀態不落地，儲存形狀乾淨', async ({ page 
   await page.getByPlaceholder('請輸入代辦事項').fill('檢查持久化形狀')
   await page.getByRole('button', { name: '+' }).click()
   await expect(page.getByText('全部: 1 項')).toBeVisible()
-  await page.locator('div.bg-gray-300').first().getByRole('button', { name: '編輯' }).click()
+  await page.locator('li.bg-gray-300').first().getByRole('button', { name: '編輯' }).click()
 
   const rows = await readTasksFromIDB(page)
   expect(rows).toHaveLength(1)
-  expect(Object.keys(rows[0] ?? {}).sort()).toEqual(['id', 'isCompleted', 'order', 'taskName'])
+  // v2 的形狀：編輯狀態不落地，但多了到期日、優先度等欄位
+  expect(Object.keys(rows[0] ?? {})).not.toContain('isEdit')
+  expect(Object.keys(rows[0] ?? {}).sort()).toEqual([
+    'completedAt', 'createdAt', 'dueDate', 'dueTime', 'id', 'isCompleted',
+    'notes', 'order', 'parentId', 'priority', 'projectId', 'recurrence',
+    'tagIds', 'taskName', 'updatedAt',
+  ])
 })
 
 test('P17 已修正：id 為 UUID，不再是可能碰撞的時間戳', async ({ page }) => {
@@ -224,8 +230,8 @@ for (const [label, payload, expectedRows] of BAD_PAYLOADS) {
       appLen: (document.querySelector('#app') as HTMLElement).innerHTML.length,
       hasHeader: !!document.querySelector('h1'),
       hasTabs: document.querySelectorAll('nav a').length,
-      hasFooter: !!document.querySelector('button.bg-blue-800'),
-      rows: document.querySelectorAll('div.bg-gray-300').length,
+      hasFooter: !!document.querySelector('button.bg-blue-900'),
+      rows: document.querySelectorAll('li.bg-gray-300').length,
     }))
 
     const parts = [

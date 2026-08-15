@@ -48,11 +48,11 @@ test.describe('GitHub Pages 子路徑部署', () => {
 
     await page.getByPlaceholder('請輸入代辦事項').fill('子路徑下的待辦')
     await page.getByRole('button', { name: '+' }).click()
-    await expect(page.getByText('子路徑下的待辦')).toBeVisible()
+    await expect(page.locator('p.break-all', { hasText: '子路徑下的待辦' })).toBeVisible()
     await expect(page.getByText('全部: 1 項')).toBeVisible()
 
     await page.reload()
-    await expect(page.getByText('子路徑下的待辦'), '重新整理後資料仍在').toBeVisible()
+    await expect(page.locator('p.break-all', { hasText: '子路徑下的待辦' }), '重新整理後資料仍在').toBeVisible()
   })
 
   test('未知路徑回 404 —— 記錄 GitHub Pages 無 SPA fallback 的事實', async ({ page }) => {

@@ -31,7 +31,7 @@ async function seed(page: Page) {
     await page.getByPlaceholder('請輸入代辦事項').fill(name)
     await page.getByRole('button', { name: '+' }).click()
     if (done) {
-      await page.locator('div.bg-gray-300').last().locator('input[type=checkbox]').check()
+      await page.locator('li.bg-gray-300').last().locator('input[type=checkbox]').check()
     }
   }
   await expect(page.getByText('全部: 2 項')).toBeVisible()
@@ -66,7 +66,7 @@ for (const screen of SCREENS) {
 
 test('編輯狀態下也維持零違規', async ({ page }) => {
   await seed(page)
-  await page.locator('div.bg-gray-300').first().getByRole('button', { name: '編輯' }).click()
+  await page.locator('li.bg-gray-300').first().getByRole('button', { name: '編輯' }).click()
 
   const found = await violationsOf(page)
   if (found.length) for (const f of found) console.log('    ' + f)

@@ -12,6 +12,7 @@ import {
   nextOrder,
 } from '@/db'
 import { META_MIGRATED_FROM_LOCALSTORAGE, STORE_TASKS, type StoredTask } from '@/db/schema'
+import { makeTask } from '@/test/helpers'
 
 /** 每個測試都用全新的 IndexedDB，避免互相汙染。 */
 beforeEach(() => {
@@ -20,28 +21,22 @@ beforeEach(() => {
   localStorage.clear()
 })
 
-const task = (id: string, name: string, done = false, order = 0): StoredTask => ({
-  id,
-  taskName: name,
-  isCompleted: done,
-  order,
-})
+const task = (id: string, name: string, done = false, order = 0): StoredTask =>
+  makeTask(name, done, { id, order })
 
 describe('IndexedDB 資料層', () => {
-  it('建立時就備妥兩個 object store 與排序索引', async () => {
+  it('建立時就備妥四個 object store 與排序索引', async () => {
     const db = await getDB()
-    expect([...db.objectStoreNames].sort()).toEqual(['meta', 'tasks'])
+    expect([...db.objectStoreNames].sort()).toEqual(['meta', 'projects', 'tags', 'tasks'])
 
     const tx = db.transaction(STORE_TASKS)
     expect([...tx.store.indexNames]).toContain('by-order')
   })
 
   it('存進去再讀出來，內容一致', async () => {
-    await saveTasks([task('a', '買牛奶', false, 0), task('b', '寫測試', true, 1)])
-    expect(await loadTasks()).toEqual([
-      task('a', '買牛奶', false, 0),
-      task('b', '寫測試', true, 1),
-    ])
+    const rows = [task('a', '買牛奶', false, 0), task('b', '寫測試', true, 1)]
+    await saveTasks(rows)
+    expect(await loadTasks()).toEqual(rows)
   })
 
   it('讀出時依 order 排序，而非插入順序', async () => {
