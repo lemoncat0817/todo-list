@@ -53,13 +53,11 @@ describe('sanitizeState', () => {
     expect(
       sanitizeState({
         todoList: [{ id: 1, taskName: 'a', isCompleted: true }],
-        pages: 2,
         isSearch: true,
         keyword: '牛奶',
       }),
     ).toEqual({
       todoList: [{ id: 1, taskName: 'a', isCompleted: true }],
-      pages: 2,
       isSearch: true,
       keyword: '牛奶',
     })
@@ -101,21 +99,14 @@ describe('sanitizeState', () => {
     expect(sanitizeState(input)).toEqual({})
   })
 
-  it.each([-1, 3, 99, 1.5, null, 'ㄧ', NaN, undefined])(
-    'pages=%s 為非法值時不覆寫，保留預設 0（稽核 P3 的第二道防線）',
-    (bad) => {
-      expect(sanitizeState({ pages: bad })).not.toHaveProperty('pages')
-    },
-  )
-
-  it.each([0, 1, 2])('pages=%s 為合法值時保留', (ok) => {
-    expect(sanitizeState({ pages: ok }).pages).toBe(ok)
-  })
-
   it('isSearch 與 keyword 型別不符時不覆寫', () => {
     const out = sanitizeState({ isSearch: 'true', keyword: 123 })
     expect(out).not.toHaveProperty('isSearch')
     expect(out).not.toHaveProperty('keyword')
+  })
+
+  it('pages 已移除（篩選改由路由承載），不再被還原', () => {
+    expect(sanitizeState({ pages: 2, keyword: 'ok' })).toEqual({ keyword: 'ok' })
   })
 
   it('不讓未知欄位滲進 store', () => {
@@ -128,7 +119,6 @@ describe('safeSerializer', () => {
   it('round-trip 保持合法資料不變', () => {
     const state = {
       todoList: [{ id: 1, taskName: 'a', isCompleted: false }],
-      pages: 1,
       isSearch: false,
       keyword: '',
     }

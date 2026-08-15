@@ -34,11 +34,11 @@ test('U3: 增刪改查完整走查', async ({ page }) => {
   await expect(page.getByText('寫稽核報告')).toBeVisible()
 
   // 分頁
-  await page.getByText('未完成', { exact: true }).click()
+  await page.getByRole('link', { name: '未完成' }).click()
   await expect(page.locator('div.bg-gray-300')).toHaveCount(1)
-  await page.getByText('完成', { exact: true }).click()
+  await page.getByRole('link', { name: '完成', exact: true }).click()
   await expect(page.locator('div.bg-gray-300')).toHaveCount(1)
-  await page.getByText('全部', { exact: true }).click()
+  await page.getByRole('link', { name: '全部' }).click()
   await expect(page.locator('div.bg-gray-300')).toHaveCount(2)
 
   // 搜尋
@@ -172,7 +172,7 @@ for (const [label, payload, expectedRows] of BAD_PAYLOADS) {
     const state = await page.evaluate(() => ({
       appLen: (document.querySelector('#app') as HTMLElement).innerHTML.length,
       hasHeader: !!document.querySelector('h1'),
-      hasTabs: document.querySelectorAll('div.w-20').length,
+      hasTabs: document.querySelectorAll('nav a').length,
       hasFooter: !!document.querySelector('button.bg-blue-800'),
       rows: document.querySelectorAll('div.bg-gray-300').length,
     }))

@@ -34,10 +34,9 @@ const useTestStore = defineStore(
   'todoTask',
   () => {
     const todoList = ref<{ id: number | string; taskName: string; isCompleted: boolean }[]>([])
-    const pages = ref<0 | 1 | 2>(0)
     const isSearch = ref(false)
     const keyword = ref('')
-    return { todoList, pages, isSearch, keyword }
+    return { todoList, isSearch, keyword }
   },
   { persist: { sanitize: sanitizeState } },
 )
@@ -72,7 +71,6 @@ describe('createPersistPlugin', () => {
         'todoTask',
         JSON.stringify({
           todoList: [{ id: 1, taskName: '買牛奶', isCompleted: true }],
-          pages: 2,
           keyword: '牛奶',
         }),
       )
@@ -80,7 +78,6 @@ describe('createPersistPlugin', () => {
       const store = useTestStore()
 
       expect(store.todoList).toEqual([{ id: 1, taskName: '買牛奶', isCompleted: true }])
-      expect(store.pages).toBe(2)
       expect(store.keyword).toBe('牛奶')
       expect(failures).toEqual([])
     })
@@ -90,7 +87,6 @@ describe('createPersistPlugin', () => {
       const store = useTestStore()
 
       expect(store.todoList).toEqual([])
-      expect(store.pages).toBe(0)
       expect(failures).toEqual([])
     })
 
@@ -106,12 +102,11 @@ describe('createPersistPlugin', () => {
     })
 
     it('形狀錯誤由 sanitize 濾掉，不算失敗（稽核 P2）', () => {
-      storage.setItem('todoTask', JSON.stringify({ todoList: 42, pages: 99 }))
+      storage.setItem('todoTask', JSON.stringify({ todoList: 42 }))
       setup(storage, (f) => failures.push(f))
       const store = useTestStore()
 
       expect(store.todoList).toEqual([])
-      expect(store.pages).toBe(0)
       expect(failures, 'sanitize 處理得掉的不該當成錯誤').toEqual([])
     })
 

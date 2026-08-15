@@ -1,16 +1,11 @@
 <template>
   <div class="w-full h-[450px]">
-    <div class="w-full h-[50px] flex justify-center items-center">
-      <div
+    <nav class="w-full h-[50px] flex justify-center items-center">
+      <RouterLink v-for="tab in FILTERS" :key="tab.filter" :to="tab.path"
+        :aria-current="tab.filter === props.filter ? 'page' : undefined"
         class="w-20 h-4/5 bg-blue-500 border-white border-solid border-2 rounded-lg text-center leading-[40px] text-lg text-white font-bold mx-2 cursor-pointer select-none hover:bg-blue-600 active:bg-blue-800"
-        :class="{ 'bg-yellow-400': todoTaskStore.pages === 0 }" @click="todoTaskStore.pages = 0">全部</div>
-      <div
-        class="w-20 h-4/5 bg-blue-500 border-white border-solid border-2 rounded-lg text-center leading-[40px] text-lg text-white font-bold mx-2 cursor-pointer select-none hover:bg-blue-600 active:bg-blue-800"
-        :class="{ 'bg-yellow-400': todoTaskStore.pages === 1 }" @click="checkNotCompletedTask">未完成</div>
-      <div
-        class="w-20 h-4/5 bg-blue-500 border-white border-solid border-2 rounded-lg text-center leading-[40px] text-lg text-white font-bold mx-2 cursor-pointer select-none hover:bg-blue-600 active:bg-blue-800"
-        :class="{ 'bg-yellow-400': todoTaskStore.pages === 2 }" @click="checkCompletedTask">完成</div>
-    </div>
+        :class="{ 'bg-yellow-400': tab.filter === props.filter }">{{ tab.label }}</RouterLink>
+    </nav>
     <div class="w-4/5 h-[400px] m-auto overflow-y-auto">
       <div v-for="item in taskList" :key="item.id"
         class="w-full bg-gray-300 border-2 border-white border-solid rounded-lg p-2 mb-2 flex justify-between items-center">
@@ -37,8 +32,14 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { RouterLink } from 'vue-router'
 import { useTodoTaskStore } from '@/stores/todoTask'
+import { FILTERS, type TaskFilter } from '@/router'
 import type { Task, TaskId } from '@/stores/sanitize'
+
+// 篩選狀態由路由決定，不再存在 store 裡（原本的 pages 數字已移除）。
+const props = withDefaults(defineProps<{ filter?: TaskFilter }>(), { filter: 'all' })
+
 const todoTaskStore = useTodoTaskStore()
 
 // 稽核 P1：編輯狀態是 UI 暫態，改為元件區域狀態，不再隨 todoList 被持久化。
@@ -73,36 +74,25 @@ const deleteTask = (id: TaskId) => {
   todoTaskStore.todoList = todoTaskStore.todoList.filter((item) => item.id !== id)
 }
 
-// 稽核 P3：原本的 if / else if 沒有收尾分支，pages 為非預期值時回傳 undefined，
-// 導致 v-for 靜默渲染空清單。改成先套關鍵字、再套分頁，並讓 pages=0 與任何
-// 非預期值都退回完整清單。
-const taskList = computed(() => {
+// 稽核 P3：原本用 if / else if 且沒有收尾分支，pages 為非預期值時回傳 undefined。
+// 現在改由路由驅動，filter 是封閉的字面量聯集，switch 有 default 收尾，
+// 型別層面就不可能再出現「未涵蓋的值」。
+const taskList = computed<Task[]>(() => {
   const keyword = todoTaskStore.keyword
   const matched =
     keyword === ''
       ? todoTaskStore.todoList
       : todoTaskStore.todoList.filter((item) => item.taskName.includes(keyword))
 
-  if (todoTaskStore.pages === 1) return matched.filter((item) => !item.isCompleted)
-  if (todoTaskStore.pages === 2) return matched.filter((item) => item.isCompleted)
-  return matched
+  switch (props.filter) {
+    case 'active':
+      return matched.filter((item) => !item.isCompleted)
+    case 'completed':
+      return matched.filter((item) => item.isCompleted)
+    default:
+      return matched
+  }
 })
-
-const checkNotCompletedTask = () => {
-  if (todoTaskStore.todoList.some((item) => !item.isCompleted)) {
-    todoTaskStore.pages = 1
-  } else {
-    alert('暫無未完成事項，請先添加')
-  }
-}
-
-const checkCompletedTask = () => {
-  if (todoTaskStore.todoList.some((item) => item.isCompleted)) {
-    todoTaskStore.pages = 2
-  } else {
-    alert('暫無完成事項，請先添加')
-  }
-}
 </script>
 
 <style scoped></style>

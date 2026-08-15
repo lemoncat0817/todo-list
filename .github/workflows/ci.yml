@@ -30,10 +30,10 @@ jobs:
       - name: 型別檢查
         run: pnpm typecheck
 
-      # --max-warnings 是防回歸的棘輪：目前 8 個警告全部是稽核 P6/P7 的無障礙
+      # --max-warnings 是防回歸的棘輪：目前 2 個警告全部是稽核 P7 的無障礙
       # 問題，Phase 6 修正後把這個數字降到 0。新增警告會讓建置失敗。
       - name: Lint
-        run: pnpm lint --max-warnings 8
+        run: pnpm lint --max-warnings 2
 
       - name: 單元測試
         run: pnpm test
