@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite --open",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "pinia": "^2.1.7",
@@ -14,10 +17,14 @@
     "vue": "^3.4.21"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "@vitejs/plugin-vue": "^5.0.4",
+    "@vue/test-utils": "2.4.11",
     "autoprefixer": "^10.4.19",
+    "happy-dom": "20.11.2",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
-    "vite": "^5.1.6"
+    "vite": "^5.1.6",
+    "vitest": "3.2.7"
   }
 }
