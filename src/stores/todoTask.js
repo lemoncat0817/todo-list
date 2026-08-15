@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { safeSerializer } from './sanitize'
 
 export const useTodoTaskStore = defineStore(
   'todoTask',
@@ -12,6 +13,7 @@ export const useTodoTaskStore = defineStore(
     return { isEdit, todoList, pages, isSearch, keyword }
   },
   {
-    persist: true,
+    // 稽核 P2：反序列化時做形狀驗證，壞資料不再進入 store。
+    persist: { serializer: safeSerializer },
   },
 )

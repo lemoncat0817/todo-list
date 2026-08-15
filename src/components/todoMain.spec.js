@@ -81,20 +81,30 @@ describe('todoMain.vue', () => {
       expect(names(w)).toEqual(['buy milk'])
     })
 
-    it('[現況] pages 超出 0/1/2 時 taskList 為 undefined，清單靜默清空（稽核 P3）', () => {
+    it('pages 為非預期值時退回完整清單，不再靜默清空（稽核 P3 已修正）', () => {
       seed()
       store.pages = 7
       const w = mountWith(todoMain, pinia)
-      expect(rows(w)).toHaveLength(0)
+      expect(names(w)).toEqual(['Buy Milk', 'buy milk', '寫測試'])
     })
 
-    it('[現況] 有 keyword 且 pages 超出範圍時同樣靜默清空（稽核 P3）', () => {
+    it('有 keyword 且 pages 為非預期值時仍套用關鍵字（稽核 P3 已修正）', () => {
       seed()
       store.keyword = 'buy'
       store.pages = 7
       const w = mountWith(todoMain, pinia)
-      expect(rows(w)).toHaveLength(0)
+      expect(names(w)).toEqual(['buy milk'])
     })
+
+    it.each([-1, 3, 99, null, undefined, NaN, '1'])(
+      'pages=%s 一律退回完整清單而非 undefined（稽核 P3 已修正）',
+      (bad) => {
+        seed()
+        store.pages = bad
+        const w = mountWith(todoMain, pinia)
+        expect(rows(w)).toHaveLength(3)
+      },
+    )
   })
 
   describe('分頁切換守衛（todoMain.vue:87-101）', () => {
@@ -151,8 +161,12 @@ describe('todoMain.vue', () => {
       const w = mountWith(todoMain, pinia)
       await editBtn(w, 0).trigger('click')
 
-      expect(store.todoList[0].isEdit).toBe(true)
+      // 斷言行為（畫面切到編輯狀態），而非 store 內部欄位
+      expect(editInput(w, 0).exists()).toBe(true)
       expect(editInput(w, 0).element.value).toBe('Buy Milk')
+      expect(rows(w)[0].find('p').exists()).toBe(false)
+      // P1 修正後編輯狀態不再寫進領域資料
+      expect(store.todoList[0]).not.toHaveProperty('isEdit')
     })
 
     it('保存後寫回新內容並離開編輯狀態', async () => {
@@ -163,7 +177,8 @@ describe('todoMain.vue', () => {
       await rows(w)[0].findAll('button')[0].trigger('click')
 
       expect(store.todoList[0].taskName).toBe('Buy Oat Milk')
-      expect(store.todoList[0].isEdit).toBe(false)
+      expect(editInput(w, 0).exists(), '應離開編輯狀態').toBe(false)
+      expect(rows(w)[0].find('p').text()).toBe('Buy Oat Milk')
     })
 
     it('編輯內容清空時保存被擋下，仍留在編輯狀態', async () => {
@@ -173,7 +188,7 @@ describe('todoMain.vue', () => {
       await editInput(w, 0).setValue('')
       await rows(w)[0].findAll('button')[0].trigger('click')
 
-      expect(store.todoList[0].isEdit).toBe(true)
+      expect(editInput(w, 0).exists(), '仍留在編輯狀態').toBe(true)
       expect(store.todoList[0].taskName).toBe('Buy Milk')
       expect(dialogs.alerts).toEqual(['請輸入編輯內容'])
     })
@@ -184,31 +199,36 @@ describe('todoMain.vue', () => {
       await editBtn(w, 0).trigger('click')
       await editBtn(w, 1).trigger('click')
 
-      expect(store.todoList[1].isEdit).toBe(false)
+      expect(editInput(w, 1).exists(), '第二筆不應進入編輯狀態').toBe(false)
       expect(dialogs.alerts).toEqual(['有待辦事項尚未保存，請先完成編輯'])
     })
 
-    it('[現況] isEdit 被持久化但編輯暫存值不是，重新載入後整份清單被鎖住（稽核 P1）', async () => {
-      // 模擬「編輯中重新整理」：store 還原了 isEdit=true，但元件的 editTaskName 是全新的空字串
-      store.todoList = [
-        makeTask('原本的內容', false, { id: 1, isEdit: true }),
-        makeTask('另一筆', false, { id: 2 }),
-      ]
+    it('重新載入後回到閱讀狀態，原文字完好且清單未被鎖住（稽核 P1 已修正）', async () => {
+      // 模擬「編輯中重新整理」：持久化的資料裡不再帶有編輯狀態，
+      // 新掛載的元件一律從閱讀狀態開始。
+      store.todoList = [makeTask('原本的內容', false, { id: 1 }), makeTask('另一筆', false, { id: 2 })]
       const w = mountWith(todoMain, pinia)
 
-      // 原文字看不見了，輸入框是空的
-      expect(editInput(w, 0).element.value).toBe('')
-      expect(rows(w)[0].find('p').exists()).toBe(false)
+      // 原文字看得見，沒有殘留的空白輸入框
+      expect(rows(w)[0].find('p').text()).toBe('原本的內容')
+      expect(w.find('input[placeholder="請輸入編輯內容"]').exists()).toBe(false)
 
-      // 想保存 → 被空值檢查擋下
-      await rows(w)[0].findAll('button')[0].trigger('click')
-      expect(store.todoList[0].isEdit).toBe(true)
-      expect(dialogs.alerts).toContain('請輸入編輯內容')
-
-      // 想改編輯別筆 → 被守衛擋下，整份清單卡住
+      // 任何一筆都能正常進入編輯
       await editBtn(w, 1).trigger('click')
-      expect(store.todoList[1].isEdit).toBe(false)
-      expect(dialogs.alerts).toContain('有待辦事項尚未保存，請先完成編輯')
+      expect(editInput(w, 1).element.value).toBe('另一筆')
+      expect(dialogs.alerts).toEqual([])
+    })
+
+    it('刪除編輯中的項目會一併結束編輯狀態', async () => {
+      seed()
+      const w = mountWith(todoMain, pinia)
+      await editBtn(w, 0).trigger('click')
+      await deleteBtn(w, 0).trigger('click')
+
+      // 不應殘留編輯狀態把其他項目鎖住
+      expect(w.find('input[placeholder="請輸入編輯內容"]').exists()).toBe(false)
+      await editBtn(w, 0).trigger('click')
+      expect(dialogs.alerts).toEqual([])
     })
 
     it('刪除依 id 移除項目', async () => {

@@ -33,8 +33,9 @@ describe('todoHeader.vue', () => {
       expect(store.todoList[0]).toMatchObject({
         taskName: '寫測試',
         isCompleted: false,
-        isEdit: false,
       })
+      // P1 修正後不再把編輯狀態寫進領域資料
+      expect(store.todoList[0]).not.toHaveProperty('isEdit')
       expect(textInput(w).element.value).toBe('')
     })
 
