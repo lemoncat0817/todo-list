@@ -10,6 +10,7 @@ import {
   setMeta,
   migrateFromLocalStorage,
   nextOrder,
+  orderBetween,
 } from '@/db'
 import { META_MIGRATED_FROM_LOCALSTORAGE, STORE_TASKS, type StoredTask } from '@/db/schema'
 import { makeTask } from '@/test/helpers'
@@ -74,6 +75,32 @@ describe('IndexedDB 資料層', () => {
     expect(await getMeta('nope')).toBeUndefined()
     await setMeta('answer', 42)
     expect(await getMeta<number>('answer')).toBe(42)
+  })
+
+  describe('orderBetween —— 拖曳排序只需改動一列', () => {
+    it('兩者之間取中間值', () => {
+      expect(orderBetween(1, 2)).toBe(1.5)
+      expect(orderBetween(0, 10)).toBe(5)
+    })
+    it('移到最前面時取比後者小的值', () => {
+      expect(orderBetween(null, 5)).toBeLessThan(5)
+    })
+    it('移到最後面時取比前者大的值', () => {
+      expect(orderBetween(5, null)).toBeGreaterThan(5)
+    })
+    it('清單為空時回 0', () => {
+      expect(orderBetween(null, null)).toBe(0)
+    })
+    it('連續插入同一位置仍保持嚴格遞增', () => {
+      let lo = 0
+      const hi = 1
+      for (let i = 0; i < 10; i++) {
+        const mid = orderBetween(lo, hi)
+        expect(mid).toBeGreaterThan(lo)
+        expect(mid).toBeLessThan(hi)
+        lo = mid
+      }
+    })
   })
 
   describe('nextOrder', () => {
