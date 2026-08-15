@@ -41,6 +41,13 @@ export default defineConfigWithVueTs(
       'vue/singleline-html-element-content-newline': 'off',
       'vue/multiline-html-element-content-newline': 'off',
       'vue/attributes-order': 'off',
+
+      // 預設同時要求「label 包住控制項」與「for 屬性」。
+      // 包裹式 label 本身就是合法且可及的關聯方式，接受其中一種即可。
+      'vuejs-accessibility/label-has-for': [
+        'error',
+        { required: { some: ['nesting', 'id'] }, allowChildren: true },
+      ],
     },
   },
   {
