@@ -57,7 +57,7 @@
               </p>
               <input v-else :aria-label="`編輯「${item.taskName}」`" placeholder="請輸入編輯內容"
                 v-model="editTaskName" @keyup.enter="saveTask(item)" @keyup.esc="cancelEdit"
-                class="w-full text-blue-900 font-bold border-blue-900 border-2 border-solid rounded-lg px-1">
+                class="w-full bg-white text-blue-900 font-bold border-blue-900 border-2 border-solid rounded-lg px-1">
 
               <p class="flex flex-wrap gap-1 mt-1 text-xs font-bold">
                 <span v-if="item.priority > 0"
