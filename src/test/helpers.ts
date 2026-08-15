@@ -4,7 +4,7 @@ import { vi } from 'vitest'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import type { Component } from 'vue'
 import { routes as appRoutes } from '@/router'
-import type { StoredTask } from '@/db/schema'
+import { DEFAULT_TASK_FIELDS, type StoredTask } from '@/db/schema'
 
 /**
  * 每個測試都用全新的 pinia，且刻意不掛 persistedstate plugin，
@@ -75,17 +75,29 @@ export function stubDialogs({ confirmReturns = true } = {}): DialogLog {
 let orderSeq = 0
 
 /**
+ * 建立測試用任務。
+ *
  * 領域模型不含 isEdit —— 編輯狀態自 P1 修正後改由元件區域管理。
- * id 為字串（crypto.randomUUID 的形狀），order 為排序鍵。
+ * 其餘欄位一律補上 DEFAULT_TASK_FIELDS，避免測試資料與正式資料形狀不同。
  */
 export function makeTask(
   taskName: string,
   isCompleted = false,
   extra: Partial<StoredTask> & Record<string, unknown> = {},
 ): StoredTask {
-  const id = String(extra.id ?? `task-${++orderSeq}`)
-  const order = typeof extra.order === 'number' ? extra.order : orderSeq
-  return { ...extra, id, taskName, isCompleted, order }
+  const seq = ++orderSeq
+  const now = Date.now()
+  return {
+    ...DEFAULT_TASK_FIELDS,
+    createdAt: now,
+    updatedAt: now,
+    ...extra,
+    id: String(extra.id ?? `task-${seq}`),
+    taskName,
+    isCompleted,
+    order: typeof extra.order === 'number' ? extra.order : seq,
+    completedAt: isCompleted ? now : null,
+  }
 }
 
 /**

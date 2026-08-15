@@ -2,11 +2,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import todoFooter from '@/components/todoFooter.vue'
 import { useTodoTaskStore } from '@/stores/todoTask'
 import type { Pinia } from 'pinia'
-import { freshPinia, mountWith, stubDialogs, makeTask, at, type Wrapper } from '@/test/helpers'
+import { freshPinia, mountWith, makeTask, at, stubDialogs, type Wrapper } from '@/test/helpers'
 
 /**
- * 鎖定 todoFooter.vue 的既有行為。
- * clearTask 是稽核報告點名要先補測試的狀態轉換邏輯。
+ * todoFooter 的統計與「清除已完成」。
+ *
+ * 稽核 P15 / P16：原本每個破壞性操作都跳阻塞式 confirm 再跳 alert 回報結果。
+ * 現在改為做完之後可復原 —— 不打斷流程，而且真的救得回來。
  */
 describe('todoFooter.vue', () => {
   let pinia: Pinia
@@ -20,10 +22,12 @@ describe('todoFooter.vue', () => {
   })
   afterEach(() => vi.restoreAllMocks())
 
-  const counters = (w: Wrapper) => w.findAll('div.bg-blue-700').map((d) => d.text().replace(/\s+/g, ''))
-  const clearButton = (w: Wrapper) => w.find('button')
+  const counters = (w: Wrapper) =>
+    w.findAll('div.bg-blue-700').map((d) => d.text().replace(/\s+/g, ''))
+  const clearButton = (w: Wrapper) => w.find('button.bg-blue-900')
+  const undoButton = (w: Wrapper) => w.find('button.bg-blue-900.text-white.rounded.px-2')
 
-  describe('統計數字（todoFooter.vue:4-12）', () => {
+  describe('統計數字', () => {
     it('空清單時三個計數都是 0', () => {
       const w = mountWith(todoFooter, pinia)
       expect(counters(w)).toEqual(['全部:0項', '未完成:0項', '已完成:0項'])
@@ -51,20 +55,18 @@ describe('todoFooter.vue', () => {
     })
   })
 
-  describe('clearTask 狀態轉換（todoFooter.vue:23-35）', () => {
-    it('沒有已完成項目時，跳 alert 且不詢問確認', async () => {
+  describe('清除已完成', () => {
+    it('沒有已完成項目時按鈕停用，不再用 alert 攔截', async () => {
       const dialogs = stubDialogs()
       store.todoList = [makeTask('a', false)]
       const w = mountWith(todoFooter, pinia)
-      await clearButton(w).trigger('click')
 
-      expect(dialogs.alerts).toEqual(['目前沒有已完成的代辦事項'])
-      expect(dialogs.confirms).toEqual([])
-      expect(store.todoList).toHaveLength(1)
+      expect(clearButton(w).attributes('disabled')).toBeDefined()
+      expect(dialogs.alerts, '不應再用 alert 攔截').toEqual([])
     })
 
-    it('確認後移除全部已完成項目，保留未完成', async () => {
-      const dialogs = stubDialogs({ confirmReturns: true })
+    it('直接清除已完成項目，不再跳 confirm', async () => {
+      const dialogs = stubDialogs()
       store.todoList = [
         makeTask('done-1', true, { id: '1' }),
         makeTask('todo-1', false, { id: '2' }),
@@ -73,13 +75,11 @@ describe('todoFooter.vue', () => {
       const w = mountWith(todoFooter, pinia)
       await clearButton(w).trigger('click')
 
-      expect(dialogs.confirms).toEqual(['確定要清除所有已完成代辦事項嗎？'])
+      expect(dialogs.confirms, '不應再有阻塞式對話框').toEqual([])
       expect(store.todoList.map((t) => t.id)).toEqual(['2'])
-      expect(dialogs.alerts).toEqual(['清除成功'])
     })
 
-    it('取消確認時不改動任何資料', async () => {
-      const dialogs = stubDialogs({ confirmReturns: false })
+    it('清除後顯示可復原提示，按下復原即還原', async () => {
       store.todoList = [
         makeTask('done-1', true, { id: '1' }),
         makeTask('todo-1', false, { id: '2' }),
@@ -87,17 +87,34 @@ describe('todoFooter.vue', () => {
       const w = mountWith(todoFooter, pinia)
       await clearButton(w).trigger('click')
 
-      expect(store.todoList.map((t) => t.id)).toEqual(['1', '2'])
-      expect(dialogs.alerts).toEqual(['取消操作'])
+      expect(w.text()).toContain('清除 1 項已完成')
+      expect(store.canUndo).toBe(true)
+
+      await undoButton(w).trigger('click')
+      await w.vm.$nextTick()
+      expect(store.todoList.map((t) => t.id).sort()).toEqual(['1', '2'])
     })
 
-    it('全部都是已完成時，清空整份清單', async () => {
-      stubDialogs({ confirmReturns: true })
-      store.todoList = [makeTask('a', true), makeTask('b', true)]
+    it('全部都是已完成時，清空整份清單且仍可復原', async () => {
+      store.todoList = [makeTask('a', true, { id: '1' }), makeTask('b', true, { id: '2' })]
       const w = mountWith(todoFooter, pinia)
       await clearButton(w).trigger('click')
 
       expect(store.todoList).toHaveLength(0)
+
+      await store.undo()
+      expect(store.todoList).toHaveLength(2)
+    })
+
+    it('提示可以關閉', async () => {
+      store.todoList = [makeTask('a', true)]
+      const w = mountWith(todoFooter, pinia)
+      await clearButton(w).trigger('click')
+      expect(w.text()).toContain('清除 1 項已完成')
+
+      await w.find('button[aria-label="關閉提示"]').trigger('click')
+      await w.vm.$nextTick()
+      expect(w.find('button[aria-label="關閉提示"]').exists()).toBe(false)
     })
   })
 })
