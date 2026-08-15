@@ -1,4 +1,5 @@
 import js from '@eslint/js'
+import globals from 'globals'
 import pluginVue from 'eslint-plugin-vue'
 import pluginA11y from 'eslint-plugin-vuejs-accessibility'
 import { defineConfigWithVueTs, vueTsConfigs } from '@vue/eslint-config-typescript'
@@ -51,6 +52,14 @@ export default defineConfigWithVueTs(
       'vuejs-accessibility/click-events-have-key-events': 'warn',
       'vuejs-accessibility/no-static-element-interactions': 'warn',
       'vuejs-accessibility/form-control-has-label': 'warn',
+    },
+  },
+  {
+    // 在 Node 執行的腳本與設定檔：需要 Node 全域（process、Buffer…）。
+    name: 'app/node-scripts',
+    files: ['scripts/**/*.{mjs,js,ts}', '*.config.{js,ts}', 'e2e/**/*.ts'],
+    languageOptions: {
+      globals: { ...globals.node },
     },
   },
   {
