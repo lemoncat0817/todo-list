@@ -64,7 +64,7 @@ describe('todoMain.vue', () => {
       seed()
       store.keyword = 'buy'
       const w = mountWith(todoMain, pinia, { props: { filter: 'all' }, router: testRouter() })
-      expect(names(w)).toEqual(['buy milk'])
+      expect(names(w)).toEqual(['Buy Milk', 'buy milk'])
     })
 
     it('keyword 疊加 filter=active', () => {
@@ -81,11 +81,18 @@ describe('todoMain.vue', () => {
       expect(names(w)).toEqual(['buy milk'])
     })
 
-    it('[現況] 搜尋大小寫敏感，keyword="buy" 找不到 "Buy Milk"（稽核 P4，待 Phase 6）', () => {
+    it('搜尋大小寫不敏感（稽核 P4 已修正）', () => {
       seed()
       store.keyword = 'buy'
       const w = mountWith(todoMain, pinia, { props: { filter: 'all' }, router: testRouter() })
-      expect(names(w)).not.toContain('Buy Milk')
+      expect(names(w)).toEqual(['Buy Milk', 'buy milk'])
+    })
+
+    it('全形關鍵字可命中半形內容（稽核 P4 已修正）', () => {
+      store.todoList = [makeTask('Buy Milk', false, { id: '1' })]
+      store.keyword = 'ＢＵＹ'
+      const w = mountWith(todoMain, pinia, { props: { filter: 'all' }, router: testRouter() })
+      expect(names(w)).toEqual(['Buy Milk'])
     })
 
     it.each(['bogus', '', null, undefined, 7])(

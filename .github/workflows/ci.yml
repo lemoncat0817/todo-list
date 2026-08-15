@@ -30,10 +30,10 @@ jobs:
       - name: 型別檢查
         run: pnpm typecheck
 
-      # --max-warnings 是防回歸的棘輪：目前 2 個警告全部是稽核 P7 的無障礙
-      # 問題，Phase 6 修正後把這個數字降到 0。新增警告會讓建置失敗。
+      # --max-warnings 0：稽核的 P6/P7 無障礙問題已全數修正，
+      # 從此任何新警告都會讓建置失敗。
       - name: Lint
-        run: pnpm lint --max-warnings 2
+        run: pnpm lint --max-warnings 0
 
       - name: 單元測試
         run: pnpm test
@@ -67,7 +67,9 @@ jobs:
       - name: 安裝 Chromium
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: 執行 E2E
+      # E2E 已含 e2e/a11y.spec.ts：WCAG 2.1 AA 全畫面零違規（含對比度），
+      # 任何無障礙回歸都會在此擋下。
+      - name: 執行 E2E（含無障礙檢測）
         run: pnpm test:e2e
 
       - name: 失敗時上傳報告

@@ -20,7 +20,7 @@ describe('todoFooter.vue', () => {
   })
   afterEach(() => vi.restoreAllMocks())
 
-  const counters = (w: Wrapper) => w.findAll('div.bg-blue-500').map((d) => d.text().replace(/\s+/g, ''))
+  const counters = (w: Wrapper) => w.findAll('div.bg-blue-700').map((d) => d.text().replace(/\s+/g, ''))
   const clearButton = (w: Wrapper) => w.find('button')
 
   describe('統計數字（todoFooter.vue:4-12）', () => {
