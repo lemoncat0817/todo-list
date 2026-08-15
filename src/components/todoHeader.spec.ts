@@ -24,7 +24,7 @@ describe('todoHeader.vue', () => {
   afterEach(() => vi.restoreAllMocks())
 
   const textInput = (w: Wrapper) => w.find('input[placeholder="請輸入代辦事項"]')
-  const addButton = (w: Wrapper) => w.find('button.bg-blue-500')
+  const addButton = (w: Wrapper) => w.find('button[aria-label="新增代辦事項"] + button, button.bg-blue-700')
 
   describe('addTask（todoHeader.vue:36-47）', () => {
     it('輸入內容後新增，並清空輸入框', async () => {
@@ -135,7 +135,7 @@ describe('todoHeader.vue', () => {
   })
 
   describe('searchMode 切換（todoHeader.vue:60-64）', () => {
-    const modeButton = (w: Wrapper) => w.find('button.bg-green-500')
+    const modeButton = (w: Wrapper) => w.find('button.bg-green-700')
 
     it('切換 isSearch，並顯示對應字樣', async () => {
       const w = mountWith(todoHeader, pinia)
