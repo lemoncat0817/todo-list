@@ -93,6 +93,9 @@
               <button v-else :aria-label="`保存「${item.taskName}」`"
                 class="sm:w-12 w-10 h-8 bg-red-700 rounded-lg text-white font-bold sm:text-lg border-2 border-solid border-black mx-0.5 select-none hover:bg-red-800 active:bg-red-900"
                 @click="saveTask(item)">保存</button>
+              <button :aria-label="`設定「${item.taskName}」的細節`"
+                class="w-8 h-8 bg-blue-800 rounded-lg text-white font-bold border-2 border-solid border-black mx-0.5"
+                @click="detailTask = item">⋯</button>
               <button :aria-label="`刪除「${item.taskName}」`"
                 class="sm:w-12 w-10 h-8 bg-red-700 rounded-lg text-white font-bold sm:text-lg border-2 border-solid border-black mx-0.5 select-none hover:bg-red-800 active:bg-red-900"
                 @click="deleteTask(item.id)">刪除</button>
@@ -101,12 +104,15 @@
         </ul>
       </template>
     </div>
+
+    <TaskDetailDialog :task="detailTask" @close="detailTask = null" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { RouterLink } from 'vue-router'
+import TaskDetailDialog from './TaskDetailDialog.vue'
 import { useTodoTaskStore } from '@/stores/todoTask'
 import { FILTERS, type TaskFilter } from '@/router/filters'
 import { PRIORITY_LABELS, type StoredTask } from '@/db/schema'
@@ -124,6 +130,7 @@ const store = useTodoTaskStore()
 const editingId = ref<string | null>(null)
 const editTaskName = ref('')
 const draggingId = ref<string | null>(null)
+const detailTask = ref<StoredTask | null>(null)
 
 const editTask = (task: StoredTask) => {
   if (editingId.value !== null) {
