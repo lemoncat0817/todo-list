@@ -33,6 +33,9 @@ export interface PersistPluginOptions {
 }
 
 declare module 'pinia' {
+  // 型別參數名稱必須與 Pinia 的原宣告完全一致，否則介面無法合併
+  // （TypeScript 要求同名介面的型別參數列表相同，含名稱）。這裡用不到它們。
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   export interface DefineStoreOptionsBase<S, Store> {
     persist?: PersistOptions
   }
