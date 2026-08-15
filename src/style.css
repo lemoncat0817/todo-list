@@ -1,3 +1,13 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind 4 改為 CSS-first：不再需要 tailwind.config.js 與 postcss.config.js。 */
+@import 'tailwindcss';
+
+/* v4 起 border 與 divide 的預設色改為 currentColor。
+   本專案的樣板大量依賴「未指定顏色時是灰色」的 v3 行為，
+   這裡把預設補回來，避免每一處都要改寫。 */
+@layer base {
+  *,
+  ::after,
+  ::before {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}

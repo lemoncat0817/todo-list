@@ -10,20 +10,20 @@
       <label class="flex flex-col gap-1 text-sm font-bold text-blue-900">
         名稱
         <input v-model.trim="draft.taskName" required
-          class="border-2 border-blue-900 rounded px-2 py-1 text-base font-normal text-black">
+          class="border-2 border-blue-900 rounded px-2 py-1 text-base font-normal text-black bg-white">
       </label>
 
       <label class="flex flex-col gap-1 text-sm font-bold text-blue-900">
         備註
         <textarea v-model="draft.notes" rows="2"
-          class="border-2 border-blue-900 rounded px-2 py-1 text-base font-normal text-black" />
+          class="border-2 border-blue-900 rounded px-2 py-1 text-base font-normal text-black bg-white" />
       </label>
 
       <div class="flex flex-wrap gap-3">
         <label class="flex flex-col gap-1 text-sm font-bold text-blue-900">
           優先度
           <select v-model.number="draft.priority"
-            class="border-2 border-blue-900 rounded px-2 py-1 text-base font-normal text-black">
+            class="border-2 border-blue-900 rounded px-2 py-1 text-base font-normal text-black bg-white">
             <option v-for="(label, value) in PRIORITY_LABELS" :key="value" :value="Number(value)">
               {{ label }}
             </option>
@@ -33,7 +33,7 @@
         <label class="flex flex-col gap-1 text-sm font-bold text-blue-900">
           到期日
           <input v-model="dueDateInput" type="date"
-            class="border-2 border-blue-900 rounded px-2 py-1 text-base font-normal text-black">
+            class="border-2 border-blue-900 rounded px-2 py-1 text-base font-normal text-black bg-white">
         </label>
 
         <label class="flex flex-col gap-1 text-sm font-bold text-blue-900">
@@ -46,7 +46,7 @@
       <label class="flex flex-col gap-1 text-sm font-bold text-blue-900">
         專案
         <select v-model="projectInput"
-          class="border-2 border-blue-900 rounded px-2 py-1 text-base font-normal text-black">
+          class="border-2 border-blue-900 rounded px-2 py-1 text-base font-normal text-black bg-white">
           <option value="">未分類</option>
           <option v-for="p in store.projects" :key="p.id" :value="p.id">{{ p.name }}</option>
         </select>
@@ -55,7 +55,7 @@
       <!-- 就地建立：沒有這條路徑的話，第一次使用時專案與標籤永遠是空清單 -->
       <div class="flex gap-2">
         <input v-model.trim="newProjectName" aria-label="新專案名稱" placeholder="新增專案…"
-          class="grow border-2 border-blue-900 rounded px-2 py-1 text-base text-black"
+          class="grow border-2 border-blue-900 rounded px-2 py-1 text-base text-black bg-white"
           @keydown.enter.prevent="createProject">
         <button type="button" class="px-3 rounded bg-blue-800 text-white font-bold"
           :disabled="newProjectName === ''" @click="createProject">建立</button>
@@ -72,7 +72,7 @@
         </label>
         <div class="flex gap-2 mt-2">
           <input v-model.trim="newTagName" aria-label="新標籤名稱" placeholder="新增標籤…"
-            class="grow border-2 border-blue-900 rounded px-2 py-1 text-base text-black"
+            class="grow border-2 border-blue-900 rounded px-2 py-1 text-base text-black bg-white"
             @keydown.enter.prevent="createTag">
           <button type="button" class="px-3 rounded bg-green-800 text-white font-bold"
             :disabled="newTagName === ''" @click="createTag">建立</button>
@@ -92,7 +92,7 @@
             <label class="flex flex-col gap-1 text-sm font-bold text-blue-900">
               頻率
               <select v-model="draft.recurrence.freq"
-                class="border-2 border-blue-900 rounded px-2 py-1 text-base font-normal text-black">
+                class="border-2 border-blue-900 rounded px-2 py-1 text-base font-normal text-black bg-white">
                 <option value="daily">每日</option>
                 <option value="weekly">每週</option>
                 <option value="monthly">每月</option>
@@ -101,7 +101,7 @@
             <label class="flex flex-col gap-1 text-sm font-bold text-blue-900">
               間隔
               <input v-model.number="draft.recurrence.interval" type="number" min="1"
-                class="w-20 border-2 border-blue-900 rounded px-2 py-1 text-base font-normal text-black">
+                class="w-20 border-2 border-blue-900 rounded px-2 py-1 text-base font-normal text-black bg-white">
             </label>
           </div>
 

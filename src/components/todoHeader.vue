@@ -14,7 +14,7 @@
       <!-- v-if 為真時元素才存在，原本同時掛的 invisible class 永遠不會生效（稽核 P18） -->
       <div v-if="!todoTaskStore.isSearch" class="w-full flex justify-center items-center">
         <input aria-label="新增代辦事項" placeholder="請輸入代辦事項" v-model.trim="task" @keyup.enter="addTask"
-          class="text-center w-1/3 h-10 text-blue-600 font-bold text-lg px-2 border-2 border-black rounded-lg ease-in-out duration-500 focus:w-1/2 focus:border-blue-500 focus:outline-none">
+          class="text-center w-1/3 h-10 bg-white text-blue-700 font-bold text-lg px-2 border-2 border-black rounded-lg ease-in-out duration-500 focus:w-1/2 focus:border-blue-500 focus:outline-none">
         <button @click="addTask"
           class="w-10 h-10 bg-blue-700 text-3xl text-white rounded-md ml-2 ease-in-out duration-300 hover:scale-[1.2] hover:bg-blue-800 active:bg-blue-900 select-none">
           +
@@ -22,7 +22,7 @@
       </div>
       <div v-else class="w-full flex justify-center items-center">
         <input aria-label="搜尋代辦事項" placeholder="請輸入關鍵字" v-model.trim="todoTaskStore.keyword"
-          class="text-center w-1/3 h-10 text-blue-600 font-bold text-lg px-2 border-2 border-black rounded-lg ease-in-out duration-500 focus:w-1/2 focus:border-blue-500 focus:outline-none">
+          class="text-center w-1/3 h-10 bg-white text-blue-700 font-bold text-lg px-2 border-2 border-black rounded-lg ease-in-out duration-500 focus:w-1/2 focus:border-blue-500 focus:outline-none">
       </div>
     </div>
   </div>
