@@ -3,15 +3,44 @@ import { defineConfig, devices } from '@playwright/test'
 /** 模擬 GitHub Pages 子路徑部署的 origin，供 deploy.spec.ts 使用。 */
 export const SUBPATH_BASE = 'http://localhost:4320/Vue-TodoList/'
 
+const isCI = !!process.env.CI
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
-  reporter: [['list']],
+
+  /**
+   * CI 專用的設定，全部來自一次實際的 CI 失敗：
+   * 那次只有「E2E 失敗」四個字，沒有報告、沒有 trace、沒有截圖，
+   * 而本機重跑 60 條全過——完全無法判斷是偶發還是真的壞了。
+   */
+
+  // 只用 list reporter 時不會產生 playwright-report/，
+  // workflow 裡「失敗時上傳報告」那一步等於空跑。
+  reporter: isCI ? [['list'], ['html', { open: 'never' }]] : [['list']],
+
+  // 沒有 retries 時，偶發失敗會直接擋掉建置，而且無從得知它是偶發的。
+  // 有 retries 時 Playwright 會把「重試後才過」標記為 flaky，
+  // 讓偶發與真實失敗在報告上分得開。
+  retries: isCI ? 2 : 0,
+
+  // 多個 worker 共用同一組 webServer（4319/4320）。本機無妨，
+  // 但 CI runner 較慢時容易出現彼此干擾的競態。CI 上換取確定性。
+  workers: isCI ? 1 : undefined,
+
+  // 誤留 test.only 會讓 CI 只跑那一條卻顯示綠燈——比失敗更危險。
+  forbidOnly: isCI,
+
   use: {
     baseURL: 'http://localhost:4319',
-    trace: 'on-first-retry',
+    // 失敗時保留可事後追查的證據，而不是只留一行錯誤訊息
+    trace: isCI ? 'retain-on-failure' : 'on-first-retry',
+    screenshot: 'only-on-failure',
+    video: isCI ? 'retain-on-failure' : 'off',
   },
+
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+
   webServer: [
     {
       // 專用 port，且一律自行啟動：沿用既有伺服器曾導致測試連到別的專案。

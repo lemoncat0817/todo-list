@@ -72,10 +72,16 @@ jobs:
       - name: 執行 E2E（含無障礙檢測）
         run: pnpm test:e2e
 
-      - name: 失敗時上傳報告
+      # 失敗時把報告與 trace/截圖/影片一起帶出來。
+      # 先前只上傳 playwright-report，但 config 沒設 html reporter，
+      # 那個目錄根本不存在——CI 失敗時只看得到「E2E 失敗」四個字。
+      - name: 失敗時上傳報告與 trace
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
-          path: playwright-report
+          path: |
+            playwright-report
+            test-results
           retention-days: 7
+          if-no-files-found: warn
