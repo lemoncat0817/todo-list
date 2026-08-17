@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: 型別 / lint / 單元測試 / 建置
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: 安裝依賴
+        run: pnpm install --frozen-lockfile
+
+      - name: 型別檢查
+        run: pnpm typecheck
+
+      # --max-warnings 0：稽核的 P6/P7 無障礙問題已全數修正，
+      # 從此任何新警告都會讓建置失敗。
+      - name: Lint
+        run: pnpm lint --max-warnings 0
+
+      - name: 單元測試
+        run: pnpm test
+
+      - name: 建置
+        run: pnpm build
+
+      - name: 上傳建置產物
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist
+          retention-days: 7
+
+  e2e:
+    name: E2E（Playwright）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: 安裝依賴
+        run: pnpm install --frozen-lockfile
+
+      - name: 安裝 Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      # E2E 已含 e2e/a11y.spec.ts：WCAG 2.1 AA 全畫面零違規（含對比度），
+      # 任何無障礙回歸都會在此擋下。
+      - name: 執行 E2E（含無障礙檢測）
+        run: pnpm test:e2e
+
+      - name: 失敗時上傳報告
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
