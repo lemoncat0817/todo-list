@@ -23,8 +23,8 @@ describe('todoHeader.vue', () => {
   })
   afterEach(() => vi.restoreAllMocks())
 
-  const textInput = (w: Wrapper) => w.find('input[placeholder="請輸入代辦事項"]')
-  const addButton = (w: Wrapper) => w.find('button[aria-label="新增代辦事項"] + button, button.bg-blue-700')
+  const textInput = (w: Wrapper) => w.find('input[aria-label="新增代辦事項"]')
+  const addButton = (w: Wrapper) => w.find('button[aria-label="新增"]')
 
   describe('addTask（todoHeader.vue:36-47）', () => {
     it('輸入內容後新增，並清空輸入框', async () => {
@@ -42,21 +42,19 @@ describe('todoHeader.vue', () => {
       expect(asInput(textInput(w)).value).toBe('')
     })
 
-    it('空字串不新增，改跳 alert', async () => {
+    it('空字串時新增鈕停用，不用 alert 事後責備', async () => {
       const w = mountWith(todoHeader, pinia)
-      await addButton(w).trigger('click')
-
+      expect(addButton(w).attributes('disabled'), '按鈕應停用').toBeDefined()
       expect(store.todoList).toHaveLength(0)
-      expect(dialogs.alerts).toEqual(['請輸入代辦事項'])
+      expect(dialogs.alerts, '不該再用阻塞式對話框').toEqual([])
     })
 
-    it('只有空白字元時，v-model.trim 會使其成為空字串而不新增', async () => {
+    it('只有空白字元時，v-model.trim 使其成為空字串，按鈕維持停用', async () => {
       const w = mountWith(todoHeader, pinia)
       await textInput(w).setValue('    ')
-      await addButton(w).trigger('click')
-
+      expect(addButton(w).attributes('disabled')).toBeDefined()
       expect(store.todoList).toHaveLength(0)
-      expect(dialogs.alerts).toEqual(['請輸入代辦事項'])
+      expect(dialogs.alerts).toEqual([])
     })
 
     it('按下 Enter 也能新增', async () => {
@@ -122,28 +120,33 @@ describe('todoHeader.vue', () => {
       expect(store.todoList.every((t) => !t.isCompleted)).toBe(true)
     })
 
-    it('[現況] 清單為空時 every() 回傳 true，全選框呈現已勾選（稽核 P13）', () => {
+    it('清單為空時全選框不顯示為已勾選（稽核 P13 已修正）', () => {
       const w = mountWith(todoHeader, pinia)
       expect(store.todoList).toHaveLength(0)
-      expect(asInput(checkbox(w)).checked).toBe(true)
+      // [].every() 依規範回傳 true，所以要額外檢查長度，否則空清單會顯示為全部完成
+      expect(checkbox(w).exists(), '空清單時整個全選框不渲染').toBe(false)
     })
 
-    it('[現況] 清單為空時全選框加上 invisible（僅視覺隱藏）', () => {
-      const w = mountWith(todoHeader, pinia)
-      expect(checkbox(w).classes()).toContain('invisible')
+    it('有項目時才渲染全選框，不再用 invisible 留一個看不見的控制項', () => {
+      expect(mountWith(todoHeader, pinia).find('input[type="checkbox"]').exists()).toBe(false)
+      store.todoList = [makeTask('a', false)]
+      expect(mountWith(todoHeader, pinia).find('input[type="checkbox"]').exists()).toBe(true)
     })
   })
 
   describe('searchMode 切換（todoHeader.vue:60-64）', () => {
-    const modeButton = (w: Wrapper) => w.find('button.bg-green-700')
+    const modeButton = (w: Wrapper) =>
+    w.find(`button[aria-label="搜尋代辦事項"], button[aria-label="結束搜尋"]`)
 
-    it('切換 isSearch，並顯示對應字樣', async () => {
+    it('切換 isSearch，並以 aria-label 與 aria-pressed 表達狀態', async () => {
       const w = mountWith(todoHeader, pinia)
-      expect(modeButton(w).text()).toBe('搜尋模式🔍')
+      expect(modeButton(w).attributes('aria-label')).toBe('搜尋代辦事項')
+      expect(modeButton(w).attributes('aria-pressed')).toBe('false')
 
       await modeButton(w).trigger('click')
       expect(store.isSearch).toBe(true)
-      expect(modeButton(w).text()).toBe('回列表模式📋')
+      expect(modeButton(w).attributes('aria-label')).toBe('結束搜尋')
+      expect(modeButton(w).attributes('aria-pressed')).toBe('true')
     })
 
     it('切換時清空 keyword', async () => {
@@ -161,13 +164,13 @@ describe('todoHeader.vue', () => {
       await modeButton(w).trigger('click')
 
       expect(textInput(w).exists()).toBe(false)
-      expect(w.find('input[placeholder="請輸入關鍵字"]').exists()).toBe(true)
+      expect(w.find('input[aria-label="搜尋代辦事項"]').exists()).toBe(true)
     })
 
     it('關鍵字輸入會寫進 store', async () => {
       store.isSearch = true
       const w = mountWith(todoHeader, pinia)
-      await w.find('input[placeholder="請輸入關鍵字"]').setValue('牛奶')
+      await w.find('input[aria-label="搜尋代辦事項"]').setValue('牛奶')
       expect(store.keyword).toBe('牛奶')
     })
   })

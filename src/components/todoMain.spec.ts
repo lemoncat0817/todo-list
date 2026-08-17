@@ -26,8 +26,8 @@ describe('todoMain.vue', () => {
   })
   afterEach(() => vi.restoreAllMocks())
 
-  const rows = (w: Wrapper) => w.findAll('li.bg-gray-300')
-  const names = (w: Wrapper) => rows(w).map((r) => r.find('p.break-all').text())
+  const rows = (w: Wrapper) => w.findAll('li')
+  const names = (w: Wrapper) => rows(w).map((r) => r.find('p').text())
   const seed = () => {
     store.todoList = [
       makeTask('Buy Milk', false, { id: '1' }),
@@ -135,7 +135,13 @@ describe('todoMain.vue', () => {
 
     it('三個分頁指向對應的路由', () => {
       const w = mountWith(todoMain, pinia, { props: { filter: 'all' }, router: testRouter() })
-      expect(tabs(w).map((a) => a.text())).toEqual(['全部', '未完成', '完成'])
+      // 分頁標籤後面帶數量，比對開頭即可
+      // 分頁標籤後面帶該分頁的項目數，比對時去掉
+      expect(tabs(w).map((a) => a.text().replace(/\s*\d+$/, ''))).toEqual([
+        '全部',
+        '未完成',
+        '完成',
+      ])
       expect(tabs(w).map((a) => a.attributes('href'))).toEqual(['/', '/active', '/completed'])
     })
 
@@ -169,7 +175,7 @@ describe('todoMain.vue', () => {
   describe('編輯與保存（todoMain.vue:45-61）', () => {
     const editBtn = (w: Wrapper, i: number) => at(rows(w), i).find('button[aria-label^="編輯"]')
     const deleteBtn = (w: Wrapper, i: number) => at(rows(w), i).find('button[aria-label^="刪除"]')
-    const editInput = (w: Wrapper, i: number) => at(rows(w), i).find('input[placeholder="請輸入編輯內容"]')
+    const editInput = (w: Wrapper, i: number) => at(rows(w), i).find('input[aria-label^="編輯"]')
 
     it('點編輯後顯示輸入框，且帶入原本的內容', async () => {
       seed()
@@ -179,7 +185,7 @@ describe('todoMain.vue', () => {
       // 斷言行為（畫面切到編輯狀態），而非 store 內部欄位
       expect(editInput(w, 0).exists()).toBe(true)
       expect(asInput(editInput(w, 0)).value).toBe('Buy Milk')
-      expect(at(rows(w), 0).find('p.break-all').exists()).toBe(false)
+      expect(at(rows(w), 0).find('p').exists()).toBe(false)
       // P1 修正後編輯狀態不再寫進領域資料
       expect(at(store.todoList, 0)).not.toHaveProperty('isEdit')
     })
@@ -193,7 +199,7 @@ describe('todoMain.vue', () => {
 
       expect(at(store.todoList, 0).taskName).toBe('Buy Oat Milk')
       expect(editInput(w, 0).exists(), '應離開編輯狀態').toBe(false)
-      expect(at(rows(w), 0).find('p.break-all').text()).toBe('Buy Oat Milk')
+      expect(at(rows(w), 0).find('p').text()).toBe('Buy Oat Milk')
     })
 
     it('編輯內容清空時保存被擋下，仍留在編輯狀態', async () => {
@@ -225,8 +231,8 @@ describe('todoMain.vue', () => {
       const w = mountWith(todoMain, pinia, { router: testRouter() })
 
       // 原文字看得見，沒有殘留的空白輸入框
-      expect(at(rows(w), 0).find('p.break-all').text()).toBe('原本的內容')
-      expect(w.find('input[placeholder="請輸入編輯內容"]').exists()).toBe(false)
+      expect(at(rows(w), 0).find('p').text()).toBe('原本的內容')
+      expect(w.find('input[aria-label^="編輯"]').exists()).toBe(false)
 
       // 任何一筆都能正常進入編輯
       await editBtn(w, 1).trigger('click')
@@ -241,7 +247,7 @@ describe('todoMain.vue', () => {
       await deleteBtn(w, 0).trigger('click')
 
       // 不應殘留編輯狀態把其他項目鎖住
-      expect(w.find('input[placeholder="請輸入編輯內容"]').exists()).toBe(false)
+      expect(w.find('input[aria-label^="編輯"]').exists()).toBe(false)
       await editBtn(w, 0).trigger('click')
       expect(dialogs.alerts).toEqual([])
     })
@@ -288,8 +294,8 @@ describe('todoMain.vue', () => {
     it('已完成的項目加上刪除線', () => {
       seed()
       const w = mountWith(todoMain, pinia, { router: testRouter() })
-      expect(at(rows(w), 1).find('p.break-all').classes()).toContain('line-through')
-      expect(at(rows(w), 0).find('p.break-all').classes()).not.toContain('line-through')
+      expect(at(rows(w), 1).find('p').classes()).toContain('line-through')
+      expect(at(rows(w), 0).find('p').classes()).not.toContain('line-through')
     })
   })
 })

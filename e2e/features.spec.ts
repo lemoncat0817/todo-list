@@ -6,12 +6,12 @@ import { test, expect, type Page } from '@playwright/test'
  */
 
 async function addTask(page: Page, name: string): Promise<void> {
-  await page.getByPlaceholder('請輸入代辦事項').fill(name)
-  await page.getByRole('button', { name: '+' }).click()
+  await page.getByLabel('新增代辦事項').fill(name)
+  await page.getByRole('button', { name: '新增' }).click()
 }
 
-const rows = (page: Page) => page.locator('li.bg-gray-300')
-const names = (page: Page) => page.locator('p.break-all')
+const rows = (page: Page) => page.locator('main li')
+const names = (page: Page) => page.locator('main li p')
 
 test.beforeEach(async ({ page }) => {
   page.on('dialog', (d) => d.accept())
@@ -30,7 +30,7 @@ test.describe('任務細節', () => {
     await dialog.getByRole('button', { name: '儲存' }).click()
 
     await expect(dialog).not.toBeVisible()
-    await expect(rows(page).first()).toContainText('優先度 高')
+    await expect(rows(page).first().getByLabel('優先度：高')).toBeVisible()
     await expect(rows(page).first()).toContainText('2030-01-15')
   })
 
@@ -162,16 +162,16 @@ test.describe('排序', () => {
 test.describe('快捷鍵', () => {
   test('n 聚焦新增欄位，/ 聚焦搜尋', async ({ page }) => {
     await page.keyboard.press('n')
-    await expect(page.getByPlaceholder('請輸入代辦事項')).toBeFocused()
+    await expect(page.getByLabel('新增代辦事項')).toBeFocused()
 
     // 聚焦在輸入框時不該攔截按鍵，否則沒辦法正常打字
     await page.keyboard.type('nnn')
-    await expect(page.getByPlaceholder('請輸入代辦事項')).toHaveValue('nnn')
+    await expect(page.getByLabel('新增代辦事項')).toHaveValue('nnn')
 
     await page.keyboard.press('Escape')
     await page.locator('h1').click()
     await page.keyboard.press('/')
-    await expect(page.getByPlaceholder('請輸入關鍵字')).toBeFocused()
+    await expect(page.getByLabel('搜尋代辦事項')).toBeFocused()
   })
 })
 
@@ -180,12 +180,12 @@ test.describe('空狀態', () => {
     await expect(page.getByText('目前沒有代辦事項，從上方新增一筆吧')).toBeVisible()
 
     await addTask(page, '存在的項目')
-    await page.getByRole('link', { name: '完成', exact: true }).click()
+    await page.getByRole('link', { name: /^完成/ }).click()
     await expect(page.getByText('還沒有已完成的代辦事項')).toBeVisible()
 
-    await page.getByRole('link', { name: '全部' }).click()
-    await page.getByRole('button', { name: '搜尋模式🔍' }).click()
-    await page.getByPlaceholder('請輸入關鍵字').fill('找不到的東西')
+    await page.getByRole('link', { name: /^全部/ }).click()
+    await page.getByRole('button', { name: '搜尋代辦事項' }).click()
+    await page.getByLabel('搜尋代辦事項').fill('找不到的東西')
     await expect(page.getByText('找不到符合「找不到的東西」的代辦事項')).toBeVisible()
   })
 })

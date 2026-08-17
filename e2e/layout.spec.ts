@@ -15,7 +15,7 @@ test('U1: 各裝置寬度下的水平溢出量測', async ({ page }) => {
     await page.waitForSelector('h1')
 
     const m = await page.evaluate(() => {
-      const box = document.querySelector('.app > div') as HTMLElement
+      const box = document.querySelector('main') as HTMLElement
       const r = box.getBoundingClientRect()
       return {
         docScrollWidth: document.documentElement.scrollWidth,
@@ -49,8 +49,8 @@ test('U1: 各裝置寬度下的水平溢出量測', async ({ page }) => {
 test('U1b: 320px 下各元素是否被裁切', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 })
   await page.goto('/')
-  await page.getByPlaceholder('請輸入代辦事項').fill('量測用項目')
-  await page.getByRole('button', { name: '+' }).click()
+  await page.getByLabel('新增代辦事項').fill('量測用項目')
+  await page.getByRole('button', { name: '新增' }).click()
 
   const clipped = await page.evaluate(() => {
     const vw = window.innerWidth
@@ -77,12 +77,12 @@ test('U1b: 320px 下各元素是否被裁切', async ({ page }) => {
   expect(clipped, '320px 下不應有元素超出視窗').toEqual([])
 })
 
-test('U2: 100vh vs 視窗高度', async ({ page }) => {
+test('U2: 100dvh 版面高度', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 667 })
   await page.goto('/')
 
   const m = await page.evaluate(() => {
-    const app = document.querySelector('.app') as HTMLElement
+    const app = document.querySelector('body > div') as HTMLElement
     return {
       appHeight: Math.round(app.getBoundingClientRect().height),
       innerHeight: window.innerHeight,
@@ -91,7 +91,7 @@ test('U2: 100vh vs 視窗高度', async ({ page }) => {
     }
   })
 
-  console.log('\n  U2 — App.vue:2 的 min-h-[100vh]')
+  console.log('\n  U2 — App.vue 的 min-h-[100dvh]')
   console.log(`    computed min-height : ${m.usesDvh}`)
   console.log(`    .app 實際高度       : ${m.appHeight}px`)
   console.log(`    window.innerHeight  : ${m.innerHeight}px`)
