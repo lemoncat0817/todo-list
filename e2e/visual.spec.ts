@@ -117,3 +117,27 @@ test('擷取各斷點與主題的畫面', async ({ page }, testInfo) => {
     }
   }
 })
+
+test('對話框置中，不會被 preflight 的 margin:0 打到左上角', async ({ page }) => {
+  await seed(page)
+  await page.getByRole('button', { name: /設定/ }).first().click()
+
+  const box = await page.evaluate(() => {
+    const d = document.querySelector('dialog') as HTMLDialogElement
+    const r = d.getBoundingClientRect()
+    return {
+      left: r.left,
+      right: r.right,
+      vw: window.innerWidth,
+      marginInline: getComputedStyle(d).marginLeft,
+    }
+  })
+  console.log('\n  dialog:', JSON.stringify(box))
+
+  // 原生 <dialog> 的置中來自 UA stylesheet 的 margin:auto，
+  // 而 Tailwind preflight 會把它重設為 0。少了 m-auto 就會貼到左上角。
+  expect(box.marginInline, 'margin 不可為 0，否則置中失效').not.toBe('0px')
+  const leftGap = box.left
+  const rightGap = box.vw - box.right
+  expect(Math.abs(leftGap - rightGap), '左右留白應相等（水平置中）').toBeLessThan(2)
+})

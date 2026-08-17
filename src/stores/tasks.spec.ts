@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import { useTodoTaskStore } from '@/stores/todoTask'
+import { useTasksStore } from '@/stores/tasks'
 import * as db from '@/db'
 import { makeTask } from '@/test/helpers'
 
@@ -9,7 +9,7 @@ function setup() {
   const pinia = createPinia()
   createApp({}).use(pinia)
   setActivePinia(pinia)
-  return useTodoTaskStore()
+  return useTasksStore()
 }
 
 beforeEach(() => {
@@ -31,7 +31,7 @@ describe('todoTask store', () => {
       await store.init()
 
       expect(store.isLoading).toBe(false)
-      expect(store.todoList.map((t) => t.taskName)).toEqual(['已存在的', '第二筆'])
+      expect(store.items.map((t) => t.taskName)).toEqual(['已存在的', '第二筆'])
       expect(store.loadError).toBeNull()
     })
 
@@ -49,7 +49,7 @@ describe('todoTask store', () => {
       const store = setup()
       await store.init()
 
-      expect(store.todoList.map((t) => t.taskName)).toEqual(['舊資料'])
+      expect(store.items.map((t) => t.taskName)).toEqual(['舊資料'])
       expect(store.migration).toEqual({ migrated: 1, skipped: 1 })
     })
 
@@ -70,13 +70,13 @@ describe('todoTask store', () => {
       await store.init()
 
       vi.spyOn(db, 'saveTasks').mockRejectedValue(new Error('配額已滿'))
-      store.addTask('存不進去但要看得到')
+      store.add('存不進去但要看得到')
       await nextTick()
       await store.flush()
 
       expect((store.writeError as Error).message).toBe('配額已滿')
       expect(store.loadError, '寫入失敗不該影響載入狀態').toBeNull()
-      expect(store.todoList.map((t) => t.taskName)).toEqual(['存不進去但要看得到'])
+      expect(store.items.map((t) => t.taskName)).toEqual(['存不進去但要看得到'])
     })
 
     it('下一次寫入成功時清掉 writeError', async () => {
@@ -84,13 +84,13 @@ describe('todoTask store', () => {
       await store.init()
 
       const spy = vi.spyOn(db, 'saveTasks').mockRejectedValueOnce(new Error('暫時失敗'))
-      store.addTask('第一次')
+      store.add('第一次')
       await nextTick()
       await store.flush()
       expect(store.writeError).not.toBeNull()
 
       spy.mockRestore()
-      store.addTask('第二次')
+      store.add('第二次')
       await nextTick()
       await store.flush()
       expect(store.writeError).toBeNull()
@@ -102,7 +102,7 @@ describe('todoTask store', () => {
       const store = setup()
       await store.init()
 
-      store.addTask('要存下去的')
+      store.add('要存下去的')
       await nextTick()
       await store.flush()
 
@@ -112,11 +112,11 @@ describe('todoTask store', () => {
     it('刪除後 IndexedDB 也不再有該筆', async () => {
       const store = setup()
       await store.init()
-      const task = store.addTask('待刪除')
+      const task = store.add('待刪除')
       await nextTick()
       await store.flush()
 
-      store.removeTask(task.id)
+      store.remove(task.id)
       await nextTick()
       await store.flush()
 
@@ -126,7 +126,7 @@ describe('todoTask store', () => {
     it('清除已完成只移除已完成的', async () => {
       const store = setup()
       await store.init()
-      store.todoList = [
+      store.items = [
         makeTask('留著', false, { id: 'keep', order: 0 }),
         makeTask('清掉', true, { id: 'gone', order: 1 }),
       ]
@@ -142,13 +142,13 @@ describe('todoTask store', () => {
     it('全選 / 全取消一次改動所有項目', async () => {
       const store = setup()
       await store.init()
-      store.todoList = [makeTask('a', false, { order: 0 }), makeTask('b', false, { order: 1 })]
+      store.items = [makeTask('a', false, { order: 0 }), makeTask('b', false, { order: 1 })]
 
       store.setAllCompleted(true)
-      expect(store.todoList.every((t) => t.isCompleted)).toBe(true)
+      expect(store.items.every((t) => t.isCompleted)).toBe(true)
 
       store.setAllCompleted(false)
-      expect(store.todoList.every((t) => !t.isCompleted)).toBe(true)
+      expect(store.items.every((t) => !t.isCompleted)).toBe(true)
     })
   })
 
@@ -157,7 +157,7 @@ describe('todoTask store', () => {
       const store = setup()
       await store.init()
 
-      const task = store.addTask('x')
+      const task = store.add('x')
       expect(task.id).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
       )
@@ -166,9 +166,9 @@ describe('todoTask store', () => {
     it('排序鍵接續在現有最大值之後', async () => {
       const store = setup()
       await store.init()
-      store.todoList = [makeTask('既有', false, { order: 5 })]
+      store.items = [makeTask('既有', false, { order: 5 })]
 
-      expect(store.addTask('新的').order).toBe(6)
+      expect(store.add('新的').order).toBe(6)
     })
   })
 
@@ -182,7 +182,7 @@ describe('todoTask store', () => {
       await nextTick()
 
       expect(spy, '載入流程本身不應觸發寫入').not.toHaveBeenCalled()
-      expect(store.todoList.map((t) => t.taskName)).toEqual(['不可以不見'])
+      expect(store.items.map((t) => t.taskName)).toEqual(['不可以不見'])
     })
   })
 })

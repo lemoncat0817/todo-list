@@ -1,8 +1,24 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia, defineStore } from 'pinia'
 import { createApp, ref } from 'vue'
-import { createPersistPlugin, type PersistFailure } from '@/stores/persist'
-import { sanitizeState } from '@/stores/sanitize'
+import { createPersistPlugin, type PersistFailure } from '@/infra/persist'
+import { normalizeTask } from '@/domain/task'
+import type { StoredTask } from '@/db/schema'
+
+/** 測試用的形狀驗證，行為與正式的 UI 偏好驗證一致：只挑出通過的欄位。 */
+function sanitizeState(raw: unknown): Record<string, unknown> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
+  const value = raw as Record<string, unknown>
+  const state: Record<string, unknown> = {}
+  if (Array.isArray(value.todoList)) {
+    state.todoList = value.todoList
+      .map((t) => normalizeTask(t))
+      .filter((t): t is StoredTask => t !== null)
+  }
+  if (typeof value.keyword === 'string') state.keyword = value.keyword
+  return state
+}
+
 
 /** 可控的 Storage 假件，能模擬配額耗盡。 */
 class FakeStorage implements Storage {
@@ -77,7 +93,8 @@ describe('createPersistPlugin', () => {
       setup(storage, (f) => failures.push(f))
       const store = useTestStore()
 
-      expect(store.todoList).toEqual([{ id: 1, taskName: '買牛奶', isCompleted: true }])
+      expect(store.todoList).toHaveLength(1)
+      expect(store.todoList[0]).toMatchObject({ id: '1', taskName: '買牛奶', isCompleted: true })
       expect(store.keyword).toBe('牛奶')
       expect(failures).toEqual([])
     })
