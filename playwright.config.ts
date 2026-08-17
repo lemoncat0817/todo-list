@@ -26,7 +26,11 @@ export default defineConfig({
 
   // 多個 worker 共用同一組 webServer（4319/4320）。本機無妨，
   // 但 CI runner 較慢時容易出現彼此干擾的競態。CI 上換取確定性。
-  workers: isCI ? 1 : undefined,
+  //
+  // 用條件展開而非 `workers: isCI ? 1 : undefined`：tsconfig 開了
+  // exactOptionalPropertyTypes，明確指派 undefined 給選用屬性會被拒絕。
+  // 這裡要的是「本機不設這個屬性」，不是「設成 undefined」。
+  ...(isCI ? { workers: 1 } : {}),
 
   // 誤留 test.only 會讓 CI 只跑那一條卻顯示綠燈——比失敗更危險。
   forbidOnly: isCI,
