@@ -9,9 +9,8 @@ import {
   getMeta,
   setMeta,
   migrateFromLocalStorage,
-  nextOrder,
-  orderBetween,
 } from '@/db'
+import { nextOrder, orderBetween } from '@/domain/ordering'
 import { META_MIGRATED_FROM_LOCALSTORAGE, STORE_TASKS, type StoredTask } from '@/db/schema'
 import { makeTask } from '@/test/helpers'
 

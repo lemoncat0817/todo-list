@@ -95,3 +95,14 @@ export function createPersistPlugin(options: PersistPluginOptions = {}) {
     )
   }
 }
+
+/**
+ * 小幫手：把 key 與驗證函式包成 persist 選項。
+ * 讓 store 端只寫一行，不必知道 plugin 的選項形狀。
+ */
+export function createPersistOptions(
+  key: string,
+  sanitize: (raw: unknown) => StateTree,
+): PersistOptions {
+  return { key, sanitize }
+}

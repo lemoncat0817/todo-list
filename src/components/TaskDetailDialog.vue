@@ -2,7 +2,7 @@
   <!-- 原生 <dialog> 的 showModal() 由平台提供焦點鎖定、Esc 關閉與背景 inert。
        這正是不引入元件庫的原因：實測 reka-ui 光是 Dialog 就要 +26.10 kB gzip，
        而這些行為瀏覽器本來就給。 -->
-  <dialog ref="dialogEl" class="w-[min(92vw,32rem)] rounded-xl border border-line bg-surface p-0 text-ink shadow-lg backdrop:bg-black/40 backdrop:backdrop-blur-sm"
+  <dialog ref="dialogEl" class="m-auto max-h-[calc(100dvh-2rem)] w-[min(92vw,32rem)] overflow-y-auto rounded-xl border border-line bg-surface p-0 text-ink shadow-lg backdrop:bg-black/40 backdrop:backdrop-blur-sm"
     @close="emit('close')" @cancel="emit('close')">
     <form v-if="draft" method="dialog" class="flex flex-col gap-4 p-5" @submit.prevent="save">
       <h2 class="text-lg font-semibold tracking-tight">編輯代辦事項</h2>
@@ -48,7 +48,7 @@
         <select v-model="projectInput"
           class="h-9 rounded-lg border border-line bg-surface px-2.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none">
           <option value="">未分類</option>
-          <option v-for="p in store.projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+          <option v-for="p in collections.projects" :key="p.id" :value="p.id">{{ p.name }}</option>
         </select>
       </label>
 
@@ -63,8 +63,8 @@
 
       <fieldset class="rounded-lg border border-line p-3">
         <legend class="px-1 text-sm font-medium text-ink-soft">標籤</legend>
-        <p v-if="store.tags.length === 0" class="mb-2 text-sm text-ink-faint">尚未建立任何標籤</p>
-        <label v-for="tag in store.tags" :key="tag.id"
+        <p v-if="collections.tags.length === 0" class="mb-2 text-sm text-ink-faint">尚未建立任何標籤</p>
+        <label v-for="tag in collections.tags" :key="tag.id"
           class="mr-3 inline-flex items-center gap-1.5 text-[15px] text-ink">
           <input type="checkbox" :value="tag.id" :checked="draft.tagIds.includes(tag.id)"
             class="size-4 accent-accent" @change="toggleTag(tag.id)">
@@ -132,7 +132,8 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { useTodoTaskStore } from '@/stores/todoTask'
+import { useTasksStore } from '@/stores/tasks'
+import { useCollectionsStore } from '@/stores/collections'
 import {
   PRIORITY_LABELS,
   WEEKDAYS,
@@ -146,7 +147,8 @@ import { isValidISODate, isValidTime } from '@/domain/dates'
 const props = defineProps<{ task: StoredTask | null }>()
 const emit = defineEmits<{ close: [] }>()
 
-const store = useTodoTaskStore()
+const tasks = useTasksStore()
+const collections = useCollectionsStore()
 const dialogEl = ref<HTMLDialogElement | null>(null)
 const draft = ref<StoredTask | null>(null)
 const dueDateInput = ref('')
@@ -158,13 +160,13 @@ const newTagName = ref('')
 /** 建立後直接選中，省去「建立完還要再選一次」的來回。 */
 function createProject(): void {
   if (newProjectName.value === '') return
-  projectInput.value = store.addProject(newProjectName.value).id
+  projectInput.value = collections.addProject(newProjectName.value).id
   newProjectName.value = ''
 }
 
 function createTag(): void {
   if (newTagName.value === '' || !draft.value) return
-  const tag = store.addTag(newTagName.value)
+  const tag = collections.addTag(newTagName.value)
   draft.value.tagIds = [...draft.value.tagIds, tag.id]
   newTagName.value = ''
 }
@@ -215,7 +217,7 @@ function save(): void {
   if (!current || current.taskName.trim() === '') return
 
   const dueDate = isValidISODate(dueDateInput.value) ? dueDateInput.value : null
-  store.updateTask(current.id, {
+  tasks.update(current.id, {
     taskName: current.taskName.trim(),
     notes: current.notes,
     priority: current.priority,

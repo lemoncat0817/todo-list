@@ -4,17 +4,17 @@
       稽核 P15 / P16：破壞性操作不再用阻塞式 confirm 攔一次，
       改為做完之後可復原。提示放在 footer 上方，不遮擋清單。
     -->
-    <p v-if="store.lastAction" role="status" aria-live="polite"
+    <p v-if="history.lastAction" role="status" aria-live="polite"
       class="animate-rise flex items-center gap-2 border-b border-line bg-sunken px-4 py-2 text-sm sm:px-6">
-      <span class="min-w-0 grow truncate text-ink-soft">{{ store.lastAction }}</span>
-      <button v-if="store.canUndo" type="button" data-test="undo"
+      <span class="min-w-0 grow truncate text-ink-soft">{{ history.lastAction }}</span>
+      <button v-if="history.canUndo" type="button" data-test="undo"
         class="shrink-0 rounded-md px-2 py-1 text-sm font-medium text-accent transition-colors hover:bg-accent-soft"
-        @click="store.undo()">
+        @click="history.undo()">
         復原
       </button>
       <button type="button" aria-label="關閉提示"
         class="grid size-7 shrink-0 place-items-center rounded-md text-ink-faint transition-colors hover:bg-surface hover:text-ink"
-        @click="store.dismissAction()">
+        @click="history.dismiss()">
         <svg viewBox="0 0 16 16" class="size-3.5" aria-hidden="true" fill="none" stroke="currentColor"
           stroke-width="1.8" stroke-linecap="round">
           <path d="m4 4 8 8M12 4l-8 8" />
@@ -34,7 +34,7 @@
       <button type="button"
         class="rounded-md px-2.5 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:bg-danger-soft hover:text-danger-ink disabled:pointer-events-none disabled:opacity-40"
         data-test="clear-completed" :disabled="counts.completed === 0"
-        @click="store.clearCompleted()">
+        @click="tasks.clearCompleted()">
         清除已完成代辦事項
       </button>
     </div>
@@ -43,13 +43,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useTodoTaskStore } from '@/stores/todoTask'
+import { useTasksStore } from '@/stores/tasks'
+import { useHistoryStore } from '@/stores/history'
 
-const store = useTodoTaskStore()
+const tasks = useTasksStore()
+const history = useHistoryStore()
 
-const counts = computed(() => {
-  const all = store.todoList.length
-  const completed = store.todoList.filter((t) => t.isCompleted).length
-  return { all, completed, active: all - completed }
-})
+/** 計數走 domain 的同一條篩選路徑，畫面與分頁標籤不會算出不同答案。 */
+const counts = computed(() => tasks.counts)
 </script>

@@ -7,22 +7,24 @@
   <div class="flex min-h-[100dvh] justify-center bg-canvas px-3 py-4 sm:px-6 sm:py-8">
     <main
       class="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-lg sm:max-h-[calc(100dvh-4rem)]">
-      <todoHeader />
+      <AppHeader />
       <RouterView />
-      <todoFooter />
+      <AppFooter />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
 import { RouterView, useRouter } from 'vue-router'
-import todoHeader from './components/todoHeader.vue'
-import todoFooter from './components/todoFooter.vue'
-import { useTodoTaskStore } from '@/stores/todoTask'
+import AppHeader from './components/AppHeader.vue'
+import AppFooter from './components/AppFooter.vue'
+import { useHistoryStore } from '@/stores/history'
+import { useUiStore } from '@/stores/ui'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { useTheme } from '@/composables/useTheme'
 
-const store = useTodoTaskStore()
+const history = useHistoryStore()
+const ui = useUiStore()
 const router = useRouter()
 
 // 主題在 index.html 的內聯腳本已先套用，這裡接手後續切換與系統偏好變化
@@ -36,11 +38,11 @@ function focus(selector: string): void {
 
 useShortcuts({
   undo: () => {
-    void store.undo()
+    void history.undo()
   },
   focusSearch: () => {
-    if (!store.isSearch) {
-      store.isSearch = true
+    if (!ui.isSearch) {
+      ui.isSearch = true
       void router.isReady().then(() => {
         requestAnimationFrame(() => focus('input[aria-label="搜尋代辦事項"]'))
       })
@@ -49,11 +51,11 @@ useShortcuts({
     focus('input[aria-label="搜尋代辦事項"]')
   },
   focusNew: () => {
-    if (store.isSearch) store.isSearch = false
+    if (ui.isSearch) ui.isSearch = false
     requestAnimationFrame(() => focus('input[aria-label="新增代辦事項"]'))
   },
   escape: () => {
-    store.dismissAction()
+    history.dismiss()
   },
 })
 </script>
