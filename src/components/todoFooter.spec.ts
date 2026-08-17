@@ -22,15 +22,15 @@ describe('todoFooter.vue', () => {
   })
   afterEach(() => vi.restoreAllMocks())
 
-  const counters = (w: Wrapper) =>
-    w.findAll('div.bg-blue-700').map((d) => d.text().replace(/\s+/g, ''))
-  const clearButton = (w: Wrapper) => w.find('button.bg-blue-900')
-  const undoButton = (w: Wrapper) => w.find('button.bg-blue-900.text-white.rounded.px-2')
+  /** 三個計數在同一個 p 裡；抓文字比抓元素穩固，改樣式不會連累測試。 */
+  const counters = (w: Wrapper) => w.find('footer p').text().replace(/\s+/g, '')
+  const clearButton = (w: Wrapper) => w.find('button[data-test=clear-completed]')
+  const undoButton = (w: Wrapper) => w.find('button[data-test=undo]')
 
   describe('統計數字', () => {
     it('空清單時三個計數都是 0', () => {
       const w = mountWith(todoFooter, pinia)
-      expect(counters(w)).toEqual(['全部:0項', '未完成:0項', '已完成:0項'])
+      expect(counters(w)).toBe('全部:0項·未完成:0項·已完成:0項')
     })
 
     it('正確反映全部／未完成／已完成的數量', () => {
@@ -41,17 +41,17 @@ describe('todoFooter.vue', () => {
         makeTask('d', true),
       ]
       const w = mountWith(todoFooter, pinia)
-      expect(counters(w)).toEqual(['全部:4項', '未完成:2項', '已完成:2項'])
+      expect(counters(w)).toBe('全部:4項·未完成:2項·已完成:2項')
     })
 
     it('清單變動後計數同步更新', async () => {
       store.todoList = [makeTask('a', false)]
       const w = mountWith(todoFooter, pinia)
-      expect(counters(w)).toEqual(['全部:1項', '未完成:1項', '已完成:0項'])
+      expect(counters(w)).toBe('全部:1項·未完成:1項·已完成:0項')
 
       at(store.todoList, 0).isCompleted = true
       await w.vm.$nextTick()
-      expect(counters(w)).toEqual(['全部:1項', '未完成:0項', '已完成:1項'])
+      expect(counters(w)).toBe('全部:1項·未完成:0項·已完成:1項')
     })
   })
 

@@ -3,9 +3,24 @@
 
 <head>
   <meta charset="UTF-8">
-  <link rel="icon" href="/todo.svg">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Todolist</title>
+  <link rel="icon" href="./todo.svg">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="純前端的代辦事項工具，資料存在瀏覽器，不需要帳號。">
+  <meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#16181d" media="(prefers-color-scheme: dark)">
+  <title>Todo List</title>
+  <script>
+    // 在解析 body 之前決定主題，避免深色模式使用者看到一閃而過的白畫面（FOUC）。
+    // 這段必須是同步的內聯腳本；放進模組就太晚了。
+    (function () {
+      try {
+        var stored = localStorage.getItem('todoTask:theme')
+        var dark = stored === 'dark' ||
+          (stored !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.classList.toggle('dark', dark)
+      } catch (e) { /* 存取被擋時退回淺色 */ }
+    })()
+  </script>
 </head>
 
 <body>

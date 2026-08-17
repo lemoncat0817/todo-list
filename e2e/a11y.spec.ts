@@ -28,10 +28,10 @@ async function seed(page: Page) {
     ['未完成的事', false],
     ['已完成的事', true],
   ] as const) {
-    await page.getByPlaceholder('請輸入代辦事項').fill(name)
-    await page.getByRole('button', { name: '+' }).click()
+    await page.getByLabel('新增代辦事項').fill(name)
+    await page.getByRole('button', { name: '新增' }).click()
     if (done) {
-      await page.locator('li.bg-gray-300').last().locator('input[type=checkbox]').check()
+      await page.locator('main li').last().locator('input[type=checkbox]').check()
     }
   }
   await expect(page.getByText('全部: 2 項')).toBeVisible()
@@ -66,7 +66,7 @@ for (const screen of SCREENS) {
 
 test('編輯狀態下也維持零違規', async ({ page }) => {
   await seed(page)
-  await page.locator('li.bg-gray-300').first().getByRole('button', { name: '編輯' }).click()
+  await page.locator('main li').first().getByRole('button', { name: '編輯' }).click()
 
   const found = await violationsOf(page)
   if (found.length) for (const f of found) console.log('    ' + f)
@@ -75,7 +75,7 @@ test('編輯狀態下也維持零違規', async ({ page }) => {
 
 test('搜尋模式下也維持零違規', async ({ page }) => {
   await seed(page)
-  await page.getByRole('button', { name: '搜尋模式🔍' }).click()
+  await page.getByRole('button', { name: '搜尋代辦事項' }).click()
 
   const found = await violationsOf(page)
   if (found.length) for (const f of found) console.log('    ' + f)

@@ -1,13 +1,195 @@
-/* Tailwind 4 改為 CSS-first：不再需要 tailwind.config.js 與 postcss.config.js。 */
 @import 'tailwindcss';
 
-/* v4 起 border 與 divide 的預設色改為 currentColor。
-   本專案的樣板大量依賴「未指定顏色時是灰色」的 v3 行為，
-   這裡把預設補回來，避免每一處都要改寫。 */
+/*
+ * 深色模式：Tailwind 4 取消了 config 的 darkMode 選項，改用 @custom-variant。
+ * 用 class 而非純 prefers-color-scheme，才能提供手動切換；
+ * 系統偏好在使用者未選擇時作為預設。
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * 設計 token。
+ *
+ * 全部使用 OKLCH：它的亮度分量與人眼感知一致，因此「同一個 L 值的不同色相
+ * 看起來一樣亮」，調色階時不會有某個色相突然變暗的問題——sRGB 十六進位做不到。
+ * oklch() 於 2026-06 進入 Baseline widely available。
+ *
+ * 命名一律語意化（surface / ink / accent…）而非顏色名，
+ * 因為深色模式下「blue-700」這種名字會失去意義。
+ */
+@theme {
+  /* --- 中性色：帶一點藍調偏移，純灰看起來會像沒調過 --- */
+  --color-canvas: oklch(0.985 0.003 260);
+  --color-surface: oklch(1 0 0);
+  --color-sunken: oklch(0.968 0.005 260);
+  --color-line: oklch(0.918 0.008 260);
+  --color-line-strong: oklch(0.845 0.012 260);
+
+  --color-ink: oklch(0.23 0.02 260);
+  --color-ink-soft: oklch(0.44 0.018 260);
+  /*
+   * L=0.54 而非看起來更「淡」的 0.58 —— 實測對比度：
+   *   L=0.58 → surface 4.27 / canvas 4.09 / sunken 3.90（全數未達 AA）
+   *   L=0.54 → surface 5.05 / canvas 4.84 / sunken 4.62（全數達標）
+   * 最淺的次要文字必須以最深的那層背景（sunken）為準，否則放到卡片上就破了。
+   */
+  --color-ink-faint: oklch(0.54 0.015 260);
+
+  /* --- 強調色：靛藍，用於主要動作與目前狀態 --- */
+  --color-accent: oklch(0.53 0.19 268);
+  --color-accent-hover: oklch(0.46 0.19 268);
+  --color-accent-soft: oklch(0.955 0.02 268);
+  --color-accent-ink: oklch(0.38 0.16 268);
+
+  /* --- 語意色：與強調色分開，否則「重要」和「危險」會混淆 --- */
+  --color-danger: oklch(0.52 0.2 25);
+  --color-danger-hover: oklch(0.45 0.2 25);
+  --color-danger-soft: oklch(0.96 0.025 25);
+  --color-danger-ink: oklch(0.43 0.17 25);
+
+  --color-success: oklch(0.5 0.14 155);
+  --color-success-soft: oklch(0.955 0.03 155);
+  --color-success-ink: oklch(0.38 0.12 155);
+
+  --color-warning-soft: oklch(0.96 0.04 80);
+  --color-warning-ink: oklch(0.42 0.11 70);
+
+  /* --- 優先度：不用彩虹色，只用強度遞增 --- */
+  --color-p1: oklch(0.5 0.03 260);
+  --color-p2: oklch(0.5 0.13 250);
+  --color-p3: oklch(0.5 0.2 25);
+
+  /* --- 間距：4px 基準 --- */
+  --spacing: 0.25rem;
+
+  /* --- 圓角：一致的節奏，避免每個元件各自為政 --- */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+
+  /* --- 陰影：低飽和藍調而非純黑，純黑在彩色背景上會顯髒 --- */
+  --shadow-xs: 0 1px 2px oklch(0.23 0.02 260 / 0.06);
+  --shadow-sm: 0 1px 3px oklch(0.23 0.02 260 / 0.08), 0 1px 2px oklch(0.23 0.02 260 / 0.04);
+  --shadow-md: 0 4px 12px oklch(0.23 0.02 260 / 0.08), 0 1px 3px oklch(0.23 0.02 260 / 0.05);
+  --shadow-lg: 0 12px 32px oklch(0.23 0.02 260 / 0.12), 0 2px 8px oklch(0.23 0.02 260 / 0.06);
+
+  /* --- 字體：系統堆疊，含正體中文常見字型 --- */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Noto Sans TC', 'PingFang TC',
+    'Microsoft JhengHei', sans-serif;
+
+  /* --- 動態 --- */
+  --animate-rise: rise 0.18s cubic-bezier(0.2, 0, 0, 1);
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(0.5rem);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+/*
+ * 深色模式的 token 覆寫。
+ *
+ * 不是把亮色反轉——直接反轉會讓彩色在深色背景上過飽和刺眼。
+ * 強調色改為提高亮度、略降彩度，才能在深色表面維持可讀且不刺眼。
+ */
 @layer base {
-  *,
-  ::after,
-  ::before {
-    border-color: var(--color-gray-200, currentColor);
+  .dark {
+    --color-canvas: oklch(0.19 0.012 260);
+    --color-surface: oklch(0.235 0.014 260);
+    --color-sunken: oklch(0.21 0.013 260);
+    --color-line: oklch(0.31 0.016 260);
+    --color-line-strong: oklch(0.42 0.02 260);
+
+    --color-ink: oklch(0.96 0.006 260);
+    --color-ink-soft: oklch(0.79 0.012 260);
+    --color-ink-faint: oklch(0.66 0.014 260);
+
+    --color-accent: oklch(0.72 0.15 268);
+    --color-accent-hover: oklch(0.79 0.15 268);
+    --color-accent-soft: oklch(0.3 0.06 268);
+    --color-accent-ink: oklch(0.85 0.1 268);
+
+    --color-danger: oklch(0.7 0.17 25);
+    --color-danger-hover: oklch(0.77 0.17 25);
+    --color-danger-soft: oklch(0.31 0.07 25);
+    --color-danger-ink: oklch(0.85 0.11 25);
+
+    --color-success: oklch(0.72 0.13 155);
+    --color-success-soft: oklch(0.28 0.05 155);
+    --color-success-ink: oklch(0.86 0.1 155);
+
+    --color-warning-soft: oklch(0.3 0.05 75);
+    --color-warning-ink: oklch(0.87 0.1 80);
+
+    --color-p1: oklch(0.7 0.03 260);
+    --color-p2: oklch(0.74 0.12 250);
+    --color-p3: oklch(0.72 0.17 25);
+
+    --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.3);
+    --shadow-sm: 0 1px 3px oklch(0 0 0 / 0.36), 0 1px 2px oklch(0 0 0 / 0.24);
+    --shadow-md: 0 4px 12px oklch(0 0 0 / 0.4), 0 1px 3px oklch(0 0 0 / 0.26);
+    --shadow-lg: 0 12px 32px oklch(0 0 0 / 0.5), 0 2px 8px oklch(0 0 0 / 0.3);
+  }
+}
+
+@layer base {
+  /*
+   * color-scheme 讓瀏覽器原生 UI（捲軸、日期選擇器、核取方塊）跟著主題走。
+   * 少了這行，深色模式下的原生控制項會是刺眼的白色。
+   */
+  :root {
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /*
+   * 焦點樣式統一在這裡定義，而不是每個元件各寫一次。
+   * 用 :focus-visible 而非 :focus——後者會讓滑鼠點擊也出現外框，
+   * 使用者覺得是 bug，開發者就會把整個焦點樣式關掉，鍵盤使用者因此受害。
+   */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+
+  /* 尊重減少動態偏好——這是無障礙要求，不是可選項 */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
