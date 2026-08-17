@@ -189,3 +189,34 @@ test.describe('空狀態', () => {
     await expect(page.getByText('找不到符合「找不到的東西」的代辦事項')).toBeVisible()
   })
 })
+
+test.describe('歷史缺陷的回歸防線', () => {
+  /**
+   * origin/main 有一個從未合併進 master 的修正（b3924b1，2024-04）：
+   * 「剛新增的代辦事項一使用編輯就立即被刪除」。
+   * 當時的成因是 id 由 Date.now() 產生，同毫秒新增會碰撞，
+   * 編輯時的查找因此指到別筆。現在 id 是 UUID 且編輯狀態是元件區域的，
+   * 這條路徑結構上已不可能重現——留一條測試把它正式退役。
+   */
+  test('新增後立刻編輯不會讓項目消失', async ({ page }) => {
+    await addTask(page, '剛新增的項目')
+    await expect(rows(page)).toHaveCount(1)
+
+    await rows(page).first().getByRole('button', { name: /^編輯「/ }).click()
+    await page.getByRole('textbox', { name: /^編輯「/ }).fill('改過了')
+    await rows(page).first().getByRole('button', { name: /^保存「/ }).click()
+
+    await expect(rows(page), '項目仍在').toHaveCount(1)
+    await expect(names(page).first()).toHaveText('改過了')
+  })
+
+  test('連續新增多筆後逐一編輯，彼此不互相影響', async ({ page }) => {
+    for (const n of ['一', '二', '三']) await addTask(page, n)
+
+    await rows(page).nth(1).getByRole('button', { name: /^編輯「/ }).click()
+    await page.getByRole('textbox', { name: /^編輯「/ }).fill('第二筆改過')
+    await rows(page).nth(1).getByRole('button', { name: /^保存「/ }).click()
+
+    await expect(names(page)).toHaveText(['一', '第二筆改過', '三'])
+  })
+})
