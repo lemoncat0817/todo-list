@@ -29,7 +29,7 @@ describe('AppHeader.vue', () => {
   const textInput = (w: Wrapper) => w.find('input[aria-label="新增代辦事項"]')
   const addButton = (w: Wrapper) => w.find('button[aria-label="新增"]')
 
-  describe('addTask（AppHeader.vue:36-47）', () => {
+  describe('addTask（AppHeader.vue:101-106）', () => {
     it('輸入內容後新增，並清空輸入框', async () => {
       const w = mountWith(AppHeader, pinia)
       await textInput(w).setValue('寫測試')
@@ -94,7 +94,7 @@ describe('AppHeader.vue', () => {
     })
   })
 
-  describe('isAll 全選 computed（AppHeader.vue:49-58）', () => {
+  describe('isAll 全選 computed（AppHeader.vue:53-58, 108-113）', () => {
     const checkbox = (w: Wrapper) => w.find('input[type="checkbox"]')
 
     it('全部完成時為已勾選', () => {
@@ -135,9 +135,19 @@ describe('AppHeader.vue', () => {
       store.items = [makeTask('a', false)]
       expect(mountWith(AppHeader, pinia).find('input[type="checkbox"]').exists()).toBe(true)
     })
+
+    it('搜尋中隱藏全選框：它作用在全部任務，不是眼前的篩選結果，避免誤觸', async () => {
+      store.items = [makeTask('a', false)]
+      const w = mountWith(AppHeader, pinia)
+      expect(w.find('input[type="checkbox"]').exists()).toBe(true)
+
+      ui.isSearch = true
+      await w.vm.$nextTick()
+      expect(w.find('input[type="checkbox"]').exists()).toBe(false)
+    })
   })
 
-  describe('searchMode 切換（AppHeader.vue:60-64）', () => {
+  describe('searchMode 切換（AppHeader.vue:12-15, 72-76）', () => {
     const modeButton = (w: Wrapper) =>
     w.find(`button[aria-label="搜尋代辦事項"], button[aria-label="結束搜尋"]`)
 
@@ -162,12 +172,17 @@ describe('AppHeader.vue', () => {
       expect(ui.keyword).toBe('')
     })
 
-    it('搜尋模式下顯示關鍵字輸入框，隱藏新增輸入框', async () => {
+    it('搜尋模式下新增輸入框仍在，另外顯示搜尋輸入框（不再互相取代）', async () => {
       const w = mountWith(AppHeader, pinia)
       await modeButton(w).trigger('click')
 
-      expect(textInput(w).exists()).toBe(false)
+      expect(textInput(w).exists(), '搜尋不該頂掉新增輸入框').toBe(true)
       expect(w.find('input[aria-label="搜尋代辦事項"]').exists()).toBe(true)
+    })
+
+    it('關閉搜尋時搜尋輸入框整個不渲染，不佔版面', () => {
+      const w = mountWith(AppHeader, pinia)
+      expect(w.find('input[aria-label="搜尋代辦事項"]').exists()).toBe(false)
     })
 
     it('關鍵字輸入會寫進 store', async () => {

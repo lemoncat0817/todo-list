@@ -1,42 +1,22 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { createPersistOptions } from '@/infra/persist'
 
 /**
- * UI 偏好。
+ * UI 互動狀態：搜尋模式與關鍵字。
  *
- * 與領域資料分開持久化：任務本體在 IndexedDB，這裡只有幾個小旗標，
- * 用 localStorage 反而更合適（同步讀取、開頁時不需要等）。
+ * 刻意不持久化。這裡原本跟著 localStorage 走，結果搜尋開著時重新整理頁面，
+ * 新增輸入框會被搜尋框取代且回不去——使用者等於卡在搜尋畫面。搜尋是一次性的
+ * 操作情境，不是值得記住的偏好，所以改成單純的記憶體狀態，重新整理就重置。
  */
+export const useUiStore = defineStore('ui', () => {
+  const isSearch = ref(false)
+  const keyword = ref('')
 
-interface UiPrefs {
-  isSearch: boolean
-  keyword: string
-}
+  function toggleSearch(): void {
+    isSearch.value = !isSearch.value
+    // 離開搜尋時清空關鍵字，否則回到清單會看到被過濾過的結果卻沒有可見的原因
+    keyword.value = ''
+  }
 
-/** 邊界驗證：外部寫進來的壞值不該影響畫面（稽核 P2 的教訓）。 */
-function sanitizeUiPrefs(raw: unknown): Partial<UiPrefs> {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
-  const value = raw as Record<string, unknown>
-  const prefs: Partial<UiPrefs> = {}
-  if (typeof value.isSearch === 'boolean') prefs.isSearch = value.isSearch
-  if (typeof value.keyword === 'string') prefs.keyword = value.keyword
-  return prefs
-}
-
-export const useUiStore = defineStore(
-  'ui',
-  () => {
-    const isSearch = ref(false)
-    const keyword = ref('')
-
-    function toggleSearch(): void {
-      isSearch.value = !isSearch.value
-      // 離開搜尋時清空關鍵字，否則回到清單會看到被過濾過的結果卻沒有可見的原因
-      keyword.value = ''
-    }
-
-    return { isSearch, keyword, toggleSearch }
-  },
-  { persist: createPersistOptions('todoTask:ui', sanitizeUiPrefs) },
-)
+  return { isSearch, keyword, toggleSearch }
+})
