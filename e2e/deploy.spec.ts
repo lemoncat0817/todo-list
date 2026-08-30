@@ -4,7 +4,7 @@ import { SUBPATH_BASE } from '../playwright.config'
 /**
  * 部署形狀驗證。
  *
- * 這些測試刻意不走 baseURL，而是連到掛在 /Vue-TodoList/ 之下的第二個伺服器，
+ * 這些測試刻意不走 baseURL，而是連到掛在 SUBPATH_BASE（子路徑，見 playwright.config.ts）之下的第二個伺服器，
  * 模擬 GitHub Pages 的實際部署路徑。目的是讓「能不能部署」在每一個階段都被
  * 自動驗證，而不是等到最後才發現。
  */

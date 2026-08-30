@@ -12,8 +12,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+const pkg = JSON.parse(
+  fs.readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf-8'),
+)
+
 const port = Number(process.argv[2] ?? 4320)
-const basePath = process.argv[3] ?? '/Vue-TodoList/'
+// 預設子路徑跟著 package.json 的 name 走，改 repo 名稱時不必手動同步。
+const basePath = process.argv[3] ?? `/${pkg.name}/`
 const dist = path.resolve(fileURLToPath(new URL('../dist', import.meta.url)))
 
 const MIME = {

@@ -34,7 +34,7 @@ export const routes: RouteRecordRaw[] = [
 ]
 
 export const router = createRouter({
-  // GitHub Pages 沒有 SPA fallback（已實測 /Vue-TodoList/active 回 404）。
+  // GitHub Pages 沒有 SPA fallback（子路徑下重新整理，例如 /<repo>/active，已實測回 404）。
   // hash 模式不需要 404.html 這類技巧，重新整理也不會掛。
   history: createWebHashHistory(),
   routes,

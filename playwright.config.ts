@@ -1,7 +1,18 @@
 import { defineConfig, devices } from '@playwright/test'
+import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
-/** 模擬 GitHub Pages 子路徑部署的 origin，供 deploy.spec.ts 使用。 */
-export const SUBPATH_BASE = 'http://localhost:4320/Vue-TodoList/'
+// Playwright 用 Node 原生 ESM 載入這個檔案，import 屬性寫法在不同 Node 版本間不穩定，
+// 改用 fs 讀檔避免踩坑（scripts/serve-subpath.mjs 同理）。
+const pkg = JSON.parse(fs.readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf-8')) as {
+  name: string
+}
+
+/**
+ * 模擬 GitHub Pages 子路徑部署的 origin，供 deploy.spec.ts 使用。
+ * 子路徑取自 package.json 的 name，跟著 repo 名稱走，改名時不必手動同步。
+ */
+export const SUBPATH_BASE = `http://localhost:4320/${pkg.name}/`
 
 const isCI = !!process.env.CI
 
@@ -55,7 +66,7 @@ export default defineConfig({
     },
     {
       // 同一份 dist 掛在子路徑下，持續驗證 GitHub Pages 的部署形狀。
-      command: 'node scripts/serve-subpath.mjs 4320 /Vue-TodoList/',
+      command: 'node scripts/serve-subpath.mjs 4320',
       url: SUBPATH_BASE,
       reuseExistingServer: false,
       timeout: 120_000,

@@ -2,12 +2,12 @@
 
 一個純前端的代辦事項工具。資料存在瀏覽器的 IndexedDB。
 
-[![CI](https://github.com/lemoncat0817/Vue-TodoList/actions/workflows/ci.yml/badge.svg)](https://github.com/lemoncat0817/Vue-TodoList/actions/workflows/ci.yml)
-[![Deploy](https://github.com/lemoncat0817/Vue-TodoList/actions/workflows/deploy.yml/badge.svg)](https://github.com/lemoncat0817/Vue-TodoList/actions/workflows/deploy.yml)
+[![CI](https://github.com/lemoncat0817/todo-list/actions/workflows/ci.yml/badge.svg)](https://github.com/lemoncat0817/todo-list/actions/workflows/ci.yml)
+[![Deploy](https://github.com/lemoncat0817/todo-list/actions/workflows/deploy.yml/badge.svg)](https://github.com/lemoncat0817/todo-list/actions/workflows/deploy.yml)
 [![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 
-**Demo**：https://lemoncat0817.github.io/Vue-TodoList/
+**Demo**：https://lemoncat0817.github.io/todo-list/
 
 ## 功能
 
