@@ -55,6 +55,12 @@ useShortcuts({
     requestAnimationFrame(() => focus('input[aria-label="新增代辦事項"]'))
   },
   escape: () => {
+    // 先關掉當前開著的搜尋，跟大部分搜尋框的慣例一致；
+    // 沒有搜尋在開時才退而求其次去關 toast 提示。
+    if (ui.isSearch) {
+      ui.toggleSearch()
+      return
+    }
     history.dismiss()
   },
 })
