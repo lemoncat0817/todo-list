@@ -5,8 +5,11 @@
   -->
   <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions -->
   <li draggable="true"
-    class="group animate-rise rounded-lg border border-line bg-surface px-3 py-2.5 transition-colors hover:border-line-strong"
-    :class="{ 'opacity-50': dragging }" @dragstart="emit('dragstart')" @dragover.prevent
+    class="group animate-rise rounded-lg border bg-surface px-3 py-2.5 transition-colors"
+    :class="[
+      dragging ? 'opacity-50' : '',
+      selected ? 'border-accent ring-1 ring-accent' : 'border-line hover:border-line-strong',
+    ]" @dragstart="emit('dragstart')" @dragover.prevent
     @drop="emit('drop')" @dragend="emit('dragend')">
     <div class="flex items-start gap-3">
       <input :checked="task.isCompleted" type="checkbox"
@@ -98,6 +101,8 @@ const props = defineProps<{
   task: StoredTask
   editing: boolean
   dragging: boolean
+  /** 這一列正顯示在詳情面板裡——寬螢幕需要看得出面板對應的是哪一列 */
+  selected: boolean
   isFirst: boolean
   isLast: boolean
 }>()

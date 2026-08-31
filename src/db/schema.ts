@@ -14,6 +14,10 @@ export const META_MIGRATED_FROM_LOCALSTORAGE = 'migratedFromLocalStorage'
 export const UNCATEGORIZED = null
 
 export type Priority = 0 | 1 | 2 | 3
+
+/** 選單與快捷鍵一律走這個順序，避免各處自行決定要不要倒著列。 */
+export const PRIORITY_ORDER: readonly Priority[] = [0, 1, 2, 3]
+
 export const PRIORITY_LABELS: Record<Priority, string> = {
   0: '無',
   1: '低',
@@ -115,3 +119,33 @@ export const DEFAULT_TASK_FIELDS: Omit<
   recurrence: null,
   completedAt: null,
 }
+
+/**
+ * 專案與標籤的可選顏色。
+ *
+ * 用固定調色盤而非自由選色器有兩個理由：自由選色讓使用者能選出在深色模式下
+ * 讀不到的顏色，而這裡的顏色只出現在小圓點上，色相太接近反而分不出來。
+ * 十二色已經超過大多數人實際會建立的專案數。
+ */
+export interface CollectionColor {
+  name: string
+  value: string
+}
+
+export const COLLECTION_COLORS: readonly CollectionColor[] = [
+  { name: '靛藍', value: '#1d4ed8' },
+  { name: '天藍', value: '#0284c7' },
+  { name: '青綠', value: '#0d9488' },
+  { name: '森綠', value: '#15803d' },
+  { name: '萊姆', value: '#65a30d' },
+  { name: '琥珀', value: '#d97706' },
+  { name: '橘', value: '#ea580c' },
+  { name: '紅', value: '#dc2626' },
+  { name: '玫瑰', value: '#e11d48' },
+  { name: '紫', value: '#7c3aed' },
+  { name: '洋紅', value: '#c026d3' },
+  { name: '石墨', value: '#64748b' },
+]
+
+export const DEFAULT_PROJECT_COLOR = '#1d4ed8'
+export const DEFAULT_TAG_COLOR = '#15803d'

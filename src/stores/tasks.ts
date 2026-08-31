@@ -6,6 +6,7 @@ import { createTask } from '@/domain/task'
 import { nextOccurrence } from '@/domain/recurrence'
 import { nextOrder, orderBetween, sortByOrder } from '@/domain/ordering'
 import { countByFilter, queryTasks, type TaskFilter, type TaskQuery } from '@/domain/filtering'
+import { overdueCount, resolveView, viewCount, type TaskGroup, type ViewSpec } from '@/domain/views'
 import { useHistoryStore } from './history'
 import { useCollectionsStore } from './collections'
 import { useUiStore } from './ui'
@@ -45,6 +46,25 @@ export const useTasksStore = defineStore('tasks', () => {
   )
 
   const counts = computed(() => countByFilter(items.value, { keyword: ui.keyword }))
+
+  /**
+   * 檢視的分組結果。清單本體與側邊欄徽章都走這條路徑（domain/views），
+   * 沿用「一條路徑」的規矩——數字與內容不可能對不上。
+   */
+  const groupsOf = computed(
+    () =>
+      (spec: ViewSpec): TaskGroup[] =>
+        resolveView(items.value, spec, { keyword: ui.keyword }),
+  )
+
+  /** 側邊欄徽章：刻意不套關鍵字，搜尋中仍要看得到各入口的真實數量。 */
+  const countOf = computed(
+    () =>
+      (spec: ViewSpec): number =>
+        viewCount(items.value, spec),
+  )
+
+  const overdue = computed(() => overdueCount(items.value))
 
   const remaining = computed(() => items.value.filter((t) => !t.isCompleted).length)
 
@@ -375,6 +395,9 @@ export const useTasksStore = defineStore('tasks', () => {
     migration,
     visible,
     counts,
+    groupsOf,
+    countOf,
+    overdue,
     remaining,
     query,
     init,

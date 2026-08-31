@@ -1,7 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { loadProjects, loadTags, saveProjects, saveTags } from '@/db'
-import type { StoredProject, StoredTag } from '@/db/schema'
+import {
+  DEFAULT_PROJECT_COLOR,
+  DEFAULT_TAG_COLOR,
+  type StoredProject,
+  type StoredTag,
+} from '@/db/schema'
 import { nextOrder } from '@/domain/ordering'
 import { useHistoryStore } from './history'
 
@@ -29,7 +34,7 @@ export const useCollectionsStore = defineStore('collections', () => {
 
   // ------------------------------------------------------------- 專案
 
-  function addProject(name: string, color = '#1d4ed8'): StoredProject {
+  function addProject(name: string, color = DEFAULT_PROJECT_COLOR): StoredProject {
     const project: StoredProject = {
       id: crypto.randomUUID(),
       name,
@@ -44,6 +49,29 @@ export const useCollectionsStore = defineStore('collections', () => {
       },
     })
     return project
+  }
+
+  /**
+   * 改名與換色。走同一個入口而不是各寫一支，是因為兩者的復原邏輯完全相同：
+   * 記住整筆舊值再放回去，不需要為每個欄位維護一份反向操作。
+   */
+  function updateProject(id: string, patch: Partial<Omit<StoredProject, 'id'>>): void {
+    const index = projects.value.findIndex((p) => p.id === id)
+    if (index === -1) return
+    const before = { ...(projects.value[index] as StoredProject) }
+    const after = { ...before, ...patch }
+    projects.value[index] = after
+    history.record({
+      label: `修改專案「${before.name}」`,
+      undo: () => {
+        const i = projects.value.findIndex((p) => p.id === id)
+        if (i !== -1) projects.value[i] = before
+      },
+      redo: () => {
+        const i = projects.value.findIndex((p) => p.id === id)
+        if (i !== -1) projects.value[i] = after
+      },
+    })
   }
 
   /**
@@ -63,7 +91,7 @@ export const useCollectionsStore = defineStore('collections', () => {
 
   // ------------------------------------------------------------- 標籤
 
-  function addTag(name: string, color = '#15803d'): StoredTag {
+  function addTag(name: string, color = DEFAULT_TAG_COLOR): StoredTag {
     const tag: StoredTag = { id: crypto.randomUUID(), name, color }
     tags.value.push(tag)
     history.record({
@@ -73,6 +101,25 @@ export const useCollectionsStore = defineStore('collections', () => {
       },
     })
     return tag
+  }
+
+  function updateTag(id: string, patch: Partial<Omit<StoredTag, 'id'>>): void {
+    const index = tags.value.findIndex((t) => t.id === id)
+    if (index === -1) return
+    const before = { ...(tags.value[index] as StoredTag) }
+    const after = { ...before, ...patch }
+    tags.value[index] = after
+    history.record({
+      label: `修改標籤「${before.name}」`,
+      undo: () => {
+        const i = tags.value.findIndex((t) => t.id === id)
+        if (i !== -1) tags.value[i] = before
+      },
+      redo: () => {
+        const i = tags.value.findIndex((t) => t.id === id)
+        if (i !== -1) tags.value[i] = after
+      },
+    })
   }
 
   function removeTag(id: string): StoredTag | null {
@@ -92,9 +139,11 @@ export const useCollectionsStore = defineStore('collections', () => {
     load,
     flush,
     addProject,
+    updateProject,
     removeProject,
     restoreProject,
     addTag,
+    updateTag,
     removeTag,
     restoreTag,
   }

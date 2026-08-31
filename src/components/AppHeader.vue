@@ -1,11 +1,22 @@
 <template>
-  <header class="shrink-0 border-b border-line px-4 pt-4 pb-3 sm:px-6 sm:pt-6">
+  <header class="shrink-0 border-b border-line px-4 pt-4 pb-3 sm:px-6">
     <div class="flex items-center justify-between gap-3">
-      <div class="min-w-0">
-        <h1 class="truncate text-xl font-semibold tracking-tight text-ink sm:text-2xl">代辦事項</h1>
-        <p class="mt-0.5 text-sm text-ink-faint">
-          {{ tasks.remaining === 0 ? '目前沒有待辦的事' : `還有 ${tasks.remaining} 件事要做` }}
-        </p>
+      <div class="flex min-w-0 items-center gap-2">
+        <button v-if="!isDesktop" type="button" aria-label="開啟導覽"
+          class="grid size-9 shrink-0 place-items-center rounded-md text-ink-soft transition-colors hover:bg-sunken hover:text-ink"
+          @click="ui.openSidebar()">
+          <svg viewBox="0 0 20 20" class="size-5" aria-hidden="true" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round">
+            <path d="M3.5 6h13M3.5 10h13M3.5 14h13" />
+          </svg>
+        </button>
+
+        <div class="min-w-0">
+          <h1 class="truncate text-xl font-semibold tracking-tight text-ink sm:text-2xl">{{ title }}</h1>
+          <p class="mt-0.5 text-sm text-ink-faint">
+            {{ tasks.remaining === 0 ? '目前沒有待辦的事' : `還有 ${tasks.remaining} 件事要做` }}
+          </p>
+        </div>
       </div>
 
       <div class="flex shrink-0 items-center gap-1">
@@ -44,8 +55,7 @@
 
     <!--
       新增列一律可見——搜尋不再頂掉它。之前搜尋與新增共用同一個位置，
-      切換到搜尋後新增輸入框會整個消失，使用者得先手動關掉搜尋才能補一筆待辦，
-      重新整理頁面時（isSearch 曾經被持久化）甚至會直接卡在搜尋畫面。
+      切換到搜尋後新增輸入框會整個消失，使用者得先手動關掉搜尋才能補一筆待辦。
       「全部標記為完成」只在非搜尋狀態顯示：它作用在全部任務上，不是眼前這幾筆
       篩選結果，搜尋中放在一起容易讓人誤以為是「全選搜尋結果」。
     -->
@@ -58,7 +68,7 @@
       </label>
 
       <div class="flex min-w-0 grow items-center gap-2">
-        <input v-model.trim="draft" aria-label="新增代辦事項" placeholder="要做什麼？" enterkeyhint="done"
+        <input v-model.trim="draft" aria-label="新增代辦事項" :placeholder="placeholder" enterkeyhint="done"
           class="h-10 min-w-0 grow rounded-lg border border-line bg-surface px-3 text-base text-ink placeholder:text-ink-faint transition-colors focus:border-accent focus:outline-none"
           @keyup.enter="submit">
         <button type="button" aria-label="新增"
@@ -82,10 +92,16 @@ import { computed, ref } from 'vue'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
 import { useTheme } from '@/composables/useTheme'
+import { useCurrentView } from '@/composables/useCurrentView'
+import { useMediaQuery } from '@/composables/useMediaQuery'
+import { today } from '@/domain/dates'
+import type { StoredTask } from '@/db/schema'
 
 const tasks = useTasksStore()
 const ui = useUiStore()
 const { preference, cycle } = useTheme()
+const { spec, title } = useCurrentView()
+const isDesktop = useMediaQuery('(min-width: 1024px)')
 
 const themeLabel = computed(
   () =>
@@ -98,10 +114,34 @@ const themeLabel = computed(
 
 const draft = ref('')
 
+/**
+ * 新增時繼承目前檢視的脈絡。
+ *
+ * 在「工作」專案底下新增，理所當然屬於「工作」；在「今天」底下新增，
+ * 理所當然是今天要做的。少了這一步，使用者每加一筆都得再開一次詳情去補分類——
+ * 那正是原本最花時間的地方。
+ */
+const contextOverrides = computed<Partial<StoredTask>>(() => {
+  switch (spec.value.kind) {
+    case 'today':
+      return { dueDate: today() }
+    case 'project':
+      return spec.value.id === null ? {} : { projectId: spec.value.id }
+    case 'label':
+      return spec.value.id === null ? {} : { tagIds: [spec.value.id] }
+    default:
+      return {}
+  }
+})
+
+const placeholder = computed(() =>
+  spec.value.kind === 'today' ? '今天要做什麼？' : '要做什麼？',
+)
+
 /** 空值時按鈕停用，不用 alert 事後責備使用者。 */
 function submit(): void {
   if (draft.value === '') return
-  tasks.add(draft.value)
+  tasks.add(draft.value, contextOverrides.value)
   draft.value = ''
 }
 

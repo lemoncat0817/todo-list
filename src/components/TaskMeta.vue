@@ -15,12 +15,19 @@
       ↻ {{ describeRecurrence(task.recurrence) }}
     </span>
 
-    <span v-if="project" class="rounded bg-accent-soft px-1.5 py-0.5 text-[12px] font-medium text-accent-ink">
+    <!--
+      專案與標籤用「彩色圓點 + 一般文字」而不是彩色底色。
+      使用者選的顏色是任意的，拿它當背景就沒辦法保證與文字的對比達標；
+      圓點只是輔助辨識，旁邊一定有文字，色盲使用者也不會失去資訊。
+    -->
+    <span v-if="project" class="inline-flex items-center gap-1 rounded bg-sunken px-1.5 py-0.5 text-[12px] font-medium text-ink-soft">
+      <span class="size-2 rounded-full" :style="{ backgroundColor: project.color }" aria-hidden="true" />
       {{ project.name }}
     </span>
 
     <span v-for="tag in tags" :key="tag.id"
-      class="rounded bg-success-soft px-1.5 py-0.5 text-[12px] font-medium text-success-ink">
+      class="inline-flex items-center gap-1 rounded bg-sunken px-1.5 py-0.5 text-[12px] font-medium text-ink-soft">
+      <span class="size-2 rounded-full" :style="{ backgroundColor: tag.color }" aria-hidden="true" />
       #{{ tag.name }}
     </span>
   </p>

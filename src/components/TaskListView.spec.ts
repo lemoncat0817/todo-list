@@ -3,7 +3,7 @@ import TaskListView from '@/components/TaskListView.vue'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
 import type { Pinia } from 'pinia'
-import type { TaskFilter } from '@/domain/filtering'
+import type { ViewKind } from '@/domain/views'
 import {
   freshPinia, mountWith, stubDialogs, makeTask, at, asInput, testRouter,
   type Wrapper, type DialogLog,
@@ -38,72 +38,72 @@ describe('TaskListView.vue', () => {
       makeTask('寫測試', false, { id: '3' }),
     ]
   }
-  describe('taskList 過濾（由路由 filter prop 驅動）', () => {
-    it('filter=all 顯示全部', () => {
+  describe('檢視過濾（由路由 viewKind prop 驅動）', () => {
+    it('viewKind=all 顯示全部', () => {
       seed()
-      const w = mountWith(TaskListView, pinia, { props: { filter: 'all' }, router: testRouter() })
+      const w = mountWith(TaskListView, pinia, { props: { viewKind: 'all' }, router: testRouter() })
       expect(names(w)).toEqual(['Buy Milk', 'buy milk', '寫測試'])
     })
 
-    it('filter 未指定時預設為 all', () => {
+    it('viewKind 未指定時預設為 all', () => {
       seed()
       const w = mountWith(TaskListView, pinia, { router: testRouter() })
       expect(names(w)).toEqual(['Buy Milk', 'buy milk', '寫測試'])
     })
 
-    it('filter=active 只顯示未完成', () => {
+    it('viewKind=active 只顯示未完成', () => {
       seed()
-      const w = mountWith(TaskListView, pinia, { props: { filter: 'active' }, router: testRouter() })
+      const w = mountWith(TaskListView, pinia, { props: { viewKind: 'active' }, router: testRouter() })
       expect(names(w)).toEqual(['Buy Milk', '寫測試'])
     })
 
-    it('filter=completed 只顯示已完成', () => {
+    it('viewKind=completed 只顯示已完成', () => {
       seed()
-      const w = mountWith(TaskListView, pinia, { props: { filter: 'completed' }, router: testRouter() })
+      const w = mountWith(TaskListView, pinia, { props: { viewKind: 'completed' }, router: testRouter() })
       expect(names(w)).toEqual(['buy milk'])
     })
 
-    it('keyword 疊加 filter=all', () => {
+    it('keyword 疊加 viewKind=all', () => {
       seed()
       ui.keyword = 'buy'
-      const w = mountWith(TaskListView, pinia, { props: { filter: 'all' }, router: testRouter() })
+      const w = mountWith(TaskListView, pinia, { props: { viewKind: 'all' }, router: testRouter() })
       expect(names(w)).toEqual(['Buy Milk', 'buy milk'])
     })
 
-    it('keyword 疊加 filter=active', () => {
+    it('keyword 疊加 viewKind=active', () => {
       seed()
       ui.keyword = 'i'
-      const w = mountWith(TaskListView, pinia, { props: { filter: 'active' }, router: testRouter() })
+      const w = mountWith(TaskListView, pinia, { props: { viewKind: 'active' }, router: testRouter() })
       expect(names(w)).toEqual(['Buy Milk'])
     })
 
-    it('keyword 疊加 filter=completed', () => {
+    it('keyword 疊加 viewKind=completed', () => {
       seed()
       ui.keyword = 'i'
-      const w = mountWith(TaskListView, pinia, { props: { filter: 'completed' }, router: testRouter() })
+      const w = mountWith(TaskListView, pinia, { props: { viewKind: 'completed' }, router: testRouter() })
       expect(names(w)).toEqual(['buy milk'])
     })
 
     it('搜尋大小寫不敏感（稽核 P4 已修正）', () => {
       seed()
       ui.keyword = 'buy'
-      const w = mountWith(TaskListView, pinia, { props: { filter: 'all' }, router: testRouter() })
+      const w = mountWith(TaskListView, pinia, { props: { viewKind: 'all' }, router: testRouter() })
       expect(names(w)).toEqual(['Buy Milk', 'buy milk'])
     })
 
     it('全形關鍵字可命中半形內容（稽核 P4 已修正）', () => {
       store.items = [makeTask('Buy Milk', false, { id: '1' })]
       ui.keyword = 'ＢＵＹ'
-      const w = mountWith(TaskListView, pinia, { props: { filter: 'all' }, router: testRouter() })
+      const w = mountWith(TaskListView, pinia, { props: { viewKind: 'all' }, router: testRouter() })
       expect(names(w)).toEqual(['Buy Milk'])
     })
 
     it.each(['bogus', '', null, undefined, 7])(
-      'filter=%s 這類非預期值一律退回完整清單，不再是 undefined（稽核 P3）',
+      'viewKind=%s 這類非預期值一律退回完整清單，不再是 undefined（稽核 P3）',
       (bad) => {
         seed()
         const w = mountWith(TaskListView, pinia, {
-          props: { filter: bad as unknown as TaskFilter },
+          props: { viewKind: bad as unknown as ViewKind },
           router: testRouter(),
         })
         expect(rows(w)).toHaveLength(3)
@@ -118,7 +118,7 @@ describe('TaskListView.vue', () => {
         makeTask('子項', false, { id: 'c', parentId: 'p', order: 1 }),
         makeTask('另一個頂層', false, { id: 'x', order: 2 }),
       ]
-      const w = mountWith(TaskListView, pinia, { props: { filter: 'all' }, router: testRouter() })
+      const w = mountWith(TaskListView, pinia, { props: { viewKind: 'all' }, router: testRouter() })
       expect(names(w), '子任務應跟著父項呈現，不佔頂層一列').toEqual(['父項', '另一個頂層'])
     })
 
@@ -128,50 +128,8 @@ describe('TaskListView.vue', () => {
         makeTask('第一', false, { id: 'a', order: 10 }),
         makeTask('第二', false, { id: 'b', order: 20 }),
       ]
-      const w = mountWith(TaskListView, pinia, { props: { filter: 'all' }, router: testRouter() })
+      const w = mountWith(TaskListView, pinia, { props: { viewKind: 'all' }, router: testRouter() })
       expect(names(w)).toEqual(['第一', '第二', '第三'])
-    })
-  })
-
-  describe('分頁導覽（改為路由連結）', () => {
-    const tabs = (w: Wrapper) => w.findAll('nav a')
-
-    it('三個分頁指向對應的路由', () => {
-      const w = mountWith(TaskListView, pinia, { props: { filter: 'all' }, router: testRouter() })
-      // 分頁標籤後面帶數量，比對開頭即可
-      // 分頁標籤後面帶該分頁的項目數，比對時去掉
-      expect(tabs(w).map((a) => a.text().replace(/\s*\d+$/, ''))).toEqual([
-        '全部',
-        '未完成',
-        '完成',
-      ])
-      expect(tabs(w).map((a) => a.attributes('href'))).toEqual(['/', '/active', '/completed'])
-    })
-
-    it('目前所在的分頁標上 aria-current="page"', () => {
-      const w = mountWith(TaskListView, pinia, {
-        props: { filter: 'completed' },
-        router: testRouter(),
-      })
-      const current = tabs(w).map((a) => a.attributes('aria-current'))
-      expect(current).toEqual([undefined, undefined, 'page'])
-    })
-
-    it('分頁是真正的連結，鍵盤可聚焦（稽核 P6 的一部分）', () => {
-      const w = mountWith(TaskListView, pinia, { props: { filter: 'all' }, router: testRouter() })
-      for (const a of tabs(w)) {
-        expect(a.element.tagName).toBe('A')
-        expect(a.attributes('href')).toBeTruthy()
-      }
-    })
-
-    it('清單為空時仍可切換分頁，不再跳 alert 攔截', async () => {
-      const router = testRouter()
-      const w = mountWith(TaskListView, pinia, { props: { filter: 'all' }, router })
-      await at(tabs(w), 1).trigger('click')
-      await router.isReady()
-
-      expect(dialogs.alerts, '導覽不應被阻塞式對話框攔下').toEqual([])
     })
   })
 
