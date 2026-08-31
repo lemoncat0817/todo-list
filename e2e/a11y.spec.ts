@@ -16,14 +16,19 @@ import AxeBuilder from '@axe-core/playwright'
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 
 const SCREENS = [
-  { name: '全部', path: '/' },
+  { name: '今天', path: '/#/today' },
+  { name: '即將到來', path: '/#/upcoming' },
+  { name: '收件匣', path: '/#/inbox' },
+  { name: '全部', path: '/#/all' },
   { name: '未完成', path: '/#/active' },
   { name: '已完成', path: '/#/completed' },
 ]
 
 async function seed(page: Page) {
   page.on('dialog', (d) => d.accept())
-  await page.goto('/')
+  // 從「全部」開始 seed：在「今天」新增會自動帶上今天的到期日，
+  // 那是刻意的行為，但會讓這裡的固定情境變得依賴當天日期。
+  await page.goto('/#/all')
   for (const [name, done] of [
     ['未完成的事', false],
     ['已完成的事', true],
@@ -82,9 +87,31 @@ test('搜尋模式下也維持零違規', async ({ page }) => {
   expect(found).toEqual([])
 })
 
+test('管理專案與標籤的對話框也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.getByRole('button', { name: '管理專案與標籤' }).click()
+  await page.getByLabel('新專案名稱').fill('工作')
+  await page.getByRole('button', { name: '建立' }).first().click()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('窄螢幕的導覽抽屜也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.setViewportSize({ width: 375, height: 800 })
+  await page.getByRole('button', { name: '開啟導覽' }).click()
+  await expect(page.getByRole('navigation', { name: '檢視' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
 test('空清單狀態也維持零違規', async ({ page }) => {
   page.on('dialog', (d) => d.accept())
-  await page.goto('/')
+  await page.goto('/#/all')
   await page.waitForSelector('h1')
 
   const found = await violationsOf(page)

@@ -13,9 +13,41 @@ async function addTask(page: Page, name: string): Promise<void> {
 const rows = (page: Page) => page.locator('main li')
 const names = (page: Page) => page.locator('main li p')
 
+/**
+ * 依排序鍵讀出 IndexedDB 裡的任務名稱。
+ *
+ * 「改動後立刻重新整理」的測試必須等寫入落地，不能只等畫面更新——
+ * 兩者之間有一段真實的非同步空窗（main.ts 已載明只能盡力而為），
+ * 等 DOM 就重新整理等於在測時序，不是在測持久化。
+ */
+async function persistedNames(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () =>
+      new Promise<string[]>((resolve, reject) => {
+        const open = indexedDB.open('todolist')
+        open.onerror = () => reject(open.error)
+        open.onsuccess = () => {
+          const tx = open.result.transaction('tasks', 'readonly')
+          const req = tx.objectStore('tasks').getAll()
+          req.onsuccess = () =>
+            resolve(
+              (req.result as { taskName: string; order: number }[])
+                .sort((a, b) => a.order - b.order)
+                .map((t) => t.taskName),
+            )
+          req.onerror = () => reject(req.error)
+        }
+      }),
+  )
+}
+
 test.beforeEach(async ({ page }) => {
   page.on('dialog', (d) => d.accept())
-  await page.goto('/')
+  // 1280px 以上詳情是常駐右欄，以下才是對話框。這一批測的是對話框形態，
+  // 所以固定在中等寬度；面板形態另有專屬測試。
+  await page.setViewportSize({ width: 1100, height: 800 })
+  // 「全部」是不受今天日期影響的穩定起點；「今天」檢視的行為另有測試涵蓋。
+  await page.goto('/#/all')
 })
 
 test.describe('任務細節', () => {
@@ -77,6 +109,26 @@ test.describe('任務細節', () => {
 
     await page.keyboard.press('Escape')
     await expect(page.getByRole('dialog')).not.toBeVisible()
+  })
+})
+
+test.describe('寬螢幕的詳情面板', () => {
+  test('1280px 以上詳情改為常駐右欄，不再用對話框蓋住清單', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await addTask(page, '在寬螢幕上編輯')
+
+    const panel = page.getByRole('complementary', { name: '任務詳情' })
+    await expect(panel, '面板一直都在，只是還沒選任務').toBeVisible()
+    await expect(panel).toContainText('選一筆代辦事項')
+
+    await page.getByRole('button', { name: /設定「在寬螢幕上編輯」的細節/ }).click()
+    await expect(panel.getByLabel('名稱', { exact: true })).toHaveValue('在寬螢幕上編輯')
+    // 清單沒有被蓋住，兩邊可以同時看
+    await expect(rows(page).first()).toBeVisible()
+
+    await panel.getByLabel('名稱', { exact: true }).fill('改成別的')
+    await panel.getByRole('button', { name: '儲存' }).click()
+    await expect(names(page).first()).toHaveText('改成別的')
   })
 })
 
@@ -153,6 +205,7 @@ test.describe('排序', () => {
     for (const name of ['A', 'B']) await addTask(page, name)
     await page.getByRole('button', { name: '將「B」上移' }).click()
     await expect(names(page)).toHaveText(['B', 'A'])
+    await expect.poll(() => persistedNames(page)).toEqual(['B', 'A'])
 
     await page.reload()
     await expect(names(page)).toHaveText(['B', 'A'])
@@ -180,7 +233,7 @@ test.describe('空狀態', () => {
     await expect(page.getByText('目前沒有代辦事項，從上方新增一筆吧')).toBeVisible()
 
     await addTask(page, '存在的項目')
-    await page.getByRole('link', { name: /^完成/ }).click()
+    await page.getByRole('link', { name: /^已完成/ }).click()
     await expect(page.getByText('還沒有已完成的代辦事項')).toBeVisible()
 
     await page.getByRole('link', { name: /^全部/ }).click()

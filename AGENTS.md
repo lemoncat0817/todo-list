@@ -54,9 +54,16 @@ components/  →  stores/  →  domain/
   where business rules live: `dates.ts` (local-date-string arithmetic),
   `recurrence.ts` (RFC 5545-flavored recurrence expansion), `ordering.ts`
   (fractional sort-key math), `filtering.ts` (search/filter/count — one code
-  path so the list and the tab counts can never disagree), `undo.ts` (a bounded
+  path so the list and the counts can never disagree), `views.ts` (which tasks
+  belong to a named view — today/upcoming/inbox/project/label — plus their
+  grouping, titles and empty-state copy), `undo.ts` (a bounded
   command-pattern undo/redo stack), `task.ts` (normalization/validation of
   anything crossing a trust boundary, plus parent/child helpers).
+
+  `filtering.ts` answers "does this task match?"; `views.ts` answers "what
+  should the user see at this entry point, and how is it grouped?". They are
+  separate because the predicates are stable while views are a product
+  decision that keeps growing.
 - **`src/db/`** — the only place that talks to IndexedDB (via `idb`, chosen over
   Dexie to save ~30 kB gzip). `schema.ts` has the stored shapes and constants,
   `repositories.ts` does IO, `migrate.ts` is the one-time legacy-localStorage
@@ -78,13 +85,23 @@ components/  →  stores/  →  domain/
   (replaces `pinia-plugin-persistedstate`: that package's Pinia 2 peer-dep
   pin blocked upgrading, and it silently swallowed write failures). Only
   used by `stores/ui.ts`; task/project/tag data goes through `db/` instead.
-- **`src/router/`** — filter state (`all`/`active`/`completed`) lives in the
-  URL (`/`, `/active`, `/completed`) rather than store state, for
-  deep-linking and to avoid persisting an out-of-range value. Hash history
-  (`createWebHashHistory`) is required because GitHub Pages has no SPA
-  fallback for subpath deployments.
+- **`src/router/`** — view state lives in the URL (`/today`, `/upcoming`,
+  `/inbox`, `/all`, `/active`, `/completed`, `/project/:id`, `/label/:id`)
+  rather than store state, for deep-linking and to avoid persisting an
+  out-of-range value. `/` redirects to `/today`: the question to answer on
+  open is "what now", not "how much do I owe". Route names are deliberately
+  identical to `ViewKind` so there is only one mapping table.
+  Hash history (`createWebHashHistory`) is required because GitHub Pages has
+  no SPA fallback for subpath deployments.
 - **`src/components/`** — presentation only; business logic is expected to
-  already live in `domain/`/`stores/` before it reaches a component.
+  already live in `domain/`/`stores/` before it reaches a component. The shell
+  is three panes (`AppSidebar` / `RouterView` / `TaskDetailPanel`); below
+  1280px the detail pane becomes `TaskDetailDialog` and below 1024px the
+  sidebar becomes a `<dialog>` drawer. Both wrap the same `TaskDetailForm` —
+  the container decides *how it appears*, the form decides *what fields exist*.
+  `useMediaQuery` picks one or the other with `v-if` rather than rendering both
+  and hiding one with CSS: two copies would mean duplicate landmarks and
+  duplicate focusable elements.
 
 ### Data flow
 
