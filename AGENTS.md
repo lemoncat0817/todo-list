@@ -123,6 +123,26 @@ reload" loses data. `flush()` is re-entrant-safe (concurrent calls coalesce)
 and is also fired from `pagehide`/`visibilitychange` in `main.ts` to minimize
 the async write window before a tab closes.
 
+### Filters
+
+`domain/filterQuery.ts` is a small recursive-descent parser producing an AST,
+plus an evaluator. Parse errors are **returned**, never swallowed: a query with
+a typo that silently matches everything makes the user believe their condition
+held. Saved filters store the raw query string, not the AST — the AST's shape
+will change as the language grows, a string can always be re-parsed.
+
+The query lives in the URL (`/filter?q=...`), in `query` rather than a path
+param because `&`, `|` and `#` would otherwise need layered escaping.
+
+### Sorting, grouping and preferences
+
+Sort/group choices live in `stores/prefs` (persisted), *not* in the URL: they
+are "how I like to look at things", not "what I am looking at". Sharing a link
+should hand someone the same list, not impose your sort order. `prefs` is a
+separate store from `ui` because the persistence plugin writes the whole state
+— mixing them is what previously persisted "search is open" and stranded users
+on the search screen.
+
 ### Priority
 
 Stored as `0`–`3` with `3` highest; displayed as `P1`–`P4` with `P1` highest

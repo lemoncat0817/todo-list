@@ -233,6 +233,125 @@ test.describe('重複性任務', () => {
   })
 })
 
+test.describe('批次操作', () => {
+  test('多選後一次改期，並且一次就能復原', async ({ page }) => {
+    for (const name of ['甲', '乙', '丙']) await addTask(page, name)
+
+    await rows(page).nth(0).click({ modifiers: ['ControlOrMeta'] })
+    await rows(page).nth(1).click({ modifiers: ['ControlOrMeta'] })
+    await expect(page.getByRole('region', { name: '批次操作' })).toContainText('已選 2 項')
+
+    await page.getByRole('region', { name: '批次操作' }).getByRole('button', { name: '明天' }).click()
+    await expect(rows(page).nth(0)).toContainText('明天')
+    await expect(rows(page).nth(1)).toContainText('明天')
+    await expect(page.getByRole('region', { name: '批次操作' })).toBeHidden()
+
+    await page.keyboard.press('Control+z')
+    await expect(rows(page).nth(0), '一次復原整批').not.toContainText('明天')
+    await expect(rows(page).nth(1)).not.toContainText('明天')
+  })
+
+  test('Esc 取消選取', async ({ page }) => {
+    await addTask(page, '選起來再放掉')
+    await rows(page).first().click({ modifiers: ['ControlOrMeta'] })
+    await expect(page.getByRole('region', { name: '批次操作' })).toBeVisible()
+
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('region', { name: '批次操作' })).toBeHidden()
+  })
+})
+
+test.describe('鍵盤操作', () => {
+  test('j / k 移動，x 選取，e 編輯', async ({ page }) => {
+    for (const name of ['第一', '第二']) await addTask(page, name)
+    await page.locator('h1').click()
+
+    await page.keyboard.press('j')
+    await expect(rows(page).nth(0)).toBeFocused()
+    await page.keyboard.press('j')
+    await expect(rows(page).nth(1)).toBeFocused()
+    await page.keyboard.press('k')
+    await expect(rows(page).nth(0)).toBeFocused()
+
+    await page.keyboard.press('x')
+    await expect(page.getByRole('region', { name: '批次操作' })).toContainText('已選 1 項')
+    await page.keyboard.press('Escape')
+
+    await page.keyboard.press('e')
+    await expect(page.getByRole('textbox', { name: '編輯「第一」' })).toBeFocused()
+  })
+
+  test('? 開啟快捷鍵說明', async ({ page }) => {
+    await page.locator('h1').click()
+    await page.keyboard.press('?')
+    await expect(page.getByRole('heading', { name: '鍵盤快捷鍵' })).toBeVisible()
+  })
+})
+
+test.describe('命令面板', () => {
+  test('Ctrl+K 開啟，打字後 Enter 跳轉', async ({ page }) => {
+    await page.keyboard.press('Control+k')
+    const palette = page.getByRole('dialog', { name: '命令面板' })
+    await expect(palette).toBeVisible()
+
+    await palette.getByRole('combobox').fill('即將到來')
+    await palette.getByRole('combobox').press('Enter')
+
+    expect(page.url()).toContain('#/upcoming')
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('即將到來')
+  })
+})
+
+test.describe('篩選器', () => {
+  test('建立後成為側邊欄的入口，且有自己的網址', async ({ page }) => {
+    await addTask(page, '重要的事 p1 明天')
+    await addTask(page, '普通的事')
+
+    await page.getByRole('button', { name: '管理專案與標籤' }).click()
+    const dialog = page.getByRole('dialog').filter({ hasText: '管理專案與標籤' })
+    await dialog.getByLabel('篩選器名稱').fill('要事')
+    await dialog.getByLabel('篩選條件').fill('p1')
+    await expect(dialog, '建立前就先說會 match 幾項').toContainText('目前符合 1 項')
+    await dialog.getByRole('button', { name: '建立' }).last().click()
+    await dialog.getByRole('button', { name: '關閉', exact: true }).click()
+
+    await page.getByRole('link', { name: /^要事/ }).click()
+    expect(page.url()).toContain('#/filter?q=p1')
+    await expect(rows(page)).toHaveCount(1)
+    await expect(names(page).first()).toHaveText('重要的事')
+  })
+
+  test('查詢寫錯時說是查詢有問題，而不是假裝沒有結果', async ({ page }) => {
+    await page.goto('/#/filter?q=' + encodeURIComponent('(today'))
+    await expect(page.getByRole('alert')).toContainText('篩選條件無法解析')
+  })
+})
+
+test.describe('排序與分組', () => {
+  test('依到期日排序，沒有日期的排最後', async ({ page }) => {
+    // 名稱刻意不含日期詞：快速新增會把「明天」從名稱裡吃掉
+    await addTask(page, '沒排時間的雜事')
+    await addTask(page, '報告 明天')
+    await addTask(page, '會議 今天')
+
+    await page.getByLabel('排序方式').selectOption('due')
+    await expect(names(page)).toHaveText(['會議', '報告', '沒排時間的雜事'])
+
+    // 是偏好而不是網址狀態：重新整理後仍然記得
+    await page.reload()
+    await expect(page.getByLabel('排序方式')).toHaveValue('due')
+  })
+
+  test('依優先度分組，標題用對外的 P 編號', async ({ page }) => {
+    await addTask(page, '最重要 p1')
+    await addTask(page, '普通的')
+
+    await page.getByLabel('分組方式').selectOption('priority')
+    await expect(page.getByRole('heading', { name: 'P1', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'P4', exact: true })).toBeVisible()
+  })
+})
+
 test.describe('復原', () => {
   test('刪除後可復原，且不再跳確認對話框', async ({ page }) => {
     await addTask(page, '刪了還能救')

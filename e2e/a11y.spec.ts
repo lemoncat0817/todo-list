@@ -133,6 +133,37 @@ test('展開子任務時也維持零違規', async ({ page }) => {
   expect(found).toEqual([])
 })
 
+test('命令面板也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.keyboard.press('Control+k')
+  await expect(page.getByRole('dialog', { name: '命令面板' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('批次操作列也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.locator('main li[data-test=task-row]').first().click({ modifiers: ['ControlOrMeta'] })
+  await expect(page.getByRole('region', { name: '批次操作' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('快捷鍵說明也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.locator('h1').click()
+  await page.keyboard.press('?')
+  await expect(page.getByRole('heading', { name: '鍵盤快捷鍵' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
 test('空清單狀態也維持零違規', async ({ page }) => {
   page.on('dialog', (d) => d.accept())
   await page.goto('/#/all')

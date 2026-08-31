@@ -73,6 +73,23 @@
       </ul>
     </section>
 
+    <section v-if="collections.filters.length > 0" class="flex flex-col gap-1">
+      <h2 class="px-2.5 text-xs font-semibold uppercase tracking-wide text-ink-faint">篩選器</h2>
+      <ul class="flex flex-col gap-0.5">
+        <li v-for="filter in collections.filters" :key="filter.id">
+          <RouterLink :to="{ path: '/filter', query: { q: filter.query } }" :class="linkClass"
+            @click="emit('navigate')">
+            <span class="size-2.5 shrink-0 rounded-full" :style="{ backgroundColor: filter.color }"
+              aria-hidden="true" />
+            <span class="min-w-0 grow truncate">{{ filter.name }}</span>
+            <span v-if="filterCount(filter.query) > 0" :class="badgeClass">
+              {{ filterCount(filter.query) }}
+            </span>
+          </RouterLink>
+        </li>
+      </ul>
+    </section>
+
     <!-- 次要入口壓在底部：它們是回顧用的，不是每天的起點 -->
     <ul class="mt-auto flex flex-col gap-0.5 border-t border-line pt-3">
       <li v-for="entry in SECONDARY_VIEWS" :key="entry.kind">
@@ -121,4 +138,5 @@ const badgeClass = 'shrink-0 text-xs tabular-nums text-ink-faint'
 const countFor = (kind: ViewKind): number => tasks.countOf({ kind, id: null })
 const projectCount = (id: string): number => tasks.countOf({ kind: 'project', id })
 const tagCount = (id: string): number => tasks.countOf({ kind: 'label', id })
+const filterCount = (query: string): number => tasks.countOf({ kind: 'filter', id: query })
 </script>

@@ -1,17 +1,33 @@
 <template>
   <!--
-    拖曳是指標裝置的增強，不是唯一路徑：每列都提供上移／下移按鈕，
-    鍵盤與螢幕閱讀器使用者走那條路。這正是該 lint 規則要保護的東西。
+    拖曳與 Ctrl+點擊都是指標裝置的增強，不是唯一路徑：
+    排序另有每列的上移／下移按鈕，批次選取另有 x 鍵（見快捷鍵說明），
+    兩者都是真正的鍵盤路徑而不是同一個 handler 換個觸發方式。
+    這正是這兩條 lint 規則要保護的東西——它們在這裡已經被滿足，只是滿足的方式
+    不在同一個元素上，規則看不出來。
   -->
-  <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions -->
-  <li draggable="true" data-test="task-row"
-    class="group animate-rise rounded-lg border bg-surface px-3 py-2.5 transition-colors"
+  <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
+  <li draggable="true" data-test="task-row" :data-task-id="task.id" tabindex="-1"
+    class="group animate-rise rounded-lg border bg-surface px-3 py-2.5 transition-colors focus:outline-none focus-visible:outline-2"
     :class="[
       dragging ? 'opacity-50' : '',
-      selected ? 'border-accent ring-1 ring-accent' : 'border-line hover:border-line-strong',
+      checked
+        ? 'border-accent bg-accent-soft'
+        : active
+          ? 'border-accent ring-1 ring-accent'
+          : 'border-line hover:border-line-strong',
     ]" @dragstart="emit('dragstart')" @dragover.prevent
-    @drop="emit('drop')" @dragend="emit('dragend')">
+    @drop="emit('drop')" @dragend="emit('dragend')" @click="onRowClick">
     <div class="flex items-start gap-3">
+      <!--
+        批次選取的核取方塊只在「已經有東西被選」時出現。
+        平時常駐兩個核取方塊，最常見的動作（打勾完成）反而會變得要瞄一下才敢按。
+      -->
+      <input v-if="selecting" :checked="checked" type="checkbox"
+        :aria-label="`選取「${task.taskName}」`"
+        class="mt-0.5 size-4.5 shrink-0 cursor-pointer accent-accent"
+        @change="emit('toggle-checked')">
+
       <input :checked="task.isCompleted" type="checkbox"
         :aria-label="`標記「${task.taskName}」為已完成`"
         class="mt-0.5 size-4.5 shrink-0 cursor-pointer accent-accent" @change="emit('toggle')">
@@ -170,13 +186,17 @@ const props = withDefaults(
     editing: boolean
     dragging: boolean
     /** 這一列正顯示在詳情面板裡——寬螢幕需要看得出面板對應的是哪一列 */
-    selected: boolean
+    active: boolean
+    /** 被批次選取 */
+    checked?: boolean
+    /** 目前處於批次選取模式（清單上有東西被選） */
+    selecting?: boolean
     isFirst: boolean
     isLast: boolean
     children?: StoredTask[]
     expanded?: boolean
   }>(),
-  { children: () => [], expanded: false },
+  { children: () => [], expanded: false, checked: false, selecting: false },
 )
 
 const emit = defineEmits<{
@@ -196,6 +216,7 @@ const emit = defineEmits<{
   'add-subtask': [name: string]
   'toggle-child': [id: string]
   'remove-child': [id: string]
+  'toggle-checked': []
 }>()
 
 const draft = ref('')
@@ -219,6 +240,20 @@ watch(
   },
   { immediate: true },
 )
+
+/**
+ * Ctrl／Cmd + 點擊加入批次選取，與檔案總管、郵件用戶端的慣例一致。
+ *
+ * 只在點到「不是控制項」的地方才反應：點在核取方塊或按鈕上時，
+ * 使用者要的是那個控制項本身，不是選取這一列。
+ */
+function onRowClick(event: MouseEvent): void {
+  if (!event.ctrlKey && !event.metaKey) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest('button, input, select, textarea, a')) return
+  event.preventDefault()
+  emit('toggle-checked')
+}
 
 function commit(): void {
   const name = draft.value.trim()

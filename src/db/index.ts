@@ -17,6 +17,8 @@ export {
   saveProjects,
   loadTags,
   saveTags,
+  loadFilters,
+  saveFilters,
   getMeta,
   setMeta,
 } from './repositories'

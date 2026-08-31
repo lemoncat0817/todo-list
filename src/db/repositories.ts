@@ -3,15 +3,17 @@ import {
   DB_NAME,
   DB_VERSION,
   DEFAULT_TASK_FIELDS,
+  STORE_FILTERS,
   STORE_META,
   STORE_PROJECTS,
   STORE_TAGS,
   STORE_TASKS,
+  type StoredFilter,
   type StoredProject,
   type StoredTag,
   type StoredTask,
 } from './schema'
-import { normalizeProject, normalizeTag, normalizeTask } from '@/domain/task'
+import { normalizeFilter, normalizeProject, normalizeTag, normalizeTask } from '@/domain/task'
 
 /**
  * IndexedDB 的存取層。
@@ -57,6 +59,14 @@ export function getDB(): Promise<IDBPDatabase> {
           }
           if (!db.objectStoreNames.contains(STORE_TAGS)) {
             db.createObjectStore(STORE_TAGS, { keyPath: 'id' })
+          }
+        }
+
+        if (oldVersion < 3) {
+          // 全新的 store，沒有既有資料要搬——舊版使用者升上來就是一份空清單
+          if (!db.objectStoreNames.contains(STORE_FILTERS)) {
+            const filters = db.createObjectStore(STORE_FILTERS, { keyPath: 'id' })
+            filters.createIndex('by-order', 'order')
           }
         }
       },
@@ -117,6 +127,18 @@ export async function loadTags(): Promise<StoredTag[]> {
 
 export function saveTags(tags: readonly StoredTag[]): Promise<void> {
   return replaceAll(STORE_TAGS, tags)
+}
+
+// -------------------------------------------------------------- filters
+
+export async function loadFilters(): Promise<StoredFilter[]> {
+  const db = await getDB()
+  const rows = await db.getAllFromIndex(STORE_FILTERS, 'by-order')
+  return rows.map((row, i) => normalizeFilter(row, i)).filter((f): f is StoredFilter => f !== null)
+}
+
+export function saveFilters(filters: readonly StoredFilter[]): Promise<void> {
+  return replaceAll(STORE_FILTERS, filters)
 }
 
 // ----------------------------------------------------------------- meta

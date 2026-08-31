@@ -1,9 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { loadProjects, loadTags, saveProjects, saveTags } from '@/db'
+import { loadFilters, loadProjects, loadTags, saveFilters, saveProjects, saveTags } from '@/db'
 import {
+  DEFAULT_FILTER_COLOR,
   DEFAULT_PROJECT_COLOR,
   DEFAULT_TAG_COLOR,
+  type StoredFilter,
   type StoredProject,
   type StoredTag,
 } from '@/db/schema'
@@ -20,16 +22,19 @@ import { useHistoryStore } from './history'
 export const useCollectionsStore = defineStore('collections', () => {
   const projects = ref<StoredProject[]>([])
   const tags = ref<StoredTag[]>([])
+  const filters = ref<StoredFilter[]>([])
   const history = useHistoryStore()
 
   async function load(): Promise<void> {
     projects.value = await loadProjects()
     tags.value = await loadTags()
+    filters.value = await loadFilters()
   }
 
   async function flush(): Promise<void> {
     await saveProjects(projects.value.map((p) => ({ ...p })))
     await saveTags(tags.value.map((t) => ({ ...t })))
+    await saveFilters(filters.value.map((f) => ({ ...f })))
   }
 
   // ------------------------------------------------------------- 專案
@@ -133,9 +138,76 @@ export const useCollectionsStore = defineStore('collections', () => {
     tags.value = [...tags.value, tag]
   }
 
+  // ----------------------------------------------------------- 篩選器
+
+  /**
+   * 儲存的篩選器。
+   *
+   * 與專案、標籤放在同一個 store：三者都是「使用者自訂的組織維度」，
+   * 生命週期一致、量都很小，硬拆只會多出樣板。
+   */
+  function addFilter(name: string, query: string, color = DEFAULT_FILTER_COLOR): StoredFilter {
+    const filter: StoredFilter = {
+      id: crypto.randomUUID(),
+      name,
+      query,
+      color,
+      order: nextOrder(filters.value),
+    }
+    filters.value.push(filter)
+    history.record({
+      label: `儲存篩選器「${name}」`,
+      undo: () => {
+        filters.value = filters.value.filter((f) => f.id !== filter.id)
+      },
+      redo: () => {
+        filters.value.push(filter)
+      },
+    })
+    return filter
+  }
+
+  function updateFilter(id: string, patch: Partial<Omit<StoredFilter, 'id'>>): void {
+    const index = filters.value.findIndex((f) => f.id === id)
+    if (index === -1) return
+    const before = { ...(filters.value[index] as StoredFilter) }
+    const after = { ...before, ...patch }
+    filters.value[index] = after
+    history.record({
+      label: `修改篩選器「${before.name}」`,
+      undo: () => {
+        const i = filters.value.findIndex((f) => f.id === id)
+        if (i !== -1) filters.value[i] = before
+      },
+      redo: () => {
+        const i = filters.value.findIndex((f) => f.id === id)
+        if (i !== -1) filters.value[i] = after
+      },
+    })
+  }
+
+  function removeFilter(id: string): void {
+    const filter = filters.value.find((f) => f.id === id)
+    if (!filter) return
+    filters.value = filters.value.filter((f) => f.id !== id)
+    history.record({
+      label: `刪除篩選器「${filter.name}」`,
+      undo: () => {
+        filters.value = [...filters.value, filter].sort((a, b) => a.order - b.order)
+      },
+      redo: () => {
+        filters.value = filters.value.filter((f) => f.id !== id)
+      },
+    })
+  }
+
   return {
     projects,
     tags,
+    filters,
+    addFilter,
+    updateFilter,
+    removeFilter,
     load,
     flush,
     addProject,

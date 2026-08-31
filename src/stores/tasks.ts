@@ -6,7 +6,16 @@ import { createTask, groupByParent } from '@/domain/task'
 import { nextOccurrence } from '@/domain/recurrence'
 import { nextOrder, orderBetween, sortByOrder } from '@/domain/ordering'
 import { countByFilter, queryTasks, type TaskFilter, type TaskQuery } from '@/domain/filtering'
-import { overdueCount, resolveView, viewCount, type TaskGroup, type ViewSpec } from '@/domain/views'
+import {
+  overdueCount,
+  resolveView,
+  viewCount,
+  type TaskGroup,
+  type ViewOptions,
+  type ViewSpec,
+} from '@/domain/views'
+import { compileFilter } from '@/domain/filterQuery'
+import { usePrefsStore } from './prefs'
 import { useHistoryStore } from './history'
 import { useCollectionsStore } from './collections'
 import { useUiStore } from './ui'
@@ -37,6 +46,7 @@ export const useTasksStore = defineStore('tasks', () => {
   const history = useHistoryStore()
   const collections = useCollectionsStore()
   const ui = useUiStore()
+  const prefs = usePrefsStore()
 
   // ------------------------------------------------------------ 查詢
 
@@ -48,20 +58,49 @@ export const useTasksStore = defineStore('tasks', () => {
   const counts = computed(() => countByFilter(items.value, { keyword: ui.keyword }))
 
   /**
+   * 組出 resolveView 的選項。
+   *
+   * filter 檢視要在這裡把查詢字串編譯成述詞：編譯失敗時傳 null，
+   * resolveView 會回傳空清單，畫面才有辦法區分「查詢寫錯」與「沒有結果」。
+   *
+   * 用條件展開而非直接指派 undefined：tsconfig 開了 exactOptionalPropertyTypes，
+   * 「不設這個屬性」與「設成 undefined」是兩件事。
+   */
+  function viewOptions(spec: ViewSpec, extra: ViewOptions = {}): ViewOptions {
+    const base: ViewOptions = { ...extra }
+    if (spec.kind === 'filter') {
+      base.predicate = compileFilter(spec.id ?? '', {
+        projects: collections.projects,
+        tags: collections.tags,
+      })
+    }
+    return base
+  }
+
+  /**
    * 檢視的分組結果。清單本體與側邊欄徽章都走這條路徑（domain/views），
    * 沿用「一條路徑」的規矩——數字與內容不可能對不上。
    */
   const groupsOf = computed(
     () =>
       (spec: ViewSpec): TaskGroup[] =>
-        resolveView(items.value, spec, { keyword: ui.keyword }),
+        resolveView(
+          items.value,
+          spec,
+          viewOptions(spec, {
+            keyword: ui.keyword,
+            sort: prefs.sortBy,
+            groupBy: prefs.groupBy,
+            projects: collections.projects,
+          }),
+        ),
   )
 
   /** 側邊欄徽章：刻意不套關鍵字，搜尋中仍要看得到各入口的真實數量。 */
   const countOf = computed(
     () =>
       (spec: ViewSpec): number =>
-        viewCount(items.value, spec),
+        viewCount(items.value, spec, viewOptions(spec)),
   )
 
   const overdue = computed(() => overdueCount(items.value))
@@ -372,6 +411,72 @@ export const useTasksStore = defineStore('tasks', () => {
     })
   }
 
+  // ------------------------------------------------------------ 批次操作
+
+  /**
+   * 一次改多筆。
+   *
+   * 整批只推一個 undo command，不是每筆一個：使用者按一次「全部順延到明天」
+   * 是一個決定，復原時也該一次回到原狀。二十筆各推一個的話，
+   * 要按二十次 Ctrl+Z 才回得去——那等於沒有復原。
+   */
+  function batchUpdate(ids: readonly string[], patch: Partial<StoredTask>, label: string): number {
+    const targets = new Set(ids)
+    const before = items.value.filter((t) => targets.has(t.id)).map((t) => ({ ...t }))
+    if (before.length === 0) return 0
+
+    const now = Date.now()
+    items.value = items.value.map((t) =>
+      targets.has(t.id) ? { ...t, ...patch, updatedAt: now } : t,
+    )
+    const after = items.value.filter((t) => targets.has(t.id)).map((t) => ({ ...t }))
+
+    const restore = (snapshot: StoredTask[]) => () => {
+      const byId = new Map(snapshot.map((t) => [t.id, t]))
+      items.value = items.value.map((t) => byId.get(t.id) ?? t)
+    }
+
+    history.record({
+      label: `${label}（${before.length} 項）`,
+      undo: restore(before),
+      redo: restore(after),
+    })
+    return before.length
+  }
+
+  /** 批次刪除，連同各自的子項；同樣只推一個 command。 */
+  function batchRemove(ids: readonly string[]): number {
+    const targets = new Set(ids)
+    const removed = items.value
+      .filter((t) => targets.has(t.id) || (t.parentId !== null && targets.has(t.parentId)))
+      .map((t) => ({ ...t }))
+    if (removed.length === 0) return 0
+
+    const removedIds = new Set(removed.map((t) => t.id))
+    const drop = () => {
+      items.value = items.value.filter((t) => !removedIds.has(t.id))
+    }
+    drop()
+
+    history.record({
+      label: `刪除 ${ids.length} 項`,
+      undo: () => {
+        items.value = sortByOrder([...items.value, ...removed])
+      },
+      redo: drop,
+    })
+    return removed.length
+  }
+
+  /** 批次改期。與單筆 reschedule 一致：清掉日期時一併清掉時間。 */
+  function batchReschedule(ids: readonly string[], dueDate: string | null): number {
+    return batchUpdate(
+      ids,
+      dueDate === null ? { dueDate: null, dueTime: null } : { dueDate },
+      dueDate === null ? '清除到期日' : `改期至 ${dueDate}`,
+    )
+  }
+
   // -------------------------------------------- 跨 store 的關聯處理
 
   /**
@@ -460,6 +565,9 @@ export const useTasksStore = defineStore('tasks', () => {
     move,
     setPriority,
     reschedule,
+    batchUpdate,
+    batchRemove,
+    batchReschedule,
     setRecurrence,
     toggleTag,
     removeProject,

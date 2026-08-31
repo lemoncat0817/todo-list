@@ -4,6 +4,7 @@ import {
   matchesView,
   overdueCount,
   resolveView,
+  sortTasks,
   viewCount,
   viewTitle,
   type ViewSpec,
@@ -174,5 +175,82 @@ describe('emptyMessage', () => {
   it('各檢視有各自的空狀態說明', () => {
     expect(emptyMessage(spec('today'))).toBe('今天沒有到期的事，很好')
     expect(emptyMessage(spec('inbox'))).toContain('收件匣')
+  })
+})
+
+describe('sortTasks', () => {
+  const tasks = [
+    makeTask('沒日期低優先', false, { order: 1, priority: 0, dueDate: null }),
+    makeTask('明天中優先', false, { order: 2, priority: 2, dueDate: '2030-01-16' }),
+    makeTask('今天最高', false, { order: 3, priority: 3, dueDate: '2030-01-15' }),
+  ]
+
+  it('預設維持手動順序——那是使用者自己排的判斷', () => {
+    expect(sortTasks(tasks).map((t) => t.order)).toEqual([1, 2, 3])
+  })
+
+  it('依到期日排序時，沒有日期的排最後（那是「沒排」不是「很早」）', () => {
+    expect(sortTasks(tasks, 'due').map((t) => t.taskName)).toEqual([
+      '今天最高',
+      '明天中優先',
+      '沒日期低優先',
+    ])
+  })
+
+  it('依優先度排序由高到低', () => {
+    expect(sortTasks(tasks, 'priority').map((t) => t.priority)).toEqual([3, 2, 0])
+  })
+
+  it('同分時以 order 收尾，避免每次渲染順序都在跳', () => {
+    const tie = [
+      makeTask('後加的', false, { order: 20, priority: 1 }),
+      makeTask('先加的', false, { order: 10, priority: 1 }),
+    ]
+    expect(sortTasks(tie, 'priority').map((t) => t.taskName)).toEqual(['先加的', '後加的'])
+  })
+})
+
+describe('resolveView — 分組與排序設定', () => {
+  const tasks = [
+    makeTask('工作的事', false, { projectId: 'p1', order: 2, priority: 3 }),
+    makeTask('未分類的事', false, { order: 1, priority: 1 }),
+  ]
+
+  it('依專案分組時，未分類固定排最後', () => {
+    const groups = resolveView(tasks, spec('all'), {
+      now: NOW,
+      groupBy: 'project',
+      projects: [{ id: 'p1', name: '工作' }],
+    })
+    expect(groups.map((g) => g.label)).toEqual(['工作', '未分類'])
+  })
+
+  it('依優先度分組時標題用對外的 P 編號', () => {
+    const groups = resolveView(tasks, spec('all'), { now: NOW, groupBy: 'priority' })
+    expect(groups.map((g) => g.label)).toEqual(['P1', 'P3'])
+  })
+
+  it('排序設定套用在每個分組之內', () => {
+    const groups = resolveView(tasks, spec('all'), { now: NOW, sort: 'priority' })
+    expect(groups[0]?.tasks.map((t) => t.taskName)).toEqual(['工作的事', '未分類的事'])
+  })
+})
+
+describe('resolveView — filter 檢視', () => {
+  const tasks = [
+    makeTask('要留下的', false, { priority: 3 }),
+    makeTask('要濾掉的', false, { priority: 0 }),
+  ]
+
+  it('條件完全由外部述詞決定', () => {
+    const groups = resolveView(tasks, spec('filter', 'p1'), {
+      now: NOW,
+      predicate: (t) => t.priority === 3,
+    })
+    expect(groups[0]?.tasks.map((t) => t.taskName)).toEqual(['要留下的'])
+  })
+
+  it('查詢寫錯（predicate 為 null）時一筆都不回傳，而不是假裝沒有結果', () => {
+    expect(resolveView(tasks, spec('filter', '壞查詢'), { now: NOW, predicate: null })).toEqual([])
   })
 })

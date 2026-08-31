@@ -1,11 +1,16 @@
 export const DB_NAME = 'todolist'
-/** v1: tasks + meta。v2: 擴充任務欄位，新增 projects 與 tags。 */
-export const DB_VERSION = 2
+/**
+ * v1: tasks + meta。
+ * v2: 擴充任務欄位，新增 projects 與 tags。
+ * v3: 新增 filters（儲存的篩選器查詢）。
+ */
+export const DB_VERSION = 3
 
 export const STORE_TASKS = 'tasks'
 export const STORE_META = 'meta'
 export const STORE_PROJECTS = 'projects'
 export const STORE_TAGS = 'tags'
+export const STORE_FILTERS = 'filters'
 
 /** meta 用來記錄一次性遷移是否已完成，避免重複執行。 */
 export const META_MIGRATED_FROM_LOCALSTORAGE = 'migratedFromLocalStorage'
@@ -109,6 +114,20 @@ export interface StoredTag {
   color: string
 }
 
+/**
+ * 儲存的篩選器。
+ *
+ * query 存的是原始查詢字串而不是解析後的 AST：AST 的形狀會隨語言演進而改變，
+ * 存字串則永遠可以用新的解析器重新讀一次，不需要資料遷移。
+ */
+export interface StoredFilter {
+  id: string
+  name: string
+  query: string
+  color: string
+  order: number
+}
+
 /** v1 的任務形狀，遷移時用來辨識舊資料。 */
 export interface LegacyTaskV1 {
   id: string
@@ -161,3 +180,4 @@ export const COLLECTION_COLORS: readonly CollectionColor[] = [
 
 export const DEFAULT_PROJECT_COLOR = '#1d4ed8'
 export const DEFAULT_TAG_COLOR = '#15803d'
+export const DEFAULT_FILTER_COLOR = '#7c3aed'
