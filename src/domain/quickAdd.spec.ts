@@ -89,7 +89,7 @@ describe('parseQuickAdd — 時間', () => {
 })
 
 describe('parseQuickAdd — 優先度', () => {
-  it('p1 是最高，對應內部的 3（Todoist 慣例）', () => {
+  it('p1 是最高，對應內部的 3', () => {
     expect(parseQuickAdd('交報告 p1', ctx()).fields.priority).toBe(3)
     expect(parseQuickAdd('交報告 p2', ctx()).fields.priority).toBe(2)
     expect(parseQuickAdd('交報告 p3', ctx()).fields.priority).toBe(1)

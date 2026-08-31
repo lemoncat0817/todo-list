@@ -13,7 +13,7 @@ import type { NamedCollection } from './views'
  *   today & p1 & #工作
  *   (overdue | today) & !@等待中
  *
- * 語法刻意貼近 Todoist：& 且、| 或、! 非、() 分組，其餘一律視為關鍵字。
+ * 語法採運算子式的組合：& 且、| 或、! 非、() 分組，其餘一律視為關鍵字。
  * 解析成 AST 再求值，而不是邊掃邊判斷——AST 讓「這個查詢是什麼意思」
  * 可以被單獨測試，也讓日後要顯示查詢的結構（例如語法高亮）不必重寫。
  *
@@ -250,7 +250,7 @@ export function evaluateFilter(
     case 'status':
       return node.value === 'done' ? task.isCompleted : !task.isCompleted
     case 'priority':
-      // 查詢用 Todoist 慣例（p1 最高），儲存值相反
+      // 查詢語法用對外的 P 編號（p1 最高），與儲存值方向相反
       return task.priority === 4 - node.value
     case 'project':
       return matchesName(projects, task.projectId, node.name)

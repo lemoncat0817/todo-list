@@ -23,7 +23,7 @@ import type { NamedCollection } from './views'
  *    否則使用者是在猜；猜錯的代價是事後再開一次詳情，等於白做。
  */
 
-/** 對使用者顯示的優先度用 Todoist 慣例（P1 最高），內部維持 0–3（3 最高）。 */
+/** 對使用者顯示的優先度用 P1 最高的編號，內部維持 0–3（3 最高）。 */
 const PRIORITY_FROM_P: Record<string, Priority> = { '1': 3, '2': 2, '3': 1, '4': 0 }
 
 const WEEKDAY_CHAR_TO_INDEX: Record<string, number> = {

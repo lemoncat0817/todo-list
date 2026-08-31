@@ -173,7 +173,7 @@ on the search screen.
 ### Priority
 
 Stored as `0`–`3` with `3` highest; displayed as `P1`–`P4` with `P1` highest
-(Todoist's convention, which is what users arrive with). The mapping lives in
+(a common convention many users already arrive with). The mapping lives in
 `PRIORITY_LABELS`/`PRIORITY_ORDER` — don't renumber the stored values, that
 would be a data migration for a labelling problem. CSS tokens are named by
 strength (`--color-prio-high/mid/low`) rather than by P-number, precisely
