@@ -73,7 +73,7 @@ export interface ViewOptions {
  * 一筆任務屬不屬於某個檢視。
  *
  * 「今天」與「即將到來」都把逾期任務算進來，這是刻意的：逾期的事不會因為
- * 日期過了就不用做，把它藏在昨天等於讓使用者永遠看不到它。Todoist 同樣如此。
+ * 日期過了就不用做，把它藏在昨天等於讓使用者永遠看不到它。
  */
 export function matchesView(task: StoredTask, spec: ViewSpec, now: Date = new Date()): boolean {
   switch (spec.kind) {
