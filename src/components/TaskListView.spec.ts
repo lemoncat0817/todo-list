@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import TaskListView from '@/components/TaskListView.vue'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
+import { useHistoryStore } from '@/stores/history'
+import { addDays, today } from '@/domain/dates'
 import type { Pinia } from 'pinia'
 import type { ViewKind } from '@/domain/views'
 import {
@@ -130,6 +132,105 @@ describe('TaskListView.vue', () => {
       ]
       const w = mountWith(TaskListView, pinia, { props: { viewKind: 'all' }, router: testRouter() })
       expect(names(w)).toEqual(['第一', '第二', '第三'])
+    })
+  })
+
+  describe('子任務：資料層一直支援，現在畫面上也走得到', () => {
+    const parentRow = (w: Wrapper) => at(rows(w), 0)
+
+    beforeEach(() => {
+      store.items = [makeTask('父項', false, { id: 'p', order: 0 })]
+    })
+
+    it('新增子任務後自動展開，否則加完看不到東西像是沒反應', async () => {
+      const w = mountWith(TaskListView, pinia, { router: testRouter() })
+      await parentRow(w).find('button[aria-label^="加入「父項」的子任務"]').trigger('click')
+      await parentRow(w).find('input[aria-label^="「父項」的新子任務"]').setValue('第一步')
+      const add = parentRow(w).findAll('button').filter((b) => b.text() === '加入')
+      await at(add, 0).trigger('click')
+
+      const child = store.items.find((t) => t.taskName === '第一步')
+      expect(child?.parentId).toBe('p')
+      await w.vm.$nextTick()
+      expect(w.text()).toContain('第一步')
+    })
+
+    it('子任務不佔頂層一列，而是掛在父項底下', async () => {
+      store.items.push(makeTask('子項', false, { id: 'c', parentId: 'p' }))
+      const w = mountWith(TaskListView, pinia, { router: testRouter() })
+
+      expect(rows(w), '頂層只有父項一列').toHaveLength(1)
+      expect(parentRow(w).text()).toContain('子任務 0/1')
+    })
+
+    it('展開後才看得到子項，收合狀態預設不展開', async () => {
+      store.items.push(makeTask('子項', false, { id: 'c', parentId: 'p' }))
+      const w = mountWith(TaskListView, pinia, { router: testRouter() })
+      expect(w.text()).not.toContain('子項')
+
+      await parentRow(w).find('button[aria-label^="展開"]').trigger('click')
+      expect(w.text()).toContain('子項')
+    })
+
+    it('子項可獨立完成，進度隨之更新', async () => {
+      store.items.push(makeTask('子項', false, { id: 'c', parentId: 'p' }))
+      const w = mountWith(TaskListView, pinia, { router: testRouter() })
+      await parentRow(w).find('button[aria-label^="展開"]').trigger('click')
+      await parentRow(w)
+        .find('input[aria-label^="標記子任務"]')
+        .setValue(true)
+
+      expect(store.items.find((t) => t.id === 'c')?.isCompleted).toBe(true)
+      expect(parentRow(w).text()).toContain('子任務 1/1')
+    })
+
+    it('刪除父項會連子項一起刪掉，且可一次復原', async () => {
+      store.items.push(makeTask('子項', false, { id: 'c', parentId: 'p' }))
+      const w = mountWith(TaskListView, pinia, { router: testRouter() })
+      await parentRow(w).find('button[aria-label^="刪除「父項」"]').trigger('click')
+
+      expect(store.items).toHaveLength(0)
+      await useHistoryStore().undo()
+      expect(store.items).toHaveLength(2)
+    })
+  })
+
+  describe('一鍵改期', () => {
+    it('排程選單直接改到期日，不必開詳情', async () => {
+      store.items = [makeTask('要改期的', false, { id: '1' })]
+      const w = mountWith(TaskListView, pinia, { router: testRouter() })
+
+      await at(rows(w), 0).find('button[aria-label^="排程"]').trigger('click')
+      const menu = at(rows(w), 0).find('[role="menu"]')
+      expect(menu.exists()).toBe(true)
+
+      const tomorrow = menu.findAll('button').filter((b) => b.text().startsWith('明天'))
+      await at(tomorrow, 0).trigger('click')
+
+      expect(at(store.items, 0).dueDate).toBe(addDays(today(), 1))
+      expect(at(rows(w), 0).find('[role="menu"]').exists(), '選完就關').toBe(false)
+    })
+
+    it('清除到期日時一併清掉時間——沒有日期的時間沒有意義', async () => {
+      store.items = [makeTask('有時間的', false, { id: '1', dueDate: today(), dueTime: '09:00' })]
+      const w = mountWith(TaskListView, pinia, { router: testRouter() })
+
+      await at(rows(w), 0).find('button[aria-label^="排程"]').trigger('click')
+      const clear = at(rows(w), 0)
+        .findAll('[role="menu"] button')
+        .filter((b) => b.text() === '清除到期日')
+      await at(clear, 0).trigger('click')
+
+      expect(at(store.items, 0).dueDate).toBeNull()
+      expect(at(store.items, 0).dueTime).toBeNull()
+    })
+
+    it('沒有到期日時不顯示「清除到期日」', async () => {
+      store.items = [makeTask('沒日期', false, { id: '1' })]
+      const w = mountWith(TaskListView, pinia, { router: testRouter() })
+      await at(rows(w), 0).find('button[aria-label^="排程"]').trigger('click')
+
+      expect(at(rows(w), 0).find('[role="menu"]').text()).not.toContain('清除到期日')
     })
   })
 

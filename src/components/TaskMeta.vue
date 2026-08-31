@@ -63,7 +63,8 @@ const hasMeta = computed(
 // 優先度不用彩虹色，只用強度遞增的單一維度——
 // 彩虹色會讓使用者得先背下對照表才看得懂。
 const priorityClass = computed(
-  () => ({ 0: '', 1: 'text-p1', 2: 'text-p2', 3: 'text-p3' })[props.task.priority],
+  () =>
+    ({ 0: '', 1: 'text-prio-low', 2: 'text-prio-mid', 3: 'text-prio-high' })[props.task.priority],
 )
 
 const overdue = computed(() => isOverdue(props.task.dueDate) && !props.task.isCompleted)

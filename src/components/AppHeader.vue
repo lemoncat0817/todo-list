@@ -69,8 +69,9 @@
 
       <div class="flex min-w-0 grow items-center gap-2">
         <input v-model.trim="draft" aria-label="新增代辦事項" :placeholder="placeholder" enterkeyhint="done"
+          aria-describedby="quick-add-hint"
           class="h-10 min-w-0 grow rounded-lg border border-line bg-surface px-3 text-base text-ink placeholder:text-ink-faint transition-colors focus:border-accent focus:outline-none"
-          @keyup.enter="submit">
+          @focus="focused = true" @blur="focused = false" @keyup.enter="submit">
         <button type="button" aria-label="新增"
           class="grid h-10 shrink-0 place-items-center rounded-lg bg-accent px-3.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
           :disabled="draft === ''" @click="submit">
@@ -78,6 +79,27 @@
         </button>
       </div>
     </div>
+
+    <!--
+      解析預覽：系統把哪些片段理解成什麼，必須在送出前就看得到。
+      少了這一塊，快速新增就是在賭——猜錯的代價是事後再開一次詳情補救，
+      等於把省下來的步驟又還回去。
+    -->
+    <p v-if="tokens.length > 0" class="mt-2 flex flex-wrap items-center gap-1.5" role="status"
+      aria-live="polite">
+      <span class="text-[12px] text-ink-faint">將建立：</span>
+      <span class="rounded bg-sunken px-1.5 py-0.5 text-[12px] font-medium text-ink">
+        {{ parsed.taskName }}
+      </span>
+      <span v-for="(token, i) in tokens" :key="i"
+        class="rounded bg-accent-soft px-1.5 py-0.5 text-[12px] font-medium text-accent-ink">
+        {{ token.label }}
+      </span>
+    </p>
+
+    <p v-else-if="focused" id="quick-add-hint" class="mt-2 text-[12px] text-ink-faint">
+      可以直接打：明天 / 下午3點 / 每週一 / p1 / #專案 / @標籤
+    </p>
 
     <!-- 搜尋列：獨立在新增列下方，只在開啟搜尋時出現，關閉時完全不佔位置 -->
     <div v-if="ui.isSearch" class="mt-2 flex items-center gap-2">
@@ -91,6 +113,8 @@
 import { computed, ref } from 'vue'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
+import { useCollectionsStore } from '@/stores/collections'
+import { parseQuickAdd } from '@/domain/quickAdd'
 import { useTheme } from '@/composables/useTheme'
 import { useCurrentView } from '@/composables/useCurrentView'
 import { useMediaQuery } from '@/composables/useMediaQuery'
@@ -99,6 +123,7 @@ import type { StoredTask } from '@/db/schema'
 
 const tasks = useTasksStore()
 const ui = useUiStore()
+const collections = useCollectionsStore()
 const { preference, cycle } = useTheme()
 const { spec, title } = useCurrentView()
 const isDesktop = useMediaQuery('(min-width: 1024px)')
@@ -113,6 +138,18 @@ const themeLabel = computed(
 )
 
 const draft = ref('')
+const focused = ref(false)
+
+/**
+ * 快速新增的解析結果。
+ *
+ * 每次輸入都重新解析是刻意的：parseQuickAdd 是純函式、沒有 IO，
+ * 成本遠低於「使用者送出後才發現猜錯」的代價。
+ */
+const parsed = computed(() =>
+  parseQuickAdd(draft.value, { projects: collections.projects, tags: collections.tags }),
+)
+const tokens = computed(() => parsed.value.tokens)
 
 /**
  * 新增時繼承目前檢視的脈絡。
@@ -138,10 +175,40 @@ const placeholder = computed(() =>
   spec.value.kind === 'today' ? '今天要做什麼？' : '要做什麼？',
 )
 
-/** 空值時按鈕停用，不用 alert 事後責備使用者。 */
+/**
+ * 空值時按鈕停用，不用 alert 事後責備使用者。
+ *
+ * 解析結果覆蓋檢視脈絡：使用者明確打出「明天」時，那個意圖比
+ * 「你正站在今天這個檢視」更強。沒解析到的欄位才落回脈絡預設。
+ */
 function submit(): void {
   if (draft.value === '') return
-  tasks.add(draft.value, contextOverrides.value)
+  const result = parsed.value
+  const f = result.fields
+  const fields: Partial<StoredTask> = { ...contextOverrides.value }
+
+  if (f.dueDate !== null) {
+    fields.dueDate = f.dueDate
+    fields.dueTime = f.dueTime
+  }
+  if (f.priority !== 0) fields.priority = f.priority
+  if (f.recurrence !== null) fields.recurrence = f.recurrence
+
+  // 打了 #名稱 但還沒有這個專案就順手建立：預覽已經標示「新專案」，
+  // 使用者送出前就知道會多出一個，不算偷偷做事。
+  if (f.projectId !== null) fields.projectId = f.projectId
+  else if (result.unknownProject !== null) {
+    fields.projectId = collections.addProject(result.unknownProject).id
+  }
+
+  const tagIds = [
+    ...(fields.tagIds ?? []),
+    ...f.tagIds,
+    ...result.unknownTags.map((name) => collections.addTag(name).id),
+  ]
+  if (tagIds.length > 0) fields.tagIds = [...new Set(tagIds)]
+
+  tasks.add(result.taskName, fields)
   draft.value = ''
 }
 

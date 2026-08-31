@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, nextTick, ref, toRaw, watch } from 'vue'
 import { loadTasks, migrateFromLocalStorage, saveTasks } from '@/db'
 import type { Priority, Recurrence, StoredTask } from '@/db/schema'
-import { createTask } from '@/domain/task'
+import { createTask, groupByParent } from '@/domain/task'
 import { nextOccurrence } from '@/domain/recurrence'
 import { nextOrder, orderBetween, sortByOrder } from '@/domain/ordering'
 import { countByFilter, queryTasks, type TaskFilter, type TaskQuery } from '@/domain/filtering'
@@ -65,6 +65,17 @@ export const useTasksStore = defineStore('tasks', () => {
   )
 
   const overdue = computed(() => overdueCount(items.value))
+
+  /**
+   * 子任務索引：parentId → 依序排好的子項。
+   *
+   * 一次算好整張表而不是每列各自 filter：清單有 N 列時，後者是 N² 次掃描。
+   */
+  const childrenByParent = computed(() => groupByParent(items.value))
+
+  function childrenOf(parentId: string): StoredTask[] {
+    return childrenByParent.value.get(parentId) ?? []
+  }
 
   const remaining = computed(() => items.value.filter((t) => !t.isCompleted).length)
 
@@ -147,6 +158,34 @@ export const useTasksStore = defineStore('tasks', () => {
     items.value.push(task)
     history.record({
       label: `新增「${taskName}」`,
+      undo: () => {
+        items.value = items.value.filter((t) => t.id !== task.id)
+      },
+      redo: () => {
+        items.value.push(task)
+      },
+    })
+    return task
+  }
+
+  /**
+   * 新增子任務。
+   *
+   * 只支援一層：父項本身有 parentId 時直接拒絕。無限層級對待辦工具是過度設計，
+   * 而且會帶來循環參照的風險（domain/task.ts 的 groupByParent 也是照這個前提寫的）。
+   * 子項預設繼承父項的專案——分類是父項的屬性，子項另外分類只會讓清單更難讀。
+   */
+  function addSubtask(parentId: string, taskName: string): StoredTask | null {
+    const parent = items.value.find((t) => t.id === parentId)
+    if (!parent || parent.parentId !== null) return null
+
+    const task = createTask(taskName, nextOrder(childrenOf(parentId)), {
+      parentId,
+      projectId: parent.projectId,
+    })
+    items.value.push(task)
+    history.record({
+      label: `新增子任務「${taskName}」`,
       undo: () => {
         items.value = items.value.filter((t) => t.id !== task.id)
       },
@@ -311,6 +350,14 @@ export const useTasksStore = defineStore('tasks', () => {
     update(id, { priority })
   }
 
+  /**
+   * 改期。清掉日期時一併清掉時間——沒有日期的時間沒有意義，
+   * 這條規則在 normalizeTask 與 quickAdd 都成立，這裡不能是例外。
+   */
+  function reschedule(id: string, dueDate: string | null): void {
+    update(id, dueDate === null ? { dueDate: null, dueTime: null } : { dueDate })
+  }
+
   function setRecurrence(id: string, recurrence: Recurrence | null): void {
     update(id, { recurrence })
   }
@@ -400,9 +447,11 @@ export const useTasksStore = defineStore('tasks', () => {
     overdue,
     remaining,
     query,
+    childrenOf,
     init,
     flush,
     add,
+    addSubtask,
     update,
     remove,
     clearCompleted,
@@ -410,6 +459,7 @@ export const useTasksStore = defineStore('tasks', () => {
     setAllCompleted,
     move,
     setPriority,
+    reschedule,
     setRecurrence,
     toggleTag,
     removeProject,

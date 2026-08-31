@@ -15,14 +15,26 @@ export const UNCATEGORIZED = null
 
 export type Priority = 0 | 1 | 2 | 3
 
-/** 選單與快捷鍵一律走這個順序，避免各處自行決定要不要倒著列。 */
-export const PRIORITY_ORDER: readonly Priority[] = [0, 1, 2, 3]
+/**
+ * 選單與快捷鍵一律走這個順序：最重要的排最前面。
+ * 內部值維持 0–3（3 最高）以免資料遷移，但對外一律用 Todoist 慣例的 P1–P4
+ * ——p1 是最高，這是使用者從別的工具帶過來的直覺，改內部值不值得。
+ */
+export const PRIORITY_ORDER: readonly Priority[] = [3, 2, 1, 0]
 
 export const PRIORITY_LABELS: Record<Priority, string> = {
-  0: '無',
-  1: '低',
-  2: '中',
-  3: '高',
+  0: 'P4',
+  1: 'P3',
+  2: 'P2',
+  3: 'P1',
+}
+
+/** 選單用：光看 P1 分不出高低，補上中文說明。 */
+export const PRIORITY_DESCRIPTIONS: Record<Priority, string> = {
+  0: 'P4（無）',
+  1: 'P3（低）',
+  2: 'P2（中）',
+  3: 'P1（高）',
 }
 
 /** RFC 5545 的星期代碼，方便日後匯出 .ics 時直接對應。 */

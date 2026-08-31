@@ -15,6 +15,8 @@ import {
   type DialogLog,
 } from '@/test/helpers'
 import type { Router } from 'vue-router'
+import { useCollectionsStore } from '@/stores/collections'
+import { addDays, today } from '@/domain/dates'
 
 /**
  * 鎖定 AppHeader.vue 的既有行為。
@@ -105,6 +107,82 @@ describe('AppHeader.vue', () => {
         await addButton(w).trigger('click')
       }
       expect(store.items.map((t) => t.order)).toEqual([0, 1, 2])
+    })
+  })
+
+  describe('快速新增：一行寫完一筆任務', () => {
+    it('日期、優先度、專案、標籤一次解析，名稱只留下真正的內容', async () => {
+      const collections = useCollectionsStore()
+      const project = collections.addProject('工作')
+      const tag = collections.addTag('公司')
+
+      const w = mountWith(AppHeader, pinia, { router })
+      await textInput(w).setValue('明天 交報告 p1 #工作 @公司')
+      await addButton(w).trigger('click')
+
+      const task = at(store.items, 0)
+      expect(task.taskName, '語法片段不該留在名稱裡').toBe('交報告')
+      expect(task.dueDate).toBe(addDays(today(), 1))
+      expect(task.priority, 'p1 是最高，內部為 3').toBe(3)
+      expect(task.projectId).toBe(project.id)
+      expect(task.tagIds).toEqual([tag.id])
+    })
+
+    it('送出前就看得到解析結果，不用送出才知道猜對沒', async () => {
+      const w = mountWith(AppHeader, pinia, { router })
+      await textInput(w).setValue('明天 交報告 p1')
+
+      const preview = w.find('[role="status"]')
+      expect(preview.exists()).toBe(true)
+      expect(preview.text()).toContain('交報告')
+      expect(preview.text()).toContain('P1')
+      expect(preview.text()).toContain(addDays(today(), 1))
+    })
+
+    it('沒有語法時不顯示預覽，也不動任何欄位', async () => {
+      const w = mountWith(AppHeader, pinia, { router })
+      await textInput(w).setValue('買牛奶')
+      expect(w.find('[role="status"]').exists()).toBe(false)
+
+      await addButton(w).trigger('click')
+      expect(at(store.items, 0)).toMatchObject({ taskName: '買牛奶', dueDate: null, priority: 0 })
+    })
+
+    it('#專案 不存在時順手建立——預覽已經標示「新專案」，不算偷偷做事', async () => {
+      const collections = useCollectionsStore()
+      const w = mountWith(AppHeader, pinia, { router })
+      await textInput(w).setValue('交報告 #行銷 @新標籤')
+
+      expect(w.find('[role="status"]').text()).toContain('新專案 行銷')
+      await addButton(w).trigger('click')
+
+      const project = collections.projects.find((p) => p.name === '行銷')
+      const tag = collections.tags.find((t) => t.name === '新標籤')
+      expect(project, '應已建立專案').toBeDefined()
+      expect(at(store.items, 0).projectId).toBe(project?.id)
+      expect(at(store.items, 0).tagIds).toEqual([tag?.id])
+    })
+
+    it('整句都是語法時退回原文，不會產生沒有名字的任務', async () => {
+      const w = mountWith(AppHeader, pinia, { router })
+      await textInput(w).setValue('明天')
+      await addButton(w).trigger('click')
+
+      expect(at(store.items, 0).taskName).toBe('明天')
+      expect(at(store.items, 0).dueDate).toBeNull()
+    })
+
+    it('明確打出的日期蓋過檢視脈絡', async () => {
+      await router.push('/today')
+      const w = mountWith(AppHeader, pinia, { router })
+
+      await textInput(w).setValue('在今天檢視新增')
+      await addButton(w).trigger('click')
+      expect(at(store.items, 0).dueDate, '沒指定就跟著檢視走').toBe(today())
+
+      await textInput(w).setValue('明天 交報告')
+      await addButton(w).trigger('click')
+      expect(at(store.items, 1).dueDate, '打了明天就以明天為準').toBe(addDays(today(), 1))
     })
   })
 
