@@ -41,6 +41,8 @@ export function useCurrentView(): {
   })
 
   const title = computed(() => {
+    // 不是任務檢視的頁面（例如統計）用路由自己宣告的標題
+    if (typeof route.meta.title === 'string') return route.meta.title
     // 存過的篩選器顯示它的名字，而不是一長串查詢語法
     if (spec.value.kind === 'filter') {
       const saved = collections.filters.find((f) => f.query === spec.value.id)

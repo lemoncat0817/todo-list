@@ -20,7 +20,7 @@
       </div>
 
       <div class="flex shrink-0 items-center gap-1">
-        <button type="button" :aria-pressed="ui.isSearch"
+        <button v-if="isTaskView" type="button" :aria-pressed="ui.isSearch"
           :aria-label="ui.isSearch ? '結束搜尋' : '搜尋代辦事項'"
           class="grid size-9 place-items-center rounded-md text-ink-soft transition-colors hover:bg-sunken hover:text-ink"
           :class="{ 'bg-accent-soft text-accent-ink': ui.isSearch }" @click="ui.toggleSearch()">
@@ -59,7 +59,7 @@
       「全部標記為完成」只在非搜尋狀態顯示：它作用在全部任務上，不是眼前這幾筆
       篩選結果，搜尋中放在一起容易讓人誤以為是「全選搜尋結果」。
     -->
-    <div class="mt-4 flex items-center gap-2">
+    <div v-if="isTaskView" class="mt-4 flex items-center gap-2">
       <label v-if="tasks.items.length > 0 && !ui.isSearch"
         class="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-sunken"
         :title="allCompleted ? '全部取消完成' : '全部標記為完成'">
@@ -85,7 +85,7 @@
       少了這一塊，快速新增就是在賭——猜錯的代價是事後再開一次詳情補救，
       等於把省下來的步驟又還回去。
     -->
-    <p v-if="tokens.length > 0" class="mt-2 flex flex-wrap items-center gap-1.5" role="status"
+    <p v-if="isTaskView && tokens.length > 0" class="mt-2 flex flex-wrap items-center gap-1.5" role="status"
       aria-live="polite">
       <span class="text-[12px] text-ink-faint">將建立：</span>
       <span class="rounded bg-sunken px-1.5 py-0.5 text-[12px] font-medium text-ink">
@@ -97,12 +97,12 @@
       </span>
     </p>
 
-    <p v-else-if="focused" id="quick-add-hint" class="mt-2 text-[12px] text-ink-faint">
+    <p v-else-if="isTaskView && focused" id="quick-add-hint" class="mt-2 text-[12px] text-ink-faint">
       可以直接打：明天 / 下午3點 / 每週一 / p1 / #專案 / @標籤
     </p>
 
     <!-- 搜尋列：獨立在新增列下方，只在開啟搜尋時出現，關閉時完全不佔位置 -->
-    <div v-if="ui.isSearch" class="mt-2 flex items-center gap-2">
+    <div v-if="isTaskView && ui.isSearch" class="mt-2 flex items-center gap-2">
       <input v-model.trim="ui.keyword" aria-label="搜尋代辦事項" type="search" placeholder="搜尋…" enterkeyhint="search"
         class="h-10 min-w-0 grow rounded-lg border border-line bg-surface px-3 text-base text-ink placeholder:text-ink-faint transition-colors focus:border-accent focus:outline-none">
     </div>
@@ -111,6 +111,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
 import { useCollectionsStore } from '@/stores/collections'
@@ -126,6 +127,7 @@ const ui = useUiStore()
 const collections = useCollectionsStore()
 const { preference, cycle } = useTheme()
 const { spec, title } = useCurrentView()
+const route = useRoute()
 const isDesktop = useMediaQuery('(min-width: 1024px)')
 
 const themeLabel = computed(
@@ -139,6 +141,9 @@ const themeLabel = computed(
 
 const draft = ref('')
 const focused = ref(false)
+
+/** 統計頁沒有清單，新增與搜尋在那裡沒有作用對象，一併收起來。 */
+const isTaskView = computed(() => route.name !== 'stats')
 
 /**
  * 快速新增的解析結果。

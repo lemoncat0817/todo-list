@@ -242,7 +242,7 @@ for (const [label, payload, expectedRows] of BAD_PAYLOADS) {
 
     const parts = [
       state.hasHeader ? 'Header✓' : 'Header✗',
-      state.navLinks >= 6 ? '導覽✓' : `導覽✗(${state.navLinks})`,
+      state.navLinks >= 7 ? '導覽✓' : `導覽✗(${state.navLinks})`,
       state.hasFooter ? 'Footer✓' : 'Footer✗',
       `列數=${state.rows}`,
     ].join(' ')
@@ -257,8 +257,8 @@ for (const [label, payload, expectedRows] of BAD_PAYLOADS) {
     expect(uncaught, `${label}：無未捕捉例外`).toEqual([])
     expect(consoleErrors, `${label}：無 console 錯誤`).toEqual([])
     expect(state.hasHeader, `${label}：header 正常渲染`).toBe(true)
-    // 側邊欄的六個固定入口：今天／即將到來／收件匣／全部／未完成／已完成
-    expect(state.navLinks, `${label}：導覽正常渲染`).toBe(6)
+    // 側邊欄的固定入口：今天／即將到來／收件匣／全部／未完成／已完成／統計
+    expect(state.navLinks, `${label}：導覽正常渲染`).toBe(7)
     expect(state.hasFooter, `${label}：footer 正常渲染`).toBe(true)
     expect(state.rows, `${label}：顯示列數`).toBe(expectedRows)
   })

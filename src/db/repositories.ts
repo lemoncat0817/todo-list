@@ -101,8 +101,32 @@ export async function loadTasks(): Promise<StoredTask[]> {
   return rows.map((row, i) => normalizeTask(row, i)).filter((t): t is StoredTask => t !== null)
 }
 
+/** 整份覆寫。匯入或首次寫入時用；一般變更走 applyTaskChanges。 */
 export function saveTasks(tasks: readonly StoredTask[]): Promise<void> {
   return replaceAll(STORE_TASKS, tasks)
+}
+
+export interface TaskChanges {
+  upserts: readonly StoredTask[]
+  deletes: readonly string[]
+}
+
+/**
+ * 只寫真的變動的列。
+ *
+ * 先前每一次變更都是 clear() 再把全部任務重寫一遍——幾十筆沒感覺，
+ * 上千筆時每打一個勾都要重寫整張表。刪除靠 deletes 明確表達，
+ * 所以不再需要用「整份覆寫」來保證刪掉的列真的消失。
+ *
+ * 附帶的好處：不再會把別的分頁剛新增的列一起清掉。
+ */
+export async function applyTaskChanges(changes: TaskChanges): Promise<void> {
+  if (changes.upserts.length === 0 && changes.deletes.length === 0) return
+  const db = await getDB()
+  const tx = db.transaction(STORE_TASKS, 'readwrite')
+  for (const id of changes.deletes) await tx.store.delete(id)
+  for (const row of changes.upserts) await tx.store.put(row)
+  await tx.done
 }
 
 // ------------------------------------------------------------- projects

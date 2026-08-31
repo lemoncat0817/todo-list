@@ -48,6 +48,10 @@ export default defineConfig({
 
   use: {
     baseURL: 'http://localhost:4319',
+    // 封鎖 service worker：它會跨測試快取回應，讓失敗變得無法重現。
+    // PWA 本身改用「產物是否正確」來驗證（見 deploy.spec.ts），
+    // 那是這一層測得準的部分。
+    serviceWorkers: 'block',
     // 失敗時保留可事後追查的證據，而不是只留一行錯誤訊息
     trace: isCI ? 'retain-on-failure' : 'on-first-retry',
     screenshot: 'only-on-failure',

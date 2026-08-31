@@ -201,10 +201,55 @@ export const useCollectionsStore = defineStore('collections', () => {
     })
   }
 
+  /** 供匯入前後快照用：三份清單一起存、一起還原，才不會只回復一半。 */
+  function snapshot(): { projects: StoredProject[]; tags: StoredTag[]; filters: StoredFilter[] } {
+    return {
+      projects: projects.value.map((p) => ({ ...p })),
+      tags: tags.value.map((t) => ({ ...t })),
+      filters: filters.value.map((f) => ({ ...f })),
+    }
+  }
+
+  function restoreSnapshot(snap: {
+    projects: StoredProject[]
+    tags: StoredTag[]
+    filters: StoredFilter[]
+  }): void {
+    projects.value = snap.projects
+    tags.value = snap.tags
+    filters.value = snap.filters
+  }
+
+  /**
+   * 套用匯入結果。不自己推 undo command——匯入是一個橫跨兩個 store 的動作，
+   * 由任務 store 統一記錄成一個命令，否則使用者要按兩次才回得去。
+   */
+  function applyImport(
+    data: {
+      projects: readonly StoredProject[]
+      tags: readonly StoredTag[]
+      filters: readonly StoredFilter[]
+    },
+    mode: 'merge' | 'replace',
+  ): void {
+    const merge = <T extends { id: string }>(existing: T[], incoming: readonly T[]): T[] => {
+      if (mode === 'replace') return [...incoming]
+      const byId = new Map(existing.map((item) => [item.id, item]))
+      for (const item of incoming) byId.set(item.id, item)
+      return [...byId.values()]
+    }
+    projects.value = merge(projects.value, data.projects)
+    tags.value = merge(tags.value, data.tags)
+    filters.value = merge(filters.value, data.filters)
+  }
+
   return {
     projects,
     tags,
     filters,
+    snapshot,
+    restoreSnapshot,
+    applyImport,
     addFilter,
     updateFilter,
     removeFilter,

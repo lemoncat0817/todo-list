@@ -22,6 +22,7 @@ const SCREENS = [
   { name: '全部', path: '/#/all' },
   { name: '未完成', path: '/#/active' },
   { name: '已完成', path: '/#/completed' },
+  { name: '統計', path: '/#/stats' },
 ]
 
 async function seed(page: Page) {
@@ -158,6 +159,16 @@ test('快捷鍵說明也維持零違規', async ({ page }) => {
   await page.locator('h1').click()
   await page.keyboard.press('?')
   await expect(page.getByRole('heading', { name: '鍵盤快捷鍵' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('資料與提醒對話框也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.getByRole('button', { name: '資料與提醒' }).click()
+  await expect(page.getByRole('heading', { name: '資料與提醒' })).toBeVisible()
 
   const found = await violationsOf(page)
   if (found.length) for (const f of found) console.log('    ' + f)

@@ -38,7 +38,15 @@ describe('AppSidebar.vue', () => {
       expect(a.element.tagName).toBe('A')
       expect(a.attributes('href')).toBeTruthy()
     }
-    expect(hrefs(w)).toEqual(['/today', '/upcoming', '/inbox', '/all', '/active', '/completed'])
+    expect(hrefs(w)).toEqual([
+      '/today',
+      '/upcoming',
+      '/inbox',
+      '/all',
+      '/active',
+      '/completed',
+      '/stats',
+    ])
   })
 
   it('專案與標籤各自有可點的入口——先前它們只是顯示用的徽章', async () => {
@@ -111,5 +119,13 @@ describe('AppSidebar.vue', () => {
     const w = mountSidebar()
     await w.find('button[aria-label="管理專案與標籤"]').trigger('click')
     expect(w.emitted('manage')).toBeTruthy()
+  })
+
+  it('資料與提醒是按鈕而不是連結——它開的是對話框，不是一個可分享的位置', async () => {
+    const w = mountSidebar()
+    const dataButton = w.findAll('button').filter((b) => b.text() === '資料與提醒')
+    expect(dataButton).toHaveLength(1)
+    await dataButton[0]?.trigger('click')
+    expect(w.emitted('data')).toBeTruthy()
   })
 })

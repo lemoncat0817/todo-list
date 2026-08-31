@@ -98,6 +98,16 @@
           <span v-if="countFor(entry.kind) > 0" :class="badgeClass">{{ countFor(entry.kind) }}</span>
         </RouterLink>
       </li>
+      <li>
+        <RouterLink to="/stats" :class="linkClass" @click="emit('navigate')">
+          <span class="min-w-0 grow truncate">統計</span>
+        </RouterLink>
+      </li>
+      <li>
+        <button type="button" :class="`${linkClass} w-full text-left`" @click="emit('data')">
+          <span class="min-w-0 grow truncate">資料與提醒</span>
+        </button>
+      </li>
     </ul>
   </nav>
 </template>
@@ -123,6 +133,8 @@ const emit = defineEmits<{
   navigate: []
   /** 開啟專案／標籤管理 */
   manage: []
+  /** 開啟匯出／匯入與提醒設定 */
+  data: []
 }>()
 
 const tasks = useTasksStore()
