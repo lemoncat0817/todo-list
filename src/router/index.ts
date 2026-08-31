@@ -61,6 +61,14 @@ export const routes: RouteRecordRaw[] = [
     component: TaskListView,
     props: (route) => ({ viewKind: 'label', viewId: String(route.params.id) }),
   },
+  {
+    // 查詢放在 query 而不是路徑參數：查詢字串裡有 & | # 這些字元，
+    // 塞進路徑得層層轉義，而 query 天生就是放這種東西的地方。
+    path: '/filter',
+    name: 'filter',
+    component: TaskListView,
+    props: (route) => ({ viewKind: 'filter', viewId: String(route.query.q ?? '') }),
+  },
 
   // 未知路徑退回今天，而不是留下空白畫面
   { path: '/:pathMatch(.*)*', redirect: '/today' },

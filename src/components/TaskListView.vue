@@ -1,62 +1,85 @@
 <template>
-  <div class="min-h-0 grow overflow-y-auto overscroll-contain px-4 py-3 sm:px-6">
-    <p v-if="tasks.isLoading" role="status" aria-live="polite"
-      class="py-10 text-center text-sm text-ink-faint">
-      載入中…
-    </p>
+  <div ref="containerEl" class="flex min-h-0 grow flex-col">
+    <ListToolbar v-if="!tasks.isLoading && !tasks.loadError" :view-kind="props.viewKind"
+      :query="props.viewId" />
 
-    <p v-else-if="tasks.loadError" role="alert"
-      class="rounded-lg border border-danger-soft bg-danger-soft px-4 py-3 text-sm text-danger-ink">
-      無法載入資料，請重新整理再試一次。
-    </p>
+    <BatchToolbar v-if="ui.selectedIds.length > 0" :count="ui.selectedIds.length" />
 
-    <template v-else>
-      <!-- 寫入失敗時清單仍可用，用橫幅提示而非取代清單 -->
-      <p v-if="tasks.writeError" role="alert"
-        class="mb-3 rounded-lg border border-warning-soft bg-warning-soft px-3 py-2 text-sm text-warning-ink">
-        變更尚未存檔，請確認瀏覽器儲存空間是否已滿。
+    <div class="min-h-0 grow overflow-y-auto overscroll-contain px-4 py-3 sm:px-6">
+      <p v-if="tasks.isLoading" role="status" aria-live="polite"
+        class="py-10 text-center text-sm text-ink-faint">
+        載入中…
       </p>
 
-      <div v-if="groups.length === 0" class="py-12 text-center">
-        <p class="text-sm text-ink-faint">{{ emptyText }}</p>
-      </div>
+      <p v-else-if="tasks.loadError" role="alert"
+        class="rounded-lg border border-danger-soft bg-danger-soft px-4 py-3 text-sm text-danger-ink">
+        無法載入資料，請重新整理再試一次。
+      </p>
 
-      <div v-else class="flex flex-col gap-5">
-        <section v-for="group in groups" :key="group.key" class="flex flex-col gap-1.5">
-          <h2 v-if="group.label" class="text-sm font-semibold tracking-tight"
-            :class="group.key === 'overdue' ? 'text-danger-ink' : 'text-ink-soft'">
-            {{ group.label }}
-          </h2>
+      <template v-else>
+        <!-- 寫入失敗時清單仍可用，用橫幅提示而非取代清單 -->
+        <p v-if="tasks.writeError" role="alert"
+          class="mb-3 rounded-lg border border-warning-soft bg-warning-soft px-3 py-2 text-sm text-warning-ink">
+          變更尚未存檔，請確認瀏覽器儲存空間是否已滿。
+        </p>
 
-          <ul class="flex flex-col gap-1.5">
-            <TaskItem v-for="(item, index) in group.tasks" :key="item.id" :task="item"
-              :editing="editingId === item.id" :dragging="draggingId === item.id"
-              :selected="ui.detailTaskId === item.id" :children="tasks.childrenOf(item.id)"
-              :expanded="expandedIds.has(item.id)"
-              :is-first="index === 0" :is-last="index === group.tasks.length - 1"
-              @toggle="tasks.toggle(item.id)" @remove="remove(item.id)"
-              @start-edit="editingId = item.id" @cancel-edit="editingId = null"
-              @save="(name) => save(item.id, name)" @open-detail="ui.openDetail(item.id)"
-              @move-up="move(group.tasks, index, -1)" @move-down="move(group.tasks, index, 1)"
-              @reschedule="(due) => tasks.reschedule(item.id, due)"
-              @toggle-expand="toggleExpand(item.id)"
-              @add-subtask="(name) => addSubtask(item.id, name)"
-              @toggle-child="(id) => tasks.toggle(id)" @remove-child="(id) => tasks.remove(id)"
-              @dragstart="draggingId = item.id" @drop="drop(item.id)" @dragend="draggingId = null" />
-          </ul>
-        </section>
-      </div>
-    </template>
+        <!--
+          查詢寫錯時要說「查詢有問題」，不能顯示成「沒有符合的項目」——
+          後者會讓使用者以為自己的條件成立了，只是真的沒有東西。
+        -->
+        <p v-if="queryError !== null" role="alert"
+          class="rounded-lg border border-danger-soft bg-danger-soft px-4 py-3 text-sm text-danger-ink">
+          篩選條件無法解析：{{ queryError }}
+        </p>
+
+        <div v-else-if="groups.length === 0" class="py-12 text-center">
+          <p class="text-sm text-ink-faint">{{ emptyText }}</p>
+        </div>
+
+        <div v-else class="flex flex-col gap-5">
+          <section v-for="group in groups" :key="group.key" class="flex flex-col gap-1.5">
+            <h2 v-if="group.label" class="text-sm font-semibold tracking-tight"
+              :class="group.key === 'overdue' ? 'text-danger-ink' : 'text-ink-soft'">
+              {{ group.label }}
+            </h2>
+
+            <ul class="flex flex-col gap-1.5">
+              <TaskItem v-for="(item, index) in group.tasks" :key="item.id" :task="item"
+                :editing="editingId === item.id" :dragging="draggingId === item.id"
+                :active="ui.detailTaskId === item.id" :checked="ui.selectedIds.includes(item.id)"
+                :selecting="ui.selectedIds.length > 0" :children="tasks.childrenOf(item.id)"
+                :expanded="expandedIds.has(item.id)"
+                :is-first="index === 0" :is-last="index === group.tasks.length - 1"
+                @toggle="tasks.toggle(item.id)" @remove="remove(item.id)"
+                @start-edit="editingId = item.id" @cancel-edit="editingId = null"
+                @save="(name) => save(item.id, name)" @open-detail="ui.openDetail(item.id)"
+                @move-up="move(group.tasks, index, -1)" @move-down="move(group.tasks, index, 1)"
+                @reschedule="(due) => tasks.reschedule(item.id, due)"
+                @toggle-expand="toggleExpand(item.id)"
+                @add-subtask="(name) => addSubtask(item.id, name)"
+                @toggle-child="(id) => tasks.toggle(id)" @remove-child="(id) => tasks.remove(id)"
+                @toggle-checked="ui.toggleSelected(item.id)"
+                @dragstart="draggingId = item.id" @drop="drop(item.id)"
+                @dragend="draggingId = null" />
+            </ul>
+          </section>
+        </div>
+      </template>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import TaskItem from './TaskItem.vue'
+import BatchToolbar from './BatchToolbar.vue'
+import ListToolbar from './ListToolbar.vue'
 import { emptyMessage, type ViewKind, type ViewSpec } from '@/domain/views'
+import { parseFilterQuery } from '@/domain/filterQuery'
 import type { StoredTask } from '@/db/schema'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
+import { useListKeyboard } from '@/composables/useListKeyboard'
 
 /**
  * 任務清單。
@@ -81,14 +104,40 @@ const editingId = ref<string | null>(null)
 const draggingId = ref<string | null>(null)
 // 展開的父項。同樣是元件暫態：它描述的是「我現在想看什麼」，不是任務的屬性。
 const expandedIds = ref<Set<string>>(new Set())
+const containerEl = ref<HTMLElement | null>(null)
 
 const spec = computed<ViewSpec>(() => ({ kind: props.viewKind, id: props.viewId }))
 const groups = computed(() => tasks.groupsOf(spec.value))
 const emptyText = computed(() => emptyMessage(spec.value, ui.keyword))
 
-// 換檢視時結束編輯：留著的話，切回來會看到一列莫名開著輸入框
+/** 只有 filter 檢視才有查詢，其餘一律沒有錯誤可報。 */
+const queryError = computed(() => {
+  if (props.viewKind !== 'filter') return null
+  const parsed = parseFilterQuery(props.viewId ?? '')
+  return parsed.ok ? null : parsed.message
+})
+
+// 換檢視時結束編輯與選取：留著的話，切回來會看到一列莫名開著輸入框，
+// 而看不見的選取更危險——批次刪除會刪到使用者早就看不到的東西。
 watch(spec, () => {
   editingId.value = null
+  ui.clearSelection()
+})
+
+useListKeyboard(containerEl, {
+  toggleChecked: (id) => ui.toggleSelected(id),
+  edit: (id) => {
+    editingId.value = id
+  },
+  schedule: (id) => {
+    // 排程選單住在 TaskItem 裡，這裡按它的可及名稱找到那顆按鈕再觸發。
+    // 讓 store 多一個「哪個選單開著」的狀態只為了鍵盤，代價比這高。
+    containerEl.value
+      ?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(id)}"] button[aria-label^="排程"]`)
+      ?.click()
+  },
+  openDetail: (id) => ui.openDetail(id),
+  toggleComplete: (id) => tasks.toggle(id),
 })
 
 function toggleExpand(id: string): void {
@@ -125,6 +174,12 @@ function move(list: readonly StoredTask[], index: number, delta: -1 | 1): void {
   const neighbour = list[index + delta]
   if (current && neighbour) {
     tasks.move(current.id, neighbour.id, delta === -1 ? 'before' : 'after')
+    // 移動後 DOM 會重排，把焦點放回同一筆任務上，鍵盤操作才不會斷掉
+    void nextTick(() => {
+      containerEl.value
+        ?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(current.id)}"]`)
+        ?.focus()
+    })
   }
 }
 

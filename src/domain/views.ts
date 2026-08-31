@@ -23,6 +23,7 @@ export type ViewKind =
   | 'completed'
   | 'project'
   | 'label'
+  | 'filter'
 
 export interface ViewSpec {
   kind: ViewKind
@@ -33,9 +34,39 @@ export interface ViewSpec {
 /** 「即將到來」往前看幾天。七天是一週的自然單位，再長就失去「即將」的意思。 */
 export const UPCOMING_DAYS = 7
 
+/** 排序方式。manual 是拖曳出來的順序，也是預設——那是使用者自己的判斷。 */
+export type SortKey = 'manual' | 'due' | 'priority' | 'name' | 'created'
+
+export const SORT_LABELS: Record<SortKey, string> = {
+  manual: '手動順序',
+  due: '到期日',
+  priority: '優先度',
+  name: '名稱',
+  created: '建立時間',
+}
+
+/** 分組方式。日期軸的檢視（今天／即將到來）自帶分組，不受這個設定影響。 */
+export type GroupKey = 'none' | 'project' | 'priority'
+
+export const GROUP_LABELS: Record<GroupKey, string> = {
+  none: '不分組',
+  project: '專案',
+  priority: '優先度',
+}
+
 export interface ViewOptions {
   keyword?: string
   now?: Date
+  sort?: SortKey
+  groupBy?: GroupKey
+  /** 分組標題需要專案名稱；沒有傳就退回「未分類」之類的通用標題。 */
+  projects?: readonly NamedCollection[]
+  /**
+   * filter 檢視專用的述詞（由 domain/filterQuery 編譯而來）。
+   * 傳 null 代表查詢寫錯了——此時不回傳任何任務，
+   * 讓畫面能說「查詢有問題」而不是假裝「沒有符合的項目」。
+   */
+  predicate?: ((task: StoredTask) => boolean) | null
 }
 
 /**
@@ -68,6 +99,9 @@ export function matchesView(task: StoredTask, spec: ViewSpec, now: Date = new Da
       return !task.isCompleted && task.projectId === spec.id
     case 'label':
       return !task.isCompleted && spec.id !== null && task.tagIds.includes(spec.id)
+    // filter 檢視的條件完全由外部述詞決定，這裡不做額外限制
+    case 'filter':
+      return true
     default:
       return true
   }
@@ -97,6 +131,39 @@ function byDueThenOrder(tasks: readonly StoredTask[]): StoredTask[] {
   })
 }
 
+/**
+ * 使用者選擇的排序。
+ *
+ * 每一種都以 order 收尾當作穩定的最後依據：少了它，兩筆同優先度的任務
+ * 會在每次重新渲染時互換位置——排序看起來就像壞掉。
+ */
+export function sortTasks(tasks: readonly StoredTask[], key: SortKey = 'manual'): StoredTask[] {
+  const list = [...tasks]
+  switch (key) {
+    case 'due':
+      return list.sort((a, b) => {
+        if (a.dueDate !== b.dueDate) {
+          // 沒有到期日的排最後：它們不是「很早要做」，而是「沒排」
+          if (a.dueDate === null) return 1
+          if (b.dueDate === null) return -1
+          return compareISODate(a.dueDate, b.dueDate)
+        }
+        return a.order - b.order
+      })
+    case 'priority':
+      // priority 內部值愈大愈重要，所以由大到小
+      return list.sort((a, b) => b.priority - a.priority || a.order - b.order)
+    case 'name':
+      return list.sort(
+        (a, b) => a.taskName.localeCompare(b.taskName, 'zh-Hant') || a.order - b.order,
+      )
+    case 'created':
+      return list.sort((a, b) => b.createdAt - a.createdAt || a.order - b.order)
+    default:
+      return sortByOrder(list)
+  }
+}
+
 function dateGroupLabel(iso: string, now: Date): string {
   const diff = daysUntil(iso, now)
   if (diff === 0) return `今天 · ${iso}`
@@ -116,17 +183,34 @@ export function resolveView(
 ): TaskGroup[] {
   const { keyword = '', now = new Date() } = options
 
+  // filter 檢視在查詢寫錯時 predicate 是 null：一筆都不回傳，
+  // 由畫面說明「查詢有問題」，而不是假裝條件成立但沒有結果。
+  if (spec.kind === 'filter' && (options.predicate === null || options.predicate === undefined)) {
+    return []
+  }
+  const predicate = options.predicate ?? (() => true)
+
   const matched = tasks.filter(
     (task) =>
-      task.parentId === null && matchesKeyword(task, keyword) && matchesView(task, spec, now),
+      task.parentId === null &&
+      matchesKeyword(task, keyword) &&
+      matchesView(task, spec, now) &&
+      (spec.kind !== 'filter' || predicate(task)),
   )
 
-  const groups = buildGroups(matched, spec, now)
+  const groups = buildGroups(matched, spec, now, options)
   return groups.filter((g) => g.tasks.length > 0)
 }
 
-function buildGroups(matched: StoredTask[], spec: ViewSpec, now: Date): TaskGroup[] {
+function buildGroups(
+  matched: StoredTask[],
+  spec: ViewSpec,
+  now: Date,
+  options: ViewOptions,
+): TaskGroup[] {
   const todayISO = todayOf(now)
+  const sort = options.sort ?? 'manual'
+  const groupBy = options.groupBy ?? 'none'
 
   if (spec.kind === 'today') {
     const overdue = matched.filter((t) => t.dueDate !== null && t.dueDate < todayISO)
@@ -153,14 +237,48 @@ function buildGroups(matched: StoredTask[], spec: ViewSpec, now: Date): TaskGrou
     return groups
   }
 
-  if (spec.kind === 'completed') {
+  if (spec.kind === 'completed' && sort === 'manual') {
     // 已完成是歷史紀錄，最近完成的排最前面才符合「回顧」的閱讀順序
     const sorted = [...matched].sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
     return [{ key: 'completed', label: '', tasks: sorted }]
   }
 
-  return [{ key: 'all', label: '', tasks: sortByOrder(matched) }]
+  if (groupBy === 'project') {
+    const byProject = new Map<string, StoredTask[]>()
+    for (const task of matched) {
+      const key = task.projectId ?? ''
+      const bucket = byProject.get(key)
+      if (bucket) bucket.push(task)
+      else byProject.set(key, [task])
+    }
+    // 未分類固定排最後：它是「還沒決定」，不是一個跟其他專案並列的專案
+    const keys = [...byProject.keys()].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : 0))
+    return keys.map((key) => ({
+      key: key === '' ? 'uncategorized' : key,
+      label:
+        key === ''
+          ? '未分類'
+          : (options.projects?.find((p) => p.id === key)?.name ?? '未分類'),
+      tasks: sortTasks(byProject.get(key) ?? [], sort),
+    }))
+  }
+
+  if (groupBy === 'priority') {
+    return PRIORITY_GROUP_ORDER.map((priority) => ({
+      key: `p${4 - priority}`,
+      label: `P${4 - priority}`,
+      tasks: sortTasks(
+        matched.filter((t) => t.priority === priority),
+        sort,
+      ),
+    }))
+  }
+
+  return [{ key: 'all', label: '', tasks: sortTasks(matched, sort) }]
 }
+
+/** 由高到低：3 是內部最高值，對外顯示為 P1。 */
+const PRIORITY_GROUP_ORDER = [3, 2, 1, 0] as const
 
 /** 側邊欄徽章用的數量。與清單走同一條路徑，不會出現「顯示 3 但列出 2」。 */
 export function viewCount(
@@ -210,6 +328,8 @@ export function viewTitle(
       return collections.projects?.find((p) => p.id === spec.id)?.name ?? '找不到這個專案'
     case 'label':
       return `#${collections.tags?.find((t) => t.id === spec.id)?.name ?? '找不到這個標籤'}`
+    case 'filter':
+      return spec.id ?? '篩選器'
     default:
       return '全部'
   }
@@ -233,6 +353,8 @@ export function emptyMessage(spec: ViewSpec, keyword = ''): string {
       return '這個專案還沒有任務'
     case 'label':
       return '這個標籤還沒有任務'
+    case 'filter':
+      return '沒有符合這個查詢的代辦事項'
     default:
       return '目前沒有代辦事項，從上方新增一筆吧'
   }

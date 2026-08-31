@@ -18,6 +18,7 @@ const VIEW_KINDS: readonly ViewKind[] = [
   'completed',
   'project',
   'label',
+  'filter',
 ]
 
 function isViewKind(value: unknown): value is ViewKind {
@@ -31,15 +32,22 @@ export function useCurrentView(): {
   const route = useRoute()
   const collections = useCollectionsStore()
 
-  const spec = computed<ViewSpec>(() => ({
+  const spec = computed<ViewSpec>(() => {
     // 導覽過程中路由名稱可能短暫是 undefined；退回「全部」而不是讓畫面空掉
-    kind: isViewKind(route.name) ? route.name : 'all',
-    id: typeof route.params.id === 'string' ? route.params.id : null,
-  }))
+    const kind = isViewKind(route.name) ? route.name : 'all'
+    // filter 檢視的「id」是查詢字串本身，它放在 query 而不是路徑參數
+    if (kind === 'filter') return { kind, id: typeof route.query.q === 'string' ? route.query.q : '' }
+    return { kind, id: typeof route.params.id === 'string' ? route.params.id : null }
+  })
 
-  const title = computed(() =>
-    viewTitle(spec.value, { projects: collections.projects, tags: collections.tags }),
-  )
+  const title = computed(() => {
+    // 存過的篩選器顯示它的名字，而不是一長串查詢語法
+    if (spec.value.kind === 'filter') {
+      const saved = collections.filters.find((f) => f.query === spec.value.id)
+      return saved?.name ?? (spec.value.id === null || spec.value.id === '' ? '篩選器' : spec.value.id)
+    }
+    return viewTitle(spec.value, { projects: collections.projects, tags: collections.tags })
+  })
 
   return { spec, title }
 }

@@ -18,6 +18,12 @@ export const useUiStore = defineStore('ui', () => {
   const keyword = ref('')
   const isSidebarOpen = ref(false)
   const detailTaskId = ref<string | null>(null)
+  const isPaletteOpen = ref(false)
+  /**
+   * 多選。用陣列而非 Set：Pinia 的 state 需要可序列化，
+   * 而這裡的量級（一次選幾十筆）用陣列查找完全不是瓶頸。
+   */
+  const selectedIds = ref<string[]>([])
 
   function toggleSearch(): void {
     isSearch.value = !isSearch.value
@@ -33,6 +39,32 @@ export const useUiStore = defineStore('ui', () => {
     isSidebarOpen.value = false
   }
 
+  function toggleSelected(id: string): void {
+    selectedIds.value = selectedIds.value.includes(id)
+      ? selectedIds.value.filter((x) => x !== id)
+      : [...selectedIds.value, id]
+  }
+
+  function setSelection(ids: readonly string[]): void {
+    selectedIds.value = [...ids]
+  }
+
+  function clearSelection(): void {
+    selectedIds.value = []
+  }
+
+  function isSelected(id: string): boolean {
+    return selectedIds.value.includes(id)
+  }
+
+  function openPalette(): void {
+    isPaletteOpen.value = true
+  }
+
+  function closePalette(): void {
+    isPaletteOpen.value = false
+  }
+
   function openDetail(id: string): void {
     detailTaskId.value = id
   }
@@ -46,6 +78,14 @@ export const useUiStore = defineStore('ui', () => {
     keyword,
     isSidebarOpen,
     detailTaskId,
+    isPaletteOpen,
+    selectedIds,
+    toggleSelected,
+    setSelection,
+    clearSelection,
+    isSelected,
+    openPalette,
+    closePalette,
     toggleSearch,
     openSidebar,
     closeSidebar,

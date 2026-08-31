@@ -101,6 +101,66 @@
         </div>
       </section>
 
+      <section class="flex flex-col gap-2">
+        <h3 class="text-sm font-medium text-ink-soft">篩選器</h3>
+
+        <ul v-if="collections.filters.length > 0" class="flex flex-col gap-1.5">
+          <li v-for="filter in collections.filters" :key="filter.id"
+            class="flex items-center gap-2 rounded-lg border border-line px-2 py-1.5">
+            <span class="size-3 shrink-0 rounded-full" :style="{ backgroundColor: filter.color }"
+              aria-hidden="true" />
+            <div class="min-w-0 grow">
+              <p class="truncate text-[15px] text-ink">{{ filter.name }}</p>
+              <p class="truncate font-mono text-xs text-ink-soft">{{ filter.query }}</p>
+            </div>
+            <button type="button" :aria-label="`刪除篩選器「${filter.name}」`"
+              class="grid size-8 shrink-0 place-items-center rounded-md text-ink-faint transition-colors hover:bg-danger-soft hover:text-danger-ink"
+              @click="removeFilter(filter.id)">
+              <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true" fill="none"
+                stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                <path d="M3.5 4.5h9M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8" />
+              </svg>
+            </button>
+          </li>
+        </ul>
+
+        <div class="flex flex-col gap-2 rounded-lg border border-line p-3">
+          <div class="flex gap-2">
+            <label class="sr-only" for="new-filter-name">篩選器名稱</label>
+            <input id="new-filter-name" v-model.trim="newFilterName" placeholder="名稱，例如「今天的要事」"
+              class="h-9 min-w-0 grow rounded-lg border border-line bg-surface px-2.5 text-[15px] text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none">
+          </div>
+          <div class="flex gap-2">
+            <label class="sr-only" for="new-filter-query">篩選條件</label>
+            <input id="new-filter-query" v-model.trim="newFilterQuery" placeholder="today &amp; p1"
+              class="h-9 min-w-0 grow rounded-lg border bg-surface px-2.5 font-mono text-sm text-ink placeholder:text-ink-faint focus:outline-none"
+              :class="queryError === null ? 'border-line focus:border-accent' : 'border-danger'">
+            <button type="button"
+              class="shrink-0 rounded-lg bg-accent px-3 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
+              :disabled="!canCreateFilter" @click="createFilter">
+              建立
+            </button>
+          </div>
+
+          <!-- 先說結果再說語法：使用者要的是「這個條件對不對」，不是規格書 -->
+          <p v-if="queryError !== null" role="alert" class="text-sm text-danger-ink">
+            {{ queryError }}
+          </p>
+          <p v-else-if="newFilterQuery !== ''" class="text-sm text-ink-soft">
+            目前符合 {{ matchCount }} 項
+          </p>
+          <p class="text-xs text-ink-faint">
+            可用：<span class="font-mono">today</span>、<span class="font-mono">overdue</span>、
+            <span class="font-mono">upcoming</span>、<span class="font-mono">nodate</span>、
+            <span class="font-mono">done</span>、<span class="font-mono">p1</span>–<span
+              class="font-mono">p4</span>、<span class="font-mono">#專案</span>、
+            <span class="font-mono">@標籤</span>，以及 <span class="font-mono">&amp;</span>
+            <span class="font-mono">|</span> <span class="font-mono">!</span>
+            <span class="font-mono">( )</span>
+          </p>
+        </div>
+      </section>
+
       <div class="flex justify-end">
         <button type="button"
           class="rounded-lg border border-line px-3.5 py-2 text-sm font-medium text-ink-soft transition-colors hover:bg-sunken hover:text-ink"
@@ -113,11 +173,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, useTemplateRef, watch } from 'vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
 import { COLLECTION_COLORS } from '@/db/schema'
 import { useCollectionsStore } from '@/stores/collections'
 import { useTasksStore } from '@/stores/tasks'
 import { useRoute, useRouter } from 'vue-router'
+import { parseFilterQuery } from '@/domain/filterQuery'
 
 /**
  * 專案與標籤的管理介面。
@@ -139,6 +200,25 @@ const router = useRouter()
 const dialogEl = useTemplateRef<HTMLDialogElement>('dialogEl')
 const newProjectName = ref('')
 const newTagName = ref('')
+const newFilterName = ref('')
+const newFilterQuery = ref('')
+
+/** 建立前就先告訴使用者條件對不對、會match 幾項——存下一個永遠是空的篩選器沒有意義。 */
+const queryError = computed(() => {
+  if (newFilterQuery.value === '') return null
+  const parsed = parseFilterQuery(newFilterQuery.value)
+  return parsed.ok ? null : parsed.message
+})
+
+const matchCount = computed(() =>
+  queryError.value === null && newFilterQuery.value !== ''
+    ? tasks.countOf({ kind: 'filter', id: newFilterQuery.value })
+    : 0,
+)
+
+const canCreateFilter = computed(
+  () => newFilterName.value !== '' && newFilterQuery.value !== '' && queryError.value === null,
+)
 
 watch(
   () => props.open,
@@ -203,5 +283,21 @@ function createTag(): void {
   if (newTagName.value === '') return
   collections.addTag(newTagName.value)
   newTagName.value = ''
+}
+
+function createFilter(): void {
+  if (!canCreateFilter.value) return
+  collections.addFilter(newFilterName.value, newFilterQuery.value)
+  newFilterName.value = ''
+  newFilterQuery.value = ''
+}
+
+/** 刪掉正在看的那個篩選器時要離開它的檢視。 */
+function removeFilter(id: string): void {
+  const filter = collections.filters.find((f) => f.id === id)
+  collections.removeFilter(id)
+  if (route.name === 'filter' && filter && route.query.q === filter.query) {
+    void router.push('/today')
+  }
 }
 </script>

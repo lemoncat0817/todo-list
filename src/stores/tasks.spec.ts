@@ -3,7 +3,8 @@ import { createApp, nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useTasksStore } from '@/stores/tasks'
 import * as db from '@/db'
-import { makeTask } from '@/test/helpers'
+import { at, freshPinia, makeTask } from '@/test/helpers'
+import { useHistoryStore } from '@/stores/history'
 
 function setup() {
   const pinia = createPinia()
@@ -184,5 +185,60 @@ describe('todoTask store', () => {
       expect(spy, '載入流程本身不應觸發寫入').not.toHaveBeenCalled()
       expect(store.items.map((t) => t.taskName)).toEqual(['不可以不見'])
     })
+  })
+})
+
+describe('批次操作', () => {
+  /**
+   * 整批只推一個 undo command 是這一組的重點：使用者按一次「全部順延」
+   * 是一個決定，要按二十次 Ctrl+Z 才回得去的話等於沒有復原。
+   */
+  let store: ReturnType<typeof useTasksStore>
+  let history: ReturnType<typeof useHistoryStore>
+
+  beforeEach(() => {
+    freshPinia()
+    store = useTasksStore()
+    history = useHistoryStore()
+    store.items = [
+      makeTask('一', false, { id: '1' }),
+      makeTask('二', false, { id: '2' }),
+      makeTask('三', false, { id: '3' }),
+    ]
+    history.clear()
+  })
+
+  it('batchUpdate 一次改多筆，只推一個可復原的命令', async () => {
+    const changed = store.batchUpdate(['1', '2'], { priority: 3 }, '設為 P1')
+    expect(changed).toBe(2)
+    expect(store.items.map((t) => t.priority)).toEqual([3, 3, 0])
+    expect(history.depth, '整批算一個命令').toBe(1)
+
+    await history.undo()
+    expect(store.items.map((t) => t.priority), '一次復原全部').toEqual([0, 0, 0])
+  })
+
+  it('batchRemove 連子項一起刪，也只推一個命令', async () => {
+    store.items.push(makeTask('一的子項', false, { id: '1a', parentId: '1' }))
+    const removed = store.batchRemove(['1', '2'])
+
+    expect(removed, '父項兩筆加子項一筆').toBe(3)
+    expect(store.items.map((t) => t.id)).toEqual(['3'])
+    expect(history.depth).toBe(1)
+
+    await history.undo()
+    expect(store.items).toHaveLength(4)
+  })
+
+  it('batchReschedule 清除日期時一併清掉時間', () => {
+    store.items = [makeTask('有時間', false, { id: '1', dueDate: '2030-01-01', dueTime: '09:00' })]
+    store.batchReschedule(['1'], null)
+    expect(at(store.items, 0).dueDate).toBeNull()
+    expect(at(store.items, 0).dueTime, '沒有日期的時間沒有意義').toBeNull()
+  })
+
+  it('沒有命中任何 id 時不留下空的復原紀錄', () => {
+    store.batchUpdate(['不存在'], { priority: 3 }, '設為 P1')
+    expect(history.depth).toBe(0)
   })
 })

@@ -47,6 +47,8 @@
     <TaskDetailDialog v-else :task="detailTask" @close="ui.closeDetail()" />
 
     <CollectionsDialog :open="isManaging" @close="isManaging = false" />
+    <CommandPalette :open="ui.isPaletteOpen" @close="ui.closePalette()" />
+    <ShortcutsDialog :open="isHelpOpen" @close="isHelpOpen = false" />
   </div>
 </template>
 
@@ -59,6 +61,8 @@ import AppSidebar from './components/AppSidebar.vue'
 import TaskDetailDialog from './components/TaskDetailDialog.vue'
 import TaskDetailPanel from './components/TaskDetailPanel.vue'
 import CollectionsDialog from './components/CollectionsDialog.vue'
+import CommandPalette from './components/CommandPalette.vue'
+import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import { useHistoryStore } from '@/stores/history'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
@@ -83,6 +87,7 @@ const isDesktop = useMediaQuery('(min-width: 1024px)')
 const isWide = useMediaQuery('(min-width: 1280px)')
 
 const isManaging = ref(false)
+const isHelpOpen = ref(false)
 const drawerEl = ref<HTMLDialogElement | null>(null)
 
 const detailTask = computed(
@@ -131,10 +136,21 @@ useShortcuts({
     if (ui.isSearch) ui.isSearch = false
     requestAnimationFrame(() => focus('input[aria-label="新增代辦事項"]'))
   },
+  palette: () => {
+    ui.openPalette()
+  },
+  help: () => {
+    isHelpOpen.value = true
+  },
   escape: () => {
     // 對話框開著時 Esc 屬於它——平台會處理關閉，這裡不要再多做一件事，
     // 否則按一次 Esc 會同時關掉對話框與搜尋。
     if (document.querySelector('dialog[open]')) return
+    // 批次選取比搜尋更「當下」：正選到一半按 Esc，想取消的是選取
+    if (ui.selectedIds.length > 0) {
+      ui.clearSelection()
+      return
+    }
     // 先關掉當前開著的搜尋，跟大部分搜尋框的慣例一致；
     // 沒有搜尋在開時才退而求其次去關 toast 提示。
     if (ui.isSearch) {
