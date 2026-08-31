@@ -17,7 +17,7 @@
         優先度
         <select v-model.number="draft.priority"
           class="h-9 rounded-lg border border-line bg-surface px-2.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none">
-          <option v-for="p in PRIORITY_ORDER" :key="p" :value="p">{{ PRIORITY_LABELS[p] }}</option>
+          <option v-for="p in PRIORITY_ORDER" :key="p" :value="p">{{ PRIORITY_DESCRIPTIONS[p] }}</option>
         </select>
       </label>
 
@@ -128,7 +128,7 @@ import { ref, watch } from 'vue'
 import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
 import {
-  PRIORITY_LABELS,
+  PRIORITY_DESCRIPTIONS,
   PRIORITY_ORDER,
   WEEKDAYS,
   WEEKDAY_LABELS,

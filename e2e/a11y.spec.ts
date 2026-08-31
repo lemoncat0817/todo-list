@@ -109,6 +109,30 @@ test('窄螢幕的導覽抽屜也維持零違規', async ({ page }) => {
   expect(found).toEqual([])
 })
 
+test('排程選單展開時也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.locator('main li').first().getByRole('button', { name: /^排程/ }).click()
+  await expect(page.getByRole('menu')).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('展開子任務時也維持零違規', async ({ page }) => {
+  await seed(page)
+  const row = page.locator('main li').first()
+  await row.getByRole('button', { name: /的子任務$/ }).click()
+  const subInput = row.getByLabel(/的新子任務$/)
+  await subInput.fill('一個子任務')
+  await subInput.press('Enter')
+  await expect(row).toContainText('子任務 0/1')
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
 test('空清單狀態也維持零違規', async ({ page }) => {
   page.on('dialog', (d) => d.accept())
   await page.goto('/#/all')

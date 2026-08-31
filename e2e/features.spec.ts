@@ -10,36 +10,44 @@ async function addTask(page: Page, name: string): Promise<void> {
   await page.getByRole('button', { name: '新增' }).click()
 }
 
-const rows = (page: Page) => page.locator('main li')
-const names = (page: Page) => page.locator('main li p')
+// 子任務在語意上也是清單項目，所以「main li」不再等於「一列任務」。
+// data-test 標在頂層那一列上，讓計數不會把展開的子項算進來。
+const rows = (page: Page) => page.locator('main li[data-test=task-row]')
+const names = (page: Page) => page.locator('main [data-test=task-name]')
+
+interface PersistedTask {
+  taskName: string
+  order: number
+  isCompleted: boolean
+  parentId: string | null
+}
 
 /**
- * 依排序鍵讀出 IndexedDB 裡的任務名稱。
+ * 讀出 IndexedDB 裡實際落地的任務。
  *
  * 「改動後立刻重新整理」的測試必須等寫入落地，不能只等畫面更新——
  * 兩者之間有一段真實的非同步空窗（main.ts 已載明只能盡力而為），
  * 等 DOM 就重新整理等於在測時序，不是在測持久化。
  */
-async function persistedNames(page: Page): Promise<string[]> {
+async function persistedTasks(page: Page): Promise<PersistedTask[]> {
   return page.evaluate(
     () =>
-      new Promise<string[]>((resolve, reject) => {
+      new Promise<PersistedTask[]>((resolve, reject) => {
         const open = indexedDB.open('todolist')
         open.onerror = () => reject(open.error)
         open.onsuccess = () => {
           const tx = open.result.transaction('tasks', 'readonly')
           const req = tx.objectStore('tasks').getAll()
           req.onsuccess = () =>
-            resolve(
-              (req.result as { taskName: string; order: number }[])
-                .sort((a, b) => a.order - b.order)
-                .map((t) => t.taskName),
-            )
+            resolve((req.result as PersistedTask[]).sort((a, b) => a.order - b.order))
           req.onerror = () => reject(req.error)
         }
       }),
   )
 }
+
+const persistedNames = async (page: Page): Promise<string[]> =>
+  (await persistedTasks(page)).map((t) => t.taskName)
 
 test.beforeEach(async ({ page }) => {
   page.on('dialog', (d) => d.accept())
@@ -62,7 +70,7 @@ test.describe('任務細節', () => {
     await dialog.getByRole('button', { name: '儲存' }).click()
 
     await expect(dialog).not.toBeVisible()
-    await expect(rows(page).first().getByLabel('優先度：高')).toBeVisible()
+    await expect(rows(page).first().getByLabel('優先度：P1')).toBeVisible()
     await expect(rows(page).first()).toContainText('2030-01-15')
   })
 
@@ -132,10 +140,83 @@ test.describe('寬螢幕的詳情面板', () => {
   })
 })
 
+test.describe('快速新增', () => {
+  test('一行寫完日期、時間、優先度、專案、標籤', async ({ page }) => {
+    const input = page.getByLabel('新增代辦事項')
+    await input.fill('明天下午3點 交季報 p1 #工作 @公司')
+
+    // 送出前就看得到系統理解成什麼
+    const preview = page.getByRole('status').filter({ hasText: '將建立' })
+    await expect(preview).toContainText('交季報')
+    await expect(preview).toContainText('P1')
+    await expect(preview).toContainText('15:00')
+    await expect(preview).toContainText('新專案 工作')
+
+    await page.getByRole('button', { name: '新增' }).click()
+
+    const row = rows(page).first()
+    await expect(row.locator('[data-test=task-name]'), '語法片段不該留在名稱裡').toHaveText('交季報')
+    await expect(row.getByLabel('優先度：P1')).toBeVisible()
+    await expect(row).toContainText('15:00')
+    await expect(row).toContainText('工作')
+    await expect(row).toContainText('#公司')
+
+    // 順手建立的專案與標籤會出現在側邊欄，成為可點的入口
+    await expect(page.getByRole('link', { name: /^工作/ })).toBeVisible()
+    await expect(page.getByRole('link', { name: /^#公司/ })).toBeVisible()
+  })
+
+  test('沒有語法時整句就是任務名稱', async ({ page }) => {
+    await addTask(page, '買牛奶 p9 不是優先度')
+    await expect(names(page).first()).toHaveText('買牛奶 p9 不是優先度')
+  })
+})
+
+test.describe('子任務', () => {
+  test('可新增、展開、獨立完成，並顯示進度', async ({ page }) => {
+    await addTask(page, '搬家')
+
+    const row = rows(page).first()
+    await row.getByRole('button', { name: '加入「搬家」的子任務' }).click()
+    const subInput = row.getByLabel('「搬家」的新子任務')
+    await subInput.fill('找搬家公司')
+    await subInput.press('Enter')
+    // 輸入框留著，連續加第二筆不用再點一次
+    await subInput.fill('打包廚房')
+    await subInput.press('Enter')
+
+    await expect(row).toContainText('子任務 0/2')
+    await expect(rows(page), '子任務不佔頂層一列').toHaveCount(1)
+    await expect(row).toContainText('找搬家公司')
+
+    await row.getByLabel('標記子任務「找搬家公司」為已完成').check()
+    await expect(row).toContainText('子任務 1/2')
+
+    await expect
+      .poll(async () => (await persistedTasks(page)).filter((t) => t.isCompleted).length)
+      .toBe(1)
+    await page.reload()
+    await expect(rows(page).first()).toContainText('子任務 1/2')
+  })
+})
+
+test.describe('一鍵改期', () => {
+  test('不必開詳情就能改到期日', async ({ page }) => {
+    await addTask(page, '要順延的')
+
+    await rows(page).first().getByRole('button', { name: '排程「要順延的」' }).click()
+    await page.getByRole('menuitem', { name: /^明天/ }).click()
+
+    await expect(rows(page).first()).toContainText('明天')
+  })
+})
+
 test.describe('重複性任務', () => {
   test('完成時推進到下一次而非消失', async ({ page }) => {
-    await addTask(page, '每天要做的')
-    await page.getByRole('button', { name: /設定「每天要做的」的細節/ }).click()
+    // 名稱刻意避開「每天」：那三個字現在會被快速新增解析成重複規則，
+    // 這一條要測的是從詳情設定重複，不是解析。
+    await addTask(page, '固定要做的事')
+    await page.getByRole('button', { name: /設定「固定要做的事」的細節/ }).click()
 
     const dialog = page.getByRole('dialog')
     await dialog.getByLabel('到期日').fill('2030-01-01')

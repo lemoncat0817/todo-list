@@ -64,6 +64,15 @@ components/  →  stores/  →  domain/
   should the user see at this entry point, and how is it grouped?". They are
   separate because the predicates are stable while views are a product
   decision that keeps growing.
+
+  `quickAdd.ts` parses one line of natural language ("明天下午3點 交報告 p1
+  #工作 @公司") into task fields plus the tokens it consumed. Projects, tags
+  and `now` are all parameters — that is what makes year/month/weekend
+  boundaries testable instead of "correct on my machine today". Two invariants
+  it must keep: **the user's text is the floor for the task name** (if parsing
+  would leave the name empty, return the raw input and apply nothing), and
+  **it reports what it consumed** so the UI can show the interpretation
+  before submit rather than after.
 - **`src/db/`** — the only place that talks to IndexedDB (via `idb`, chosen over
   Dexie to save ~30 kB gzip). `schema.ts` has the stored shapes and constants,
   `repositories.ts` does IO, `migrate.ts` is the one-time legacy-localStorage
@@ -113,6 +122,15 @@ debounce, because debouncing creates a window where "act then immediately
 reload" loses data. `flush()` is re-entrant-safe (concurrent calls coalesce)
 and is also fired from `pagehide`/`visibilitychange` in `main.ts` to minimize
 the async write window before a tab closes.
+
+### Priority
+
+Stored as `0`–`3` with `3` highest; displayed as `P1`–`P4` with `P1` highest
+(Todoist's convention, which is what users arrive with). The mapping lives in
+`PRIORITY_LABELS`/`PRIORITY_ORDER` — don't renumber the stored values, that
+would be a data migration for a labelling problem. CSS tokens are named by
+strength (`--color-prio-high/mid/low`) rather than by P-number, precisely
+because the two numbering schemes run in opposite directions.
 
 ### Recurrence
 

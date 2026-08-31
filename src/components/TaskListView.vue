@@ -31,12 +31,17 @@
           <ul class="flex flex-col gap-1.5">
             <TaskItem v-for="(item, index) in group.tasks" :key="item.id" :task="item"
               :editing="editingId === item.id" :dragging="draggingId === item.id"
-              :selected="ui.detailTaskId === item.id"
+              :selected="ui.detailTaskId === item.id" :children="tasks.childrenOf(item.id)"
+              :expanded="expandedIds.has(item.id)"
               :is-first="index === 0" :is-last="index === group.tasks.length - 1"
               @toggle="tasks.toggle(item.id)" @remove="remove(item.id)"
               @start-edit="editingId = item.id" @cancel-edit="editingId = null"
               @save="(name) => save(item.id, name)" @open-detail="ui.openDetail(item.id)"
               @move-up="move(group.tasks, index, -1)" @move-down="move(group.tasks, index, 1)"
+              @reschedule="(due) => tasks.reschedule(item.id, due)"
+              @toggle-expand="toggleExpand(item.id)"
+              @add-subtask="(name) => addSubtask(item.id, name)"
+              @toggle-child="(id) => tasks.toggle(id)" @remove-child="(id) => tasks.remove(id)"
               @dragstart="draggingId = item.id" @drop="drop(item.id)" @dragend="draggingId = null" />
           </ul>
         </section>
@@ -74,6 +79,8 @@ const ui = useUiStore()
 // 它不需要被持久化，也不需要跨元件共享（稽核 P1 的根因）。
 const editingId = ref<string | null>(null)
 const draggingId = ref<string | null>(null)
+// 展開的父項。同樣是元件暫態：它描述的是「我現在想看什麼」，不是任務的屬性。
+const expandedIds = ref<Set<string>>(new Set())
 
 const spec = computed<ViewSpec>(() => ({ kind: props.viewKind, id: props.viewId }))
 const groups = computed(() => tasks.groupsOf(spec.value))
@@ -83,6 +90,21 @@ const emptyText = computed(() => emptyMessage(spec.value, ui.keyword))
 watch(spec, () => {
   editingId.value = null
 })
+
+function toggleExpand(id: string): void {
+  // 換成新的 Set 而不是原地 add/delete：Vue 追蹤的是 ref 的值，
+  // 原地改動 Set 內容不會觸發重新渲染。
+  const next = new Set(expandedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expandedIds.value = next
+}
+
+/** 新增子任務後自動展開，否則加完看不到東西，像是沒有反應。 */
+function addSubtask(parentId: string, name: string): void {
+  tasks.addSubtask(parentId, name)
+  expandedIds.value = new Set(expandedIds.value).add(parentId)
+}
 
 function save(id: string, name: string): void {
   tasks.update(id, { taskName: name })
