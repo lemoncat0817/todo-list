@@ -112,14 +112,41 @@ components/  →  stores/  →  domain/
   and hiding one with CSS: two copies would mean duplicate landmarks and
   duplicate focusable elements.
 
+### Backup, PWA and reminders
+
+`db/backup.ts` serializes/parses a versioned JSON file. Import runs through the
+same `normalize*` functions as IndexedDB and legacy localStorage — a backup
+file is user-editable, so it gets no more trust than any other external input.
+It distinguishes "this file is not a backup" (reject the whole thing) from
+"these rows are unrecoverable" (drop and report the count); conflating them
+either loses data silently or refuses a mostly-good file. The whole import is
+one undo command, which is what makes the destructive "replace" mode safe.
+
+`public/sw.js` is hand-written and **network-first**, not cache-first: assets
+are content-hashed but `index.html` is not, so cache-first would keep serving
+an old `index.html` pointing at assets that no longer exist. It is registered
+only in `import.meta.env.PROD`. Playwright blocks service workers
+(`serviceWorkers: 'block'`) so cached responses can't leak between tests;
+`deploy.spec.ts` verifies the *artifacts* instead.
+
+Reminders (`composables/useDueReminders.ts`) poll once a minute rather than
+scheduling a timer per task — tasks get rescheduled, completed and deleted, and
+a pile of timers needing cancellation is where the bugs live. Without a server
+there is no Web Push, so they only fire while the tab is open; the UI says so
+explicitly rather than letting people believe they have a reliable alarm.
+
 ### Data flow
 
 `main.ts` mounts the app immediately, then calls `store.init()` asynchronously
 (loading state is a component concern, not a boot blocker). `init()` runs the
-legacy-localStorage migration once, loads tasks/projects/tags from IndexedDB,
-then a `watch` on task/project/tag state persists on every change — no
+legacy-localStorage migration once, loads tasks/projects/tags/filters from
+IndexedDB, then a `watch` on that state persists on every change — no
 debounce, because debouncing creates a window where "act then immediately
-reload" loses data. `flush()` is re-entrant-safe (concurrent calls coalesce)
+reload" loses data. Writes are **per-record**: the store keeps a
+`Map<id, JSON signature>` of what was last written and sends only changed rows
+plus explicit deletes (`applyTaskChanges`). The signature is the full
+serialized row rather than `updatedAt`, because undo puts an *older* object
+back — a timestamp comparison would miss it. `flush()` is re-entrant-safe (concurrent calls coalesce)
 and is also fired from `pagehide`/`visibilitychange` in `main.ts` to minimize
 the async write window before a tab closes.
 

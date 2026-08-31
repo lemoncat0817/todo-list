@@ -18,6 +18,8 @@ export const usePrefsStore = defineStore(
   () => {
     const sortBy = ref<SortKey>('manual')
     const groupBy = ref<GroupKey>('none')
+    /** 到期提醒。只在分頁開著時有效，這一點由畫面說明。 */
+    const remindersEnabled = ref(false)
 
     function setSort(value: SortKey): void {
       sortBy.value = value
@@ -27,7 +29,11 @@ export const usePrefsStore = defineStore(
       groupBy.value = value
     }
 
-    return { sortBy, groupBy, setSort, setGroupBy }
+    function setReminders(value: boolean): void {
+      remindersEnabled.value = value
+    }
+
+    return { sortBy, groupBy, remindersEnabled, setSort, setGroupBy, setReminders }
   },
   {
     /**
@@ -45,7 +51,7 @@ export const usePrefsStore = defineStore(
         typeof record.groupBy === 'string' && record.groupBy in GROUP_LABELS
           ? (record.groupBy as GroupKey)
           : 'none'
-      return { sortBy, groupBy }
+      return { sortBy, groupBy, remindersEnabled: record.remindersEnabled === true }
     }),
   },
 )

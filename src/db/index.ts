@@ -13,6 +13,8 @@ export {
   resetDBCache,
   loadTasks,
   saveTasks,
+  applyTaskChanges,
+  type TaskChanges,
   loadProjects,
   saveProjects,
   loadTags,

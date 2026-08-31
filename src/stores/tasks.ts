@@ -1,8 +1,16 @@
 import { defineStore } from 'pinia'
 import { computed, nextTick, ref, toRaw, watch } from 'vue'
-import { loadTasks, migrateFromLocalStorage, saveTasks } from '@/db'
-import type { Priority, Recurrence, StoredTask } from '@/db/schema'
+import { applyTaskChanges, loadTasks, migrateFromLocalStorage } from '@/db'
+import type {
+  Priority,
+  Recurrence,
+  StoredFilter,
+  StoredProject,
+  StoredTag,
+  StoredTask,
+} from '@/db/schema'
 import { createTask, groupByParent } from '@/domain/task'
+import { mergeById } from '@/db/backup'
 import { nextOccurrence } from '@/domain/recurrence'
 import { nextOrder, orderBetween, sortByOrder } from '@/domain/ordering'
 import { countByFilter, queryTasks, type TaskFilter, type TaskQuery } from '@/domain/filtering'
@@ -134,6 +142,18 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   /**
+   * 上一次成功寫入的內容指紋（id → JSON）。
+   *
+   * 用來算出「這次真的變了哪幾列」，只寫那幾列。先前每次變更都是
+   * clear() 再重寫整張表，上千筆時每打一個勾都要付整表的成本。
+   *
+   * 比對整串 JSON 而不是只看 updatedAt：復原會把舊物件放回去，
+   * 那時 updatedAt 反而是「比較舊」的，只看時間戳會漏掉這種變更。
+   * 序列化幾百個小物件是毫秒等級，真正貴的是 IndexedDB 的寫入。
+   */
+  let persistedIndex = new Map<string, string>()
+
+  /**
    * 回傳的 Promise 一定在資料真的寫完時才 resolve，即使呼叫時已有寫入在進行中。
    * 不做延遲防抖：那會讓「操作後立刻重新整理」出現丟資料的空窗。
    */
@@ -146,8 +166,20 @@ export const useTasksStore = defineStore('tasks', () => {
       try {
         do {
           dirty = false
-          await saveTasks(snapshot())
+          const rows = snapshot()
+          const nextIndex = new Map<string, string>()
+          const upserts: StoredTask[] = []
+          for (const row of rows) {
+            const signature = JSON.stringify(row)
+            nextIndex.set(row.id, signature)
+            if (persistedIndex.get(row.id) !== signature) upserts.push(row)
+          }
+          const deletes = [...persistedIndex.keys()].filter((id) => !nextIndex.has(id))
+
+          await applyTaskChanges({ upserts, deletes })
           await collections.flush()
+          // 寫成功之後才更新指紋：失敗時保持原狀，下一次會重試同一批
+          persistedIndex = nextIndex
         } while (dirty)
         writeError.value = null
       } catch (error) {
@@ -167,6 +199,9 @@ export const useTasksStore = defineStore('tasks', () => {
       const result = await migrateFromLocalStorage()
       if (result.ran) migration.value = { migrated: result.migrated, skipped: result.skipped }
       items.value = await loadTasks()
+      // 剛讀進來的內容就是資料庫裡的內容，先記下指紋，
+      // 否則第一次 flush 會把每一列都當成新的而重寫一遍
+      persistedIndex = new Map(snapshot().map((t) => [t.id, JSON.stringify(t)]))
       await collections.load()
     } catch (error) {
       loadError.value = error
@@ -477,6 +512,42 @@ export const useTasksStore = defineStore('tasks', () => {
     )
   }
 
+  // ------------------------------------------------------------ 匯入
+
+  /**
+   * 匯入備份。
+   *
+   * 整份匯入只推一個 undo command：使用者選錯檔案或選錯模式時，
+   * 一次 Ctrl+Z 就該回到原狀。這是「取代」模式敢存在的前提。
+   *
+   * 呼叫端負責把外部資料先過 parseBackup（也就是既有的 normalize* 路徑），
+   * 這裡收到的已經是合法的形狀。
+   */
+  function importBackup(
+    data: {
+      tasks: readonly StoredTask[]
+      projects: readonly StoredProject[]
+      tags: readonly StoredTag[]
+      filters: readonly StoredFilter[]
+    },
+    mode: 'merge' | 'replace' = 'merge',
+  ): void {
+    const beforeTasks = snapshot()
+    const beforeCollections = collections.snapshot()
+
+    items.value =
+      mode === 'replace' ? [...data.tasks] : sortByOrder(mergeById(beforeTasks, data.tasks))
+    collections.applyImport(data, mode)
+
+    history.record({
+      label: `匯入 ${data.tasks.length} 筆任務`,
+      undo: () => {
+        items.value = beforeTasks
+        collections.restoreSnapshot(beforeCollections)
+      },
+    })
+  }
+
   // -------------------------------------------- 跨 store 的關聯處理
 
   /**
@@ -568,6 +639,7 @@ export const useTasksStore = defineStore('tasks', () => {
     batchUpdate,
     batchRemove,
     batchReschedule,
+    importBackup,
     setRecurrence,
     toggleTag,
     removeProject,

@@ -428,6 +428,61 @@ test.describe('快捷鍵', () => {
   })
 })
 
+test.describe('資料備份', () => {
+  test('匯出的內容可以再匯入回來', async ({ page }) => {
+    await addTask(page, '要被備份的')
+
+    await page.getByRole('button', { name: '資料與提醒' }).click()
+    const dialog = page.getByRole('dialog').filter({ hasText: '資料與提醒' })
+
+    const download = page.waitForEvent('download')
+    await dialog.getByRole('button', { name: '匯出 JSON' }).click()
+    const file = await download
+    expect(file.suggestedFilename()).toMatch(/^todo-list-\d{4}-\d{2}-\d{2}\.json$/)
+    const path = await file.path()
+
+    // 清空之後再匯入回來，驗證的是「這份檔案真的救得回資料」
+    await dialog.getByRole('button', { name: '關閉' }).click()
+    await rows(page).first().getByRole('button', { name: /^刪除/ }).click()
+    await expect(rows(page)).toHaveCount(0)
+
+    await page.getByRole('button', { name: '資料與提醒' }).click()
+    await dialog.getByLabel('選擇備份檔').setInputFiles(path)
+    await expect(dialog.getByRole('status')).toContainText('已匯入 1 筆任務')
+    await dialog.getByRole('button', { name: '關閉' }).click()
+
+    await expect(names(page).first()).toHaveText('要被備份的')
+  })
+
+  test('不是備份檔時說明原因，而不是默默什麼都不做', async ({ page }) => {
+    await page.getByRole('button', { name: '資料與提醒' }).click()
+    const dialog = page.getByRole('dialog').filter({ hasText: '資料與提醒' })
+
+    await dialog.getByLabel('選擇備份檔').setInputFiles({
+      name: 'not-a-backup.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from('{"something":"else"}'),
+    })
+    await expect(dialog.getByRole('alert')).toContainText('不是本工具匯出的備份')
+  })
+})
+
+test.describe('統計', () => {
+  test('完成紀錄會出現在統計頁', async ({ page }) => {
+    await addTask(page, '做完這件事')
+    await rows(page).first().locator('input[type=checkbox]').first().check()
+
+    await page.getByRole('link', { name: '統計' }).click()
+    expect(page.url()).toContain('#/stats')
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('統計')
+
+    await expect(page.getByText('今天完成')).toBeVisible()
+    await expect(page.getByRole('listitem').filter({ hasText: '做完這件事' })).toBeVisible()
+    // 統計頁沒有清單，新增框在那裡沒有作用對象
+    await expect(page.getByLabel('新增代辦事項')).toBeHidden()
+  })
+})
+
 test.describe('空狀態', () => {
   test('依情境給出不同的空狀態說明', async ({ page }) => {
     await expect(page.getByText('目前沒有代辦事項，從上方新增一筆吧')).toBeVisible()

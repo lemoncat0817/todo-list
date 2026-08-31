@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
 import TaskListView from '@/components/TaskListView.vue'
+import StatsView from '@/components/StatsView.vue'
 import type { ViewKind } from '@/domain/views'
 
 /**
@@ -68,6 +69,14 @@ export const routes: RouteRecordRaw[] = [
     name: 'filter',
     component: TaskListView,
     props: (route) => ({ viewKind: 'filter', viewId: String(route.query.q ?? '') }),
+  },
+
+  {
+    // 統計不是一種「任務檢視」，而是對完成紀錄的回顧，所以走自己的元件。
+    path: '/stats',
+    name: 'stats',
+    component: StatsView,
+    meta: { title: '統計' },
   },
 
   // 未知路徑退回今天，而不是留下空白畫面
