@@ -38,35 +38,26 @@
         </div>
       </template>
 
-      <!-- 已寄出驗證碼：等待輸入 -->
+      <!-- 已寄出登入連結：等待使用者去信箱點開 -->
       <template v-else-if="auth.status === 'verifying'">
         <p class="text-sm text-ink-soft">
-          驗證碼已寄到 <span class="font-medium text-ink">{{ auth.email }}</span>，
-          請貼到下面。
+          登入連結已經寄到 <span class="font-medium text-ink">{{ auth.email }}</span>，
+          去信箱點裡面的連結就完成登入了。
+        </p>
+        <p class="text-xs text-ink-faint">
+          連結不用在這個分頁點開——在手機、另一個分頁、甚至另一台裝置點開都可以，
+          這個畫面會自動更新，不需要重新整理。
         </p>
 
-        <form class="flex flex-col gap-2" @submit.prevent="submitCode">
-          <label class="flex flex-col gap-1.5 text-sm font-medium text-ink-soft">
-            六碼驗證碼
-            <input v-model.trim="code" inputmode="numeric" autocomplete="one-time-code" required
-              class="h-10 rounded-lg border border-line bg-surface px-3 text-base tracking-widest text-ink focus:border-accent focus:outline-none">
-          </label>
+        <p v-if="auth.error" role="alert" class="text-sm text-danger-ink">{{ auth.error }}</p>
 
-          <p v-if="auth.error" role="alert" class="text-sm text-danger-ink">{{ auth.error }}</p>
-
-          <div class="mt-1 flex justify-between gap-2">
-            <button type="button"
-              class="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft transition-colors hover:bg-sunken"
-              @click="auth.cancelVerification()">
-              換一個信箱
-            </button>
-            <button type="submit"
-              class="rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
-              :disabled="code === ''">
-              驗證並登入
-            </button>
-          </div>
-        </form>
+        <div class="flex justify-end">
+          <button type="button"
+            class="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft transition-colors hover:bg-sunken"
+            @click="auth.cancelVerification()">
+            換一個信箱
+          </button>
+        </div>
       </template>
 
       <!-- 未登入：一鍵登入或信箱驗證碼 -->
@@ -166,7 +157,6 @@ const sync = useSyncStore()
 
 const dialogEl = ref<HTMLDialogElement | null>(null)
 const draftEmail = ref('')
-const code = ref('')
 
 watch(
   () => props.open,
@@ -174,7 +164,6 @@ watch(
     const el = dialogEl.value
     if (!el) return
     if (open) {
-      code.value = ''
       if (!el.open) el.showModal()
     } else if (el.open) {
       el.close()
@@ -187,17 +176,12 @@ async function submitEmail(): Promise<void> {
   await auth.requestMagicLink(draftEmail.value)
 }
 
-async function submitCode(): Promise<void> {
-  if (code.value === '') return
-  const ok = await auth.verifyCode(code.value)
-  if (ok) {
-    code.value = ''
-    void sync.start()
-  }
-}
-
+/**
+ * 不需要在這裡呼叫 sync.start()／sync.stop()——那由 stores/sync.ts 自己
+ * watch auth.status 決定，登入是在哪個分頁完成的都涵蓋得到（包括這個分頁
+ * 完全沒被使用者操作、只是被動收到跨分頁廣播的情況）。
+ */
 async function signOut(): Promise<void> {
-  sync.stop()
   await auth.signOut()
 }
 

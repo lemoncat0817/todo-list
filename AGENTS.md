@@ -179,10 +179,14 @@ or six fixed operations sync actually needs. Split instead:
   (`stores/auth.ts`, `stores/sync.ts`) — a user who never signs in never
   downloads either, and the base bundle is unaffected.
 
-**Sign-in is email OTP or OAuth (Google/GitHub), never a password.** No
-reset/strength UI to build, no password to leak, and it matches the app's
-existing low-friction ethos (no confirm dialogs anywhere, do-then-undo
-instead). OAuth is scoped to providers with free, self-serve developer
+**Sign-in is an email magic link or OAuth (Google/GitHub), never a
+password.** (`sync/authClient.ts`'s `requestOtp`/`verifyOtp` names still say
+"OTP" — that's Supabase's GoTrue API surface, `signInWithOtp`/`verifyOtp`,
+which can send either a code or a link depending on the email template; this
+app only ever uses the link. See below for why.) No reset/strength UI to
+build, no password to leak, and it matches the app's existing low-friction
+ethos (no confirm dialogs anywhere, do-then-undo instead). OAuth is scoped to
+providers with free, self-serve developer
 consoles — Google Cloud Console and GitHub OAuth Apps both need no paid
 account or app review for personal-scale use; Apple (`Sign in with Apple`
 needs a paid $99/yr Apple Developer Program membership) and Facebook (now
@@ -209,23 +213,45 @@ shown** — `AccountDialog.vue`'s `OAUTH_PROVIDERS_ENABLED` const is `false`
 by request, flip it back on when ready. Nothing in `sync/authClient.ts` or
 `stores/auth.ts` is gated by it; only the UI surface is.
 
-**A real bug found via live testing, not by inspection: Supabase's default
-email templates send a magic *link*, not the numeric code the "驗證碼" UI
-asks for.** `signInWithOtp` triggers "Confirm signup" (first-ever request for
-an email) or "Magic Link" (subsequent requests) — both templates default to
-`{{ .ConfirmationURL }}`; getting an actual pasteable code requires the
-project owner to edit both templates in the Supabase Dashboard to emit
-`{{ .Token }}` instead (documented in README's setup section). Clicking the
-link *does* complete sign-in (via the same `?code=` PKCE path OAuth uses),
-but the tab that's still showing "paste your code" has no way to know that —
-GoTrueClient broadcasts session changes across tabs via `BroadcastChannel`
-keyed on `storageKey`, but the store previously only called
-`onAuthStateChange` *after* `verifyCode()` succeeded, so the waiting tab was
-never subscribed when the broadcast arrived. Fixed by centralizing the
-dynamic import behind `ensureAuthClient()` in `stores/auth.ts`, which
-subscribes exactly once on first load regardless of which action (magic
-link request, OAuth, or `restore()`) triggered it — so a sign-in completed
-in another tab now updates every open tab, not just the one that finished it.
+**Two real bugs found via live testing, not by inspection.**
+
+First: Supabase's default email templates send a magic *link*
+(`{{ .ConfirmationURL }}`), not a numeric code. The original UI asked the
+user to paste a "驗證碼" that never arrived — getting an actual pasteable
+`{{ .Token }}` instead requires editing both the "Confirm signup" and "Magic
+Link" templates in the Supabase Dashboard, which itself requires **setting up
+custom SMTP first** (Supabase's free/default email service locks template
+editing behind it — discovered from a screenshot of the Dashboard, not
+assumed). Since custom SMTP is a real external dependency this project
+doesn't want to require, the fix went the other way: `AccountDialog.vue`'s
+`'verifying'` state was redesigned around the link Supabase actually sends —
+"go click the link in your email", no code input at all. This is also *more*
+correct for cross-device sign-in (open the link on your phone, no code to
+retype) and matches what OAuth already does under the hood (see below).
+
+Second, a consequence of the first: clicking the link completes sign-in (via
+the same `?code=` PKCE path OAuth uses) in *whichever tab or device opens
+it*, which is not necessarily the tab that's still showing the waiting
+screen. That tab has no way to know sign-in happened elsewhere unless it's
+listening — GoTrueClient broadcasts session changes across tabs via
+`BroadcastChannel` keyed on `storageKey`, but the store previously only
+called `onAuthStateChange` *after* the (now-removed) `verifyCode()`
+succeeded, so a tab that only ever sent the email was never subscribed when
+the broadcast arrived. Fixed by centralizing the dynamic import behind
+`ensureAuthClient()` in `stores/auth.ts`, which subscribes exactly once as
+early as `requestMagicLink()` (not waiting for a code the app no longer even
+asks for) — so a sign-in completed on another tab or device now updates
+every open tab, not just the one that finished it.
+
+A related gap this surfaced: `sync.start()`/`sync.stop()` used to be called
+imperatively from the specific places sign-in/sign-out happened
+(`AccountDialog.vue`'s submit handler, `main.ts`'s boot sequence) — which
+covers "this tab completed its own sign-in" but not "this tab found out about
+a sign-in that happened elsewhere via broadcast". `stores/sync.ts` now
+`watch()`es `auth.status` itself (`immediate: true`) and starts/stops
+accordingly, so no call site has to remember to react to a session change it
+didn't initiate. `start`/`stop` stay exported for tests and possible manual
+use, but nothing in the app is expected to call them directly any more.
 
 **Pull is polling, not Realtime.** `stores/sync.ts` pulls on `start()`, every
 30s, on `online`, and on `visibilitychange`, mirroring the polling pattern

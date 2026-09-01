@@ -106,7 +106,7 @@ today & p1 & #工作
 
 **帳號與跨裝置同步（選配）**
 - 預設仍是純本地：不設定 Supabase 環境變數，「帳號與同步」入口整個不顯示，行為與純前端版本完全一樣
-- 登入方式：信箱寄送的一次性驗證碼，沒有密碼（Google／GitHub 一鍵登入邏輯已經做完，目前先不對外開放，見下方設定章節）
+- 登入方式：信箱寄送的登入連結，沒有密碼（Google／GitHub 一鍵登入邏輯已經做完，目前先不對外開放，見下方設定章節）
 - 登入的裝置之間會互相同步任務／專案／標籤／篩選器
 - 同步是背景輪詢（開分頁、每 30 秒、恢復網路、本地編輯後三秒），**不是即時協作**——目前只支援單人跨裝置，還沒有共享專案或指派任務給別人
 - 衝突以逐列「最後寫入者為準」（比較 `updatedAt`），不是欄位級合併；同一筆在兩台裝置「幾乎同時」修改不同欄位時，較晚寫入的那次會整列覆蓋
@@ -146,8 +146,8 @@ today & p1 & #工作
 | TypeScript | ~6.0.3 | |
 | Tailwind CSS | 3.4.4 | |
 | idb | 8.0.3 | IndexedDB 封裝 |
-| Vitest | 4.1.10 | 470 條單元測試 |
-| Playwright | 1.62.1 | 96 條 E2E |
+| Vitest | 4.1.10 | 478 條單元測試 |
+| Playwright | 1.62.1 | 97 條 E2E（另 1 條待重新開放 OAuth 時解除 skip） |
 | ESLint | 10.8.1 | 含 vuejs-accessibility |
 
 ## 開發
@@ -174,18 +174,14 @@ pnpm test:e2e     # Playwright E2E（含無障礙檢測）
 2. SQL Editor 貼上 [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) 執行一次
 3. Project Settings → API，把 `Project URL` 和 `anon public` key 填進複製自
    [`.env.local.example`](.env.local.example) 的 `.env.local`
-4. **把信箱的 Email 範本改成寄六碼驗證碼，不是連結**——這一步很容易漏掉：
-   Supabase 內建範本預設寄的是一個確認連結（magic link），跟這個工具的
-   「請貼六碼驗證碼」畫面對不上，使用者會找不到碼可以貼。到 Dashboard 的
-   **Authentication → Email Templates**，**Confirm signup**（第一次登入的信箱
-   會收到這個範本）跟 **Magic Link**（登入過的信箱之後收到這個）兩個都要改，
-   把內容換成含有 `{{ .Token }}` 的版本，例如：
-   ```html
-   <h2>你的驗證碼</h2>
-   <p>驗證碼是：<strong>{{ .Token }}</strong></p>
-   <p>10 分鐘內有效，只能使用一次。</p>
-   ```
-5. `pnpm dev`，側邊欄會出現「登入以同步」；輸入信箱、去收六碼驗證碼、貼回頁面
+4. 不用改 Email 範本——Supabase 內建（免費方案）的寄信服務預設寄的就是一個
+   登入連結（magic link），跟這個工具的畫面本來就對得上。**範本編輯本身
+   被鎖住**：Dashboard 的 Authentication → Email Templates 要接上自訂 SMTP
+   才能改 Subject／Body，這個工具刻意不要求接自訂 SMTP，所以走預設的連結
+   流程，不必也不能改範本
+5. `pnpm dev`，側邊欄會出現「登入以同步」；輸入信箱、去信箱點裡面的連結——
+   連結不用在同一個分頁點開，另一個分頁、手機、另一台裝置都可以，原本的
+   分頁會自動反映成已登入（跨分頁廣播），不需要手動重新整理
 
 **Google／GitHub 一鍵登入**：底層邏輯（`sync/authClient.ts` 的
 `signInWithOAuth`、`stores/auth.ts` 的 `signInWithOAuthProvider`）已經做完並測過，
