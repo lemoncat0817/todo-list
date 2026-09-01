@@ -11,7 +11,8 @@
     <aside v-if="isDesktop"
       class="flex w-60 shrink-0 flex-col border-r border-line bg-surface xl:w-64">
       <p class="shrink-0 px-4 pt-4 pb-1 text-sm font-semibold tracking-tight text-ink">代辦事項</p>
-      <AppSidebar @manage="isManaging = true" @data="isDataOpen = true" />
+      <AppSidebar @manage="isManaging = true" @data="isDataOpen = true"
+        @account="isAccountOpen = true" />
     </aside>
 
     <!--
@@ -33,7 +34,8 @@
             </svg>
           </button>
         </div>
-        <AppSidebar @navigate="ui.closeSidebar()" @manage="openManage" @data="openData" />
+        <AppSidebar @navigate="ui.closeSidebar()" @manage="openManage" @data="openData"
+          @account="openAccount" />
       </div>
     </dialog>
 
@@ -48,6 +50,7 @@
 
     <CollectionsDialog :open="isManaging" @close="isManaging = false" />
     <DataDialog :open="isDataOpen" @close="isDataOpen = false" />
+    <AccountDialog v-if="isSyncConfigured" :open="isAccountOpen" @close="isAccountOpen = false" />
     <CommandPalette :open="ui.isPaletteOpen" @close="ui.closePalette()" />
     <ShortcutsDialog :open="isHelpOpen" @close="isHelpOpen = false" />
   </div>
@@ -63,6 +66,7 @@ import TaskDetailDialog from './components/TaskDetailDialog.vue'
 import TaskDetailPanel from './components/TaskDetailPanel.vue'
 import CollectionsDialog from './components/CollectionsDialog.vue'
 import DataDialog from './components/DataDialog.vue'
+import AccountDialog from './components/AccountDialog.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import { useHistoryStore } from '@/stores/history'
@@ -71,6 +75,7 @@ import { useUiStore } from '@/stores/ui'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { useTheme } from '@/composables/useTheme'
 import { useMediaQuery } from '@/composables/useMediaQuery'
+import { isSyncConfigured } from '@/sync/config'
 
 const history = useHistoryStore()
 const tasks = useTasksStore()
@@ -91,6 +96,7 @@ const isWide = useMediaQuery('(min-width: 1280px)')
 const isManaging = ref(false)
 const isHelpOpen = ref(false)
 const isDataOpen = ref(false)
+const isAccountOpen = ref(false)
 const drawerEl = ref<HTMLDialogElement | null>(null)
 
 const detailTask = computed(
@@ -118,6 +124,11 @@ function openManage(): void {
 function openData(): void {
   ui.closeSidebar()
   isDataOpen.value = true
+}
+
+function openAccount(): void {
+  ui.closeSidebar()
+  isAccountOpen.value = true
 }
 
 function focus(selector: string): void {

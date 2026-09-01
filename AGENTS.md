@@ -4,9 +4,13 @@ Guidance for AI coding agents working in this repository.
 
 ## What this is
 
-A client-only todo app (Vue 3 + Pinia + Vue Router + IndexedDB). No backend — all
-data lives in the browser's IndexedDB, deployed as a static site to GitHub Pages.
-See [README.md](README.md) for the user-facing feature list.
+A client-first todo app (Vue 3 + Pinia + Vue Router + IndexedDB), deployed as a
+static site to GitHub Pages. By default there is no backend — all data lives in
+the browser's IndexedDB. An **optional** Supabase-backed sync layer (see
+[Cross-device sync](#cross-device-sync-optional)) lets a signed-in user's data
+follow them across devices; without `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`
+set, that entire layer stays dormant and the app is exactly the client-only tool
+it always was. See [README.md](README.md) for the user-facing feature list.
 
 ## Commands
 
@@ -150,7 +154,82 @@ back — a timestamp comparison would miss it. `flush()` is re-entrant-safe (con
 and is also fired from `pagehide`/`visibilitychange` in `main.ts` to minimize
 the async write window before a tab closes.
 
-### Filters
+### Cross-device sync (optional)
+
+Dormant unless `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` are set
+(`sync/config.ts`'s `isSyncConfigured`) — the "帳號與同步" sidebar entry
+doesn't even render otherwise, so a fork without a Supabase project is a fully
+working client-only app, not a broken button. Scope is deliberately narrow:
+**single-user sync across a person's own devices**, not multi-user
+collaboration (no shared projects, no realtime, no field-level merge). Those
+are explicit non-goals for now, not gaps someone forgot.
+
+**No `@supabase/supabase-js`.** Every other dependency choice in this repo is
+justified by a measured gzip number (`idb` over Dexie, hand-rolled dates over
+date-fns, hand-rolled recurrence over `rrule`), and the full SDK — auth +
+postgrest + realtime + storage + functions — is disproportionate to the five
+or six fixed operations sync actually needs. Split instead:
+- **`sync/authClient.ts`** wraps `@supabase/auth-js` (GoTrue's real client, not
+  the umbrella package) — token refresh/expiry/storage are security-sensitive
+  enough to not reinvent. Measured: 23.07 kB gzip as its own chunk.
+- **`sync/restClient.ts`** hand-rolls `fetch` calls against PostgREST — the
+  query shapes are fixed (`fetchRowsSince`/`upsertRows`), so a general query
+  builder buys nothing.
+- Both are dynamically `import()`ed only when an account action actually runs
+  (`stores/auth.ts`, `stores/sync.ts`) — a user who never signs in never
+  downloads either, and the base bundle is unaffected.
+
+**Sign-in is email OTP, not a password.** One less flow (no reset/strength
+UI), no password to leak, and it matches the app's existing low-friction ethos
+(no confirm dialogs anywhere, do-then-undo instead).
+
+**Pull is polling, not Realtime.** `stores/sync.ts` pulls on `start()`, every
+30s, on `online`, and on `visibilitychange`, mirroring the polling pattern
+already used by `useDueReminders.ts`. Realtime (websocket) would be the
+natural upgrade *if* live multi-user collaboration is ever built — until then
+it would only add `realtime-js`'s bundle weight for no behavioral benefit.
+
+**Conflicts are row-level last-write-wins**, comparing `updatedAt`
+(`sync/merge.ts`'s `mergeByUpdatedAt`). Two devices editing *different fields*
+of the same row within the same sync window will have one edit lose entirely
+— an accepted, documented tradeoff for a single-user feature, not a hidden
+gap. `StoredProject`/`StoredTag`/`StoredFilter` gained an `updatedAt` field
+for this (they didn't need one before sync existed); `domain/task.ts`'s
+`normalize*` functions backfill it for pre-existing rows, so no IndexedDB
+version bump was needed — adding a field to a schemaless object store never
+requires one, only new stores/indexes do.
+
+**Deletes are soft (tombstones), not real `DELETE`s.** Plain REST polling has
+no delete-event feed the way Realtime would — a hard delete just makes a row
+stop appearing in `SELECT`, indistinguishable from "never existed" to a
+device that hasn't synced since. Both push (`sync/tableSync.ts`'s
+`pushTable`) and the Postgres schema (`supabase/migrations/0001_init.sql`)
+mark `deleted_at` instead; pull treats a tombstoned row as a removal via
+`mergeByUpdatedAt`'s `remoteDeletedIds`. Tombstones accumulate with no GC —
+acceptable at personal-task-list scale, called out rather than silently
+deferred.
+
+**The sync fingerprint is durable, the local one isn't — on purpose.**
+`stores/tasks.ts`'s `persistedIndex` (what's in IndexedDB) is rebuilt fresh
+from `loadTasks()` every session, because local storage only needs to know
+"what's true now." The sync fingerprint (what's been pushed to the server)
+is persisted separately in IndexedDB's `meta` store
+(`META_SYNC_FINGERPRINT_*`), because it needs to survive a reload: a task
+deleted locally while offline is *gone* from `loadTasks()`'s result by the
+next launch, so only a fingerprint that remembers "this id used to exist"
+can still produce the tombstone that tells other devices about the deletion.
+Both fingerprints share one diffing algorithm, `domain/diff.ts`'s
+`diffAgainstFingerprint` (extracted from what was inline in `tasks.ts`'s
+`flush()`), applied against two independently-lived maps.
+
+**Merge always re-reads local state after the network round-trip, never
+before it.** `stores/sync.ts` pushes first, pulls second, and only then calls
+`mergeByUpdatedAt` against a *fresh* read of `tasks.items`/`collections.*` —
+not the snapshot captured when the sync cycle started. Two `await`s sit
+between "diff computed" and "merge applied"; if a local edit that reassigns
+the whole array (`remove`, `batchUpdate`, `undo`) happens in that window, a
+merge built on the stale snapshot would silently discard it. `stores/sync.spec.ts`
+has a dedicated regression test for this exact race.
 
 `domain/filterQuery.ts` is a small recursive-descent parser producing an AST,
 plus an evaluator. Parse errors are **returned**, never swallowed: a query with
@@ -246,3 +325,24 @@ dialog. `Ctrl`/`Cmd`+`Z` and the toast's "復原" button both call
 - CI (`.github/workflows/ci.yml`) runs typecheck/lint (`--max-warnings 0`)/unit
   tests/build in one job and E2E in a separate job; `deploy.yml` re-runs
   typecheck/test/build before publishing `master` to Pages.
+- **Sync tests never hit real Supabase.** `sync/restClient.spec.ts` and
+  `sync/tableSync.spec.ts` mock `globalThis.fetch`; `stores/auth.spec.ts` and
+  `components/AccountDialog.spec.ts` `vi.mock('@/sync/authClient', ...)`
+  wholesale (it's dynamically imported, which `vi.mock` intercepts
+  transparently) plus `vi.mock('@/sync/config', () => ({ isSyncConfigured: true }))`
+  since the default test env has no `VITE_SUPABASE_URL`. `e2e/account.spec.ts`
+  intercepts the real GoTrue endpoints with `page.route` (`/auth/v1/otp`,
+  `/verify`, `/logout` — miss one and the awaited call just hangs against a
+  fake host until the test times out) — `playwright.config.ts`'s `webServer.env`
+  sets fake-but-well-formed Supabase values so the gated UI has something to
+  test at all, never a real project.
+- **Two gotchas hit while writing these tests, worth not re-discovering:**
+  happy-dom does not dispatch a native `submit` event when a
+  `<button type="submit">` inside a `<form>` is clicked (real browsers do) —
+  component tests must `find('form').trigger('submit')` directly, then
+  `await flushPromises()` from `@vue/test-utils` since Vue doesn't await a
+  `@submit.prevent` handler's returned promise. And `vi.useFakeTimers()`
+  combined with `fake-indexeddb` hangs indefinitely if IndexedDB calls happen
+  while fake timers are active — `stores/sync.spec.ts` only switches to
+  `vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })`
+  *after* an IndexedDB-touching `start()` has fully settled under real timers.

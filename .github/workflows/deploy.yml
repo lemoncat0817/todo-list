@@ -40,7 +40,12 @@ jobs:
         run: pnpm test
 
       - name: 建置
+        # 見 ci.yml 同一步驟的註解：沒設定這兩個值時同步功能整個隱藏，
+        # 正式站照常是純本地版本，不是建置失敗。
         run: pnpm build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - uses: actions/configure-pages@v6
 

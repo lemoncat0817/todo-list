@@ -175,6 +175,27 @@ test('資料與提醒對話框也維持零違規', async ({ page }) => {
   expect(found).toEqual([])
 })
 
+test('帳號與同步對話框（未登入、等待驗證碼兩個狀態）也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.route('**/auth/v1/otp', (route) => route.fulfill({ status: 200, json: {} }))
+
+  await page.getByRole('button', { name: '登入以同步' }).click()
+  const dialog = page.getByRole('dialog').filter({ hasText: '帳號與同步' })
+  await expect(dialog).toBeVisible()
+
+  const beforeSubmit = await violationsOf(page)
+  if (beforeSubmit.length) for (const f of beforeSubmit) console.log('    ' + f)
+  expect(beforeSubmit).toEqual([])
+
+  await dialog.getByLabel('電子郵件').fill('e2e@example.com')
+  await dialog.getByRole('button', { name: '寄送驗證碼' }).click()
+  await expect(dialog.getByLabel('六碼驗證碼')).toBeVisible()
+
+  const afterSubmit = await violationsOf(page)
+  if (afterSubmit.length) for (const f of afterSubmit) console.log('    ' + f)
+  expect(afterSubmit).toEqual([])
+})
+
 test('空清單狀態也維持零違規', async ({ page }) => {
   page.on('dialog', (d) => d.accept())
   await page.goto('/#/all')

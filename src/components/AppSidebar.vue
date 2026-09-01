@@ -108,6 +108,22 @@
           <span class="min-w-0 grow truncate">資料與提醒</span>
         </button>
       </li>
+      <!--
+        沒有接 Supabase（isSyncConfigured 為 false）時整個入口不顯示，
+        而不是顯示一個點了會壞掉的按鈕——fork 這個 repo 不接雲端同步的人，
+        應該拿到完全正常、看不出這裡少了什麼的純本地版本。
+      -->
+      <li v-if="isSyncConfigured">
+        <button type="button" :class="`${linkClass} w-full text-left`" @click="emit('account')">
+          <span class="min-w-0 grow truncate">
+            {{ auth.status === 'signed-in' ? '帳號與同步' : '登入以同步' }}
+          </span>
+          <span v-if="auth.status === 'signed-in'" class="size-2 shrink-0 rounded-full"
+            :class="sync.syncError !== null ? 'bg-danger' : 'bg-success'"
+            :title="sync.syncError !== null ? `同步失敗：${sync.syncError}` : '同步正常'"
+            aria-hidden="true" />
+        </button>
+      </li>
     </ul>
   </nav>
 </template>
@@ -118,6 +134,9 @@ import { PRIMARY_VIEWS, SECONDARY_VIEWS } from '@/router'
 import type { ViewKind } from '@/domain/views'
 import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
+import { useAuthStore } from '@/stores/auth'
+import { useSyncStore } from '@/stores/sync'
+import { isSyncConfigured } from '@/sync/config'
 
 /**
  * 側邊導覽。
@@ -135,10 +154,14 @@ const emit = defineEmits<{
   manage: []
   /** 開啟匯出／匯入與提醒設定 */
   data: []
+  /** 開啟帳號與同步設定 */
+  account: []
 }>()
 
 const tasks = useTasksStore()
 const collections = useCollectionsStore()
+const auth = useAuthStore()
+const sync = useSyncStore()
 
 const linkClass =
   'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[15px] text-ink-soft transition-colors ' +

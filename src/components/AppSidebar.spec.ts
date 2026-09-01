@@ -128,4 +128,9 @@ describe('AppSidebar.vue', () => {
     await dataButton[0]?.trigger('click')
     expect(w.emitted('data')).toBeTruthy()
   })
+
+  it('沒有設定 Supabase 時，帳號與同步入口整個不顯示——不留一個點了會壞掉的按鈕', () => {
+    const w = mountSidebar()
+    expect(w.text()).not.toContain('同步')
+  })
 })

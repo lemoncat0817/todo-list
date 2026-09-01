@@ -106,6 +106,9 @@ export function normalizeProject(raw: unknown, fallbackOrder = 0): StoredProject
     name,
     color: str(raw.color, '#1d4ed8'),
     order: finiteNumber(raw.order, fallbackOrder),
+    // v4 之前的資料沒有這個欄位，補上現在的時間——比讓它是 0 更安全：
+    // 0 會讓一筆舊資料在跟任何遠端版本比較時永遠「看起來最舊」而被覆蓋。
+    updatedAt: finiteNumber(raw.updatedAt, Date.now()),
   }
 }
 
@@ -114,7 +117,12 @@ export function normalizeTag(raw: unknown): StoredTag | null {
   const id = nullableId(raw.id)
   const name = typeof raw.name === 'string' && raw.name.length > 0 ? raw.name : null
   if (id === null || name === null) return null
-  return { id, name, color: str(raw.color, '#15803d') }
+  return {
+    id,
+    name,
+    color: str(raw.color, '#15803d'),
+    updatedAt: finiteNumber(raw.updatedAt, Date.now()),
+  }
 }
 
 export function normalizeFilter(raw: unknown, fallbackOrder = 0): StoredFilter | null {
@@ -130,6 +138,7 @@ export function normalizeFilter(raw: unknown, fallbackOrder = 0): StoredFilter |
     query,
     color: str(raw.color, '#7c3aed'),
     order: finiteNumber(raw.order, fallbackOrder),
+    updatedAt: finiteNumber(raw.updatedAt, Date.now()),
   }
 }
 
