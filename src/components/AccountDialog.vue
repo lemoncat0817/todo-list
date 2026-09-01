@@ -104,14 +104,18 @@
             </button>
           </div>
 
-          <div class="flex items-center gap-2" role="separator" aria-orientation="horizontal">
+          <div v-if="EMAIL_LOGIN_ENABLED" class="flex items-center gap-2" role="separator" aria-orientation="horizontal">
             <span class="h-px grow bg-line" />
             <span class="text-xs text-ink-faint">或</span>
             <span class="h-px grow bg-line" />
           </div>
         </template>
 
-        <form class="flex flex-col gap-2" @submit.prevent="submitEmail">
+        <!--
+          信箱登入：暫時隱藏，見 EMAIL_LOGIN_ENABLED 旁的註解。表單跟底下
+          submitEmail／requestMagicLink 都還在，只是使用者點不到這個入口。
+        -->
+        <form v-if="EMAIL_LOGIN_ENABLED" class="flex flex-col gap-2" @submit.prevent="submitEmail">
           <label class="flex flex-col gap-1.5 text-sm font-medium text-ink-soft">
             電子郵件
             <input v-model.trim="draftEmail" type="email" autocomplete="email" required
@@ -154,6 +158,15 @@ const emit = defineEmits<{ close: [] }>()
  * 使用者點下去只會在這個畫面看到錯誤訊息，不影響信箱登入那條路徑。
  */
 const OAUTH_PROVIDERS_ENABLED = true
+
+/**
+ * 信箱登入（連結）暫時隱藏，只留 Google／GitHub。原因：Supabase 免費方案
+ * 「沒接自訂 SMTP」的內建測試信件額度太低，反覆撞到「請求太頻繁」，OAuth
+ * 完全不經過這個信件服務，不會有這個問題。requestMagicLink／
+ * cancelVerification／'verifying' 狀態畫面都還在，之後如果不再受額度困擾
+ * （例如接了自訂 SMTP），把這個常數改回 true 就能恢復，不需要動任何邏輯。
+ */
+const EMAIL_LOGIN_ENABLED = false
 
 const auth = useAuthStore()
 const sync = useSyncStore()

@@ -30,6 +30,10 @@ async function submit(w: Wrapper): Promise<void> {
  * ensureAuthClient 註解）。畫面改成「去信箱點連結」，登入完成一律靠
  * auth.status 被動變成 signed-in 反映出來——可能是這個分頁自己（同分頁
  * 點連結），也可能是跨分頁廣播（另一個分頁點連結）。
+ *
+ * 信箱登入本身目前透過 EMAIL_LOGIN_ENABLED 暫時隱藏（同一個免費信件額度
+ * 的問題，見 AccountDialog.vue 該常數旁的註解），只留 Google／GitHub——
+ * 底下幾個信箱流程專屬的測試因此先 it.skip，不是刪除。
  */
 vi.mock('@/sync/config', () => ({ isSyncConfigured: true }))
 
@@ -88,9 +92,15 @@ describe('AccountDialog.vue', () => {
   const mountDialog = () => mountWith(AccountDialog, pinia, { props: { open: true } })
   const emailInput = (w: Wrapper) => w.find('input[type=email]')
 
-  it('未登入時顯示信箱表單，且不預先載入認證模組', () => {
+  it('未登入時只顯示 Google／GitHub 按鈕，信箱表單暫時隱藏，也不預先載入認證模組', () => {
+    // EMAIL_LOGIN_ENABLED 目前是 false：Supabase 免費方案「沒接自訂 SMTP」的
+    // 內建測試信件額度太低，反覆撞到「請求太頻繁」，OAuth 不經過這個信件
+    // 服務，先只留 OAuth。requestMagicLink／'verifying' 畫面都還在，只是
+    // 使用者點不到——底下幾個信箱流程的測試因此先 skip，不是刪除。
     const w = mountDialog()
-    expect(emailInput(w).exists()).toBe(true)
+    expect(emailInput(w).exists()).toBe(false)
+    expect(w.findAll('button').some((b) => b.text() === '以 Google 繼續')).toBe(true)
+    expect(w.findAll('button').some((b) => b.text() === '以 GitHub 繼續')).toBe(true)
     expect(authClientMock.requestOtp).not.toHaveBeenCalled()
   })
 
@@ -110,7 +120,10 @@ describe('AccountDialog.vue', () => {
     expect(authClientMock.signInWithOAuth).toHaveBeenCalledWith('google')
   })
 
-  it('送出信箱後顯示「去信箱點連結」，不是六碼驗證碼輸入框', async () => {
+  // EMAIL_LOGIN_ENABLED 目前是 false，表單不在畫面上，emailInput(w) 找不到
+  // 元素——skip 而不是刪除，底層 requestMagicLink／'verifying' 畫面邏輯沒變，
+  // 重新打開信箱登入時把這幾個 it.skip 換回 it 即可。
+  it.skip('送出信箱後顯示「去信箱點連結」，不是六碼驗證碼輸入框', async () => {
     authClientMock.requestOtp.mockResolvedValue(null)
     const w = mountDialog()
 
@@ -123,7 +136,7 @@ describe('AccountDialog.vue', () => {
     expect(w.find('input[inputmode=numeric]').exists(), '不該再有驗證碼輸入框').toBe(false)
   })
 
-  it('寄送失敗時顯示錯誤，不進入等待狀態', async () => {
+  it.skip('寄送失敗時顯示錯誤，不進入等待狀態', async () => {
     authClientMock.requestOtp.mockResolvedValue({ name: 'AuthApiError', message: 'boom', status: 500 } as AuthError)
     const w = mountDialog()
 
@@ -134,19 +147,14 @@ describe('AccountDialog.vue', () => {
     expect(w.text()).not.toContain('去信箱點裡面的連結')
   })
 
-  it('登入在別的分頁（或同分頁點連結）完成時，畫面被動反映成已登入，並自動開始同步', async () => {
-    authClientMock.requestOtp.mockResolvedValue(null)
+  it('登入在別的分頁（點 OAuth 連結或信箱連結）完成時，畫面被動反映成已登入，並自動開始同步', async () => {
     const w = mountDialog()
     const sync = useSyncStore()
-
-    await emailInput(w).setValue('me@example.com')
-    await submit(w)
-    expect(w.text()).toContain('去信箱點裡面的連結')
     expect(sync.enabled).toBe(false)
 
-    // 模擬跨分頁廣播：這個分頁自己完全沒有「送出驗證碼」以外的動作，
-    // 登入狀態單純從外部變成 signed-in（stores/auth.ts 的 ensureAuthClient
-    // 訂閱到的 onAuthStateChange 就是這樣運作的）
+    // 模擬跨分頁廣播：這個分頁自己完全沒有任何登入動作，登入狀態單純從
+    // 外部變成 signed-in（stores/auth.ts 的 ensureAuthClient 訂閱到的
+    // onAuthStateChange 就是這樣運作的，不管觸發登入的是 OAuth 還是信箱連結）
     const auth = useAuthStore()
     auth.session = fakeSession()
     auth.status = 'signed-in'
@@ -193,7 +201,7 @@ describe('AccountDialog.vue', () => {
     expect(sync.enabled, '同步應該跟著自動停止').toBe(false)
   })
 
-  it('換一個信箱回到信箱表單', async () => {
+  it.skip('換一個信箱回到信箱表單', async () => {
     authClientMock.requestOtp.mockResolvedValue(null)
     const w = mountDialog()
 

@@ -175,25 +175,20 @@ test('資料與提醒對話框也維持零違規', async ({ page }) => {
   expect(found).toEqual([])
 })
 
-test('帳號與同步對話框（未登入、等待點連結兩個狀態）也維持零違規', async ({ page }) => {
+test('帳號與同步對話框（未登入畫面）也維持零違規', async ({ page }) => {
+  // AccountDialog.vue 的 EMAIL_LOGIN_ENABLED 目前是 false（Supabase 免費
+  // 方案的信件額度太低，OAuth 不經過這個服務），畫面上只有 Google／GitHub
+  // 按鈕，沒有信箱表單、也就沒有「等待點連結」這個可以從 UI 到達的狀態了。
   await seed(page)
-  await page.route('**/auth/v1/otp', (route) => route.fulfill({ status: 200, json: {} }))
 
   await page.getByRole('button', { name: '登入以同步' }).click()
   const dialog = page.getByRole('dialog').filter({ hasText: '帳號與同步' })
   await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '以 Google 繼續' })).toBeVisible()
 
-  const beforeSubmit = await violationsOf(page)
-  if (beforeSubmit.length) for (const f of beforeSubmit) console.log('    ' + f)
-  expect(beforeSubmit).toEqual([])
-
-  await dialog.getByLabel('電子郵件').fill('e2e@example.com')
-  await dialog.getByRole('button', { name: '寄送驗證碼' }).click()
-  await expect(dialog).toContainText('去信箱點裡面的連結')
-
-  const afterSubmit = await violationsOf(page)
-  if (afterSubmit.length) for (const f of afterSubmit) console.log('    ' + f)
-  expect(afterSubmit).toEqual([])
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
 })
 
 test('空清單狀態也維持零違規', async ({ page }) => {
