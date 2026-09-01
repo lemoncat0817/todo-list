@@ -146,7 +146,7 @@ today & p1 & #工作
 | TypeScript | ~6.0.3 | |
 | Tailwind CSS | 3.4.4 | |
 | idb | 8.0.3 | IndexedDB 封裝 |
-| Vitest | 4.1.10 | 478 條單元測試 |
+| Vitest | 4.1.10 | 479 條單元測試 |
 | Playwright | 1.62.1 | 97 條 E2E（另 1 條待重新開放 OAuth 時解除 skip） |
 | ESLint | 10.8.1 | 含 vuejs-accessibility |
 
