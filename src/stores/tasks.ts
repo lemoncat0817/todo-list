@@ -138,8 +138,20 @@ export const useTasksStore = defineStore('tasks', () => {
   /** 載入期間為 true；watcher 是非同步的，不能只靠 isLoading 判斷。 */
   let hydrating = false
 
+  /**
+   * 實測抓到的缺陷：`recurrence` 是任務裡唯一的巢狀物件欄位，`tagIds` 一直有
+   * 明確淺拷貝，`recurrence` 之前沒有——它會從 TaskDetailForm 的 `draft`（一個
+   * ref）一路帶著 Vue 的 reactive Proxy 流進來（`{ ...toRaw(t) }` 只淺層展開，
+   * 不會把巢狀屬性也 toRaw），最後整包丟給 IndexedDB 的 `put()`。
+   * structured clone 認不得 Proxy，會直接丟 DataCloneError，
+   * 使用者看到的就是「變更尚未存檔」——跟儲存空間滿不滿全無關係。
+   */
   function snapshot(): StoredTask[] {
-    return toRaw(items.value).map((t) => ({ ...toRaw(t), tagIds: [...t.tagIds] }))
+    return toRaw(items.value).map((t) => ({
+      ...toRaw(t),
+      tagIds: [...t.tagIds],
+      recurrence: t.recurrence ? { ...t.recurrence, byDay: [...t.recurrence.byDay] } : null,
+    }))
   }
 
   /**
@@ -176,6 +188,10 @@ export const useTasksStore = defineStore('tasks', () => {
         } while (dirty)
         writeError.value = null
       } catch (error) {
+        // 畫面只給「變更尚未存檔」這種不點名成因的通用訊息（稽核既有慣例，
+        // 見 stores/sync.ts 的 describeSyncError）；真正的錯誤內容留在
+        // console，不然像 DataCloneError 這種能一眼看出根因的線索就白白遺失。
+        console.error('[tasks] 寫入失敗', error)
         writeError.value = error
       }
     })().finally(() => {
