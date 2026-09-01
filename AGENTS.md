@@ -204,6 +204,29 @@ was stored, but also when `?code=` (mid-login) or `?error=`/`error_description=`
 present in the URL — otherwise a fresh OAuth callback would silently do
 nothing on a first-time sign-in.
 
+The Google/GitHub buttons are implemented, tested, and currently **not
+shown** — `AccountDialog.vue`'s `OAUTH_PROVIDERS_ENABLED` const is `false`
+by request, flip it back on when ready. Nothing in `sync/authClient.ts` or
+`stores/auth.ts` is gated by it; only the UI surface is.
+
+**A real bug found via live testing, not by inspection: Supabase's default
+email templates send a magic *link*, not the numeric code the "驗證碼" UI
+asks for.** `signInWithOtp` triggers "Confirm signup" (first-ever request for
+an email) or "Magic Link" (subsequent requests) — both templates default to
+`{{ .ConfirmationURL }}`; getting an actual pasteable code requires the
+project owner to edit both templates in the Supabase Dashboard to emit
+`{{ .Token }}` instead (documented in README's setup section). Clicking the
+link *does* complete sign-in (via the same `?code=` PKCE path OAuth uses),
+but the tab that's still showing "paste your code" has no way to know that —
+GoTrueClient broadcasts session changes across tabs via `BroadcastChannel`
+keyed on `storageKey`, but the store previously only called
+`onAuthStateChange` *after* `verifyCode()` succeeded, so the waiting tab was
+never subscribed when the broadcast arrived. Fixed by centralizing the
+dynamic import behind `ensureAuthClient()` in `stores/auth.ts`, which
+subscribes exactly once on first load regardless of which action (magic
+link request, OAuth, or `restore()`) triggered it — so a sign-in completed
+in another tab now updates every open tab, not just the one that finished it.
+
 **Pull is polling, not Realtime.** `stores/sync.ts` pulls on `start()`, every
 30s, on `online`, and on `visibilitychange`, mirroring the polling pattern
 already used by `useDueReminders.ts`. Realtime (websocket) would be the

@@ -106,7 +106,7 @@ today & p1 & #工作
 
 **帳號與跨裝置同步（選配）**
 - 預設仍是純本地：不設定 Supabase 環境變數，「帳號與同步」入口整個不顯示，行為與純前端版本完全一樣
-- 登入方式：Google／GitHub 一鍵登入，或信箱寄送的一次性驗證碼——沒有密碼
+- 登入方式：信箱寄送的一次性驗證碼，沒有密碼（Google／GitHub 一鍵登入邏輯已經做完，目前先不對外開放，見下方設定章節）
 - 登入的裝置之間會互相同步任務／專案／標籤／篩選器
 - 同步是背景輪詢（開分頁、每 30 秒、恢復網路、本地編輯後三秒），**不是即時協作**——目前只支援單人跨裝置，還沒有共享專案或指派任務給別人
 - 衝突以逐列「最後寫入者為準」（比較 `updatedAt`），不是欄位級合併；同一筆在兩台裝置「幾乎同時」修改不同欄位時，較晚寫入的那次會整列覆蓋
@@ -174,21 +174,46 @@ pnpm test:e2e     # Playwright E2E（含無障礙檢測）
 2. SQL Editor 貼上 [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) 執行一次
 3. Project Settings → API，把 `Project URL` 和 `anon public` key 填進複製自
    [`.env.local.example`](.env.local.example) 的 `.env.local`
-4. `pnpm dev`，側邊欄會出現「登入以同步」；信箱驗證碼登入到這裡就完成了
+4. **把信箱的 Email 範本改成寄六碼驗證碼，不是連結**——這一步很容易漏掉：
+   Supabase 內建範本預設寄的是一個確認連結（magic link），跟這個工具的
+   「請貼六碼驗證碼」畫面對不上，使用者會找不到碼可以貼。到 Dashboard 的
+   **Authentication → Email Templates**，**Confirm signup**（第一次登入的信箱
+   會收到這個範本）跟 **Magic Link**（登入過的信箱之後收到這個）兩個都要改，
+   把內容換成含有 `{{ .Token }}` 的版本，例如：
+   ```html
+   <h2>你的驗證碼</h2>
+   <p>驗證碼是：<strong>{{ .Token }}</strong></p>
+   <p>10 分鐘內有效，只能使用一次。</p>
+   ```
+5. `pnpm dev`，側邊欄會出現「登入以同步」；輸入信箱、去收六碼驗證碼、貼回頁面
 
-**要再加 Google／GitHub 一鍵登入**，兩個都是免費、自助式設定，不需要付費開發者帳號：
+**Google／GitHub 一鍵登入**：底層邏輯（`sync/authClient.ts` 的
+`signInWithOAuth`、`stores/auth.ts` 的 `signInWithOAuthProvider`）已經做完並測過，
+但目前**先不對外開放**——`AccountDialog.vue` 的 `OAUTH_PROVIDERS_ENABLED`
+常數設成 `false`。要重新開放：
 
-| 供應商 | 去哪裡建立 OAuth App | Authorized redirect URI |
-| --- | --- | --- |
-| Google | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → 建立 OAuth 用戶端 ID（應用程式類型選「網頁應用程式」） | `https://<your-project-ref>.supabase.co/auth/v1/callback` |
-| GitHub | GitHub → Settings → Developer settings → OAuth Apps → New OAuth App | 同上 |
+1. 把 `OAUTH_PROVIDERS_ENABLED` 改回 `true`
+2. 去對應供應商的開發者主控台建立 OAuth App（都是免費自助式設定，不需要
+   付費開發者帳號）：
 
-拿到兩邊各自的 Client ID／Client Secret 後，貼進 Supabase Dashboard 的
-**Authentication → Providers**，把 Google／GitHub 打開。同時到
-**Authentication → URL Configuration**，把你本機（例如
-`http://localhost:5173`）與正式站網址都加進 **Redirect URLs** 允許清單——
-Supabase 只會導回清單裡的網址，沒加的話登入完會卡在 Supabase 自己的頁面。
+   | 供應商 | 去哪裡建立 OAuth App | Authorized redirect URI |
+   | --- | --- | --- |
+   | Google | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → 建立 OAuth 用戶端 ID（應用程式類型選「網頁應用程式」） | `https://<your-project-ref>.supabase.co/auth/v1/callback` |
+   | GitHub | GitHub → Settings → Developer settings → OAuth Apps → New OAuth App | 同上 |
+
+3. 拿到兩邊各自的 Client ID／Client Secret 後，貼進 Supabase Dashboard 的
+   **Authentication → Providers**，把 Google／GitHub 打開
+4. **Google 預設只有你自己能登入**：Google Cloud Console 的 OAuth 同意畫面
+   預設是 **Testing** 狀態，只有手動加進「測試使用者」名單的信箱能登入。
+   要讓任何人都能用，把狀態改成 **In production**（發布）——只要求
+   email／profile 這種基本權限不需要 Google 人工審查，但使用者登入時會看到
+   一次「Google 未驗證此應用程式」的警告畫面，這是 Google 的預設行為，
+   點「進階 → 前往（不安全）」才能繼續，不是設定錯誤
+5. 同時到 **Authentication → URL Configuration**，把你本機（例如
+   `http://localhost:5173`）與正式站網址都加進 **Redirect URLs** 允許
+   清單——Supabase 只會導回清單裡的網址，沒加的話登入完會卡在
+   Supabase 自己的頁面
 
 Apple（`Sign in with Apple` 需要付費的 Apple Developer Program，$99/年）與
 Facebook（現在公開使用需要商業驗證）評估過後跳過，不是漏掉——之後真的需要
-再依同樣的模式（`sync/authClient.ts` 的 `signInWithOAuth`）加。
+再依同樣的模式加。

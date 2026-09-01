@@ -70,48 +70,14 @@ describe('AccountDialog.vue', () => {
     expect(authClientMock.requestOtp).not.toHaveBeenCalled()
   })
 
-  it('未登入時同時顯示 Google／GitHub 一鍵登入按鈕', () => {
+  it('OAUTH_PROVIDERS_ENABLED 為 false 時，Google／GitHub 按鈕不顯示——底層邏輯已經做完並保留，只是先不開放給使用者', () => {
     const w = mountDialog()
-    expect(w.text()).toContain('以 Google 繼續')
-    expect(w.text()).toContain('以 GitHub 繼續')
-  })
-
-  it('點 Google 按鈕會呼叫對應的 provider，不會誤觸別的供應商', async () => {
-    authClientMock.signInWithOAuth.mockResolvedValue(null)
-    const w = mountDialog()
-
-    const googleButton = w.findAll('button').find((b) => b.text() === '以 Google 繼續')
-    await googleButton?.trigger('click')
-    await flushPromises()
-
-    expect(authClientMock.signInWithOAuth).toHaveBeenCalledWith('google')
-    expect(authClientMock.signInWithOAuth).not.toHaveBeenCalledWith('github')
-  })
-
-  it('點 GitHub 按鈕會呼叫對應的 provider', async () => {
-    authClientMock.signInWithOAuth.mockResolvedValue(null)
-    const w = mountDialog()
-
-    const githubButton = w.findAll('button').find((b) => b.text() === '以 GitHub 繼續')
-    await githubButton?.trigger('click')
-    await flushPromises()
-
-    expect(authClientMock.signInWithOAuth).toHaveBeenCalledWith('github')
-  })
-
-  it('OAuth 前置失敗時顯示錯誤，這則錯誤跟信箱表單共用同一個提示區', async () => {
-    authClientMock.signInWithOAuth.mockResolvedValue({
-      name: 'AuthApiError',
-      message: 'provider not enabled',
-      status: 400,
-    } as AuthError)
-    const w = mountDialog()
-
-    const googleButton = w.findAll('button').find((b) => b.text() === '以 Google 繼續')
-    await googleButton?.trigger('click')
-    await flushPromises()
-
-    expect(w.find('[role=alert]').text()).toContain('provider not enabled')
+    expect(w.text()).not.toContain('以 Google 繼續')
+    expect(w.text()).not.toContain('以 GitHub 繼續')
+    // 這個常數目前應該是 false；點擊觸發的行為（provider 對不對、錯誤顯示）
+    // 在 stores/auth.spec.ts 的 signInWithOAuthProvider 測過，不在這裡重複，
+    // 因為這裡已經沒有按鈕可以點了
+    expect(authClientMock.signInWithOAuth).not.toHaveBeenCalled()
   })
 
   it('送出信箱後進入等待驗證碼的狀態，顯示寄到哪個信箱', async () => {
