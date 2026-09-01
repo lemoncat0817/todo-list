@@ -217,6 +217,26 @@ having.) The const only gates the UI surface — nothing in
 isn't actually configured in the Supabase Dashboard just surfaces an error in
 the dialog when clicked, it doesn't affect the email sign-in path.
 
+The email (magic link) form is conversely **hidden** —
+`AccountDialog.vue`'s `EMAIL_LOGIN_ENABLED` const is `false`. Same underlying
+problem as the SMTP template lock below, one layer up: Supabase's free/default
+email sender caps at a handful of sends per *project* per hour (not per
+address), and this project's own live testing burned through that cap
+repeatedly, surfacing `over_email_send_rate_limit`. OAuth doesn't touch that
+sender at all, so with the quota being a real recurring nuisance rather than a
+one-time setup cost, email sign-in got turned off (form, `requestMagicLink`
+call site) while OAuth stayed on — `requestMagicLink`/`cancelVerification`/the
+`'verifying'` screen are all still there, gated only by this one const.
+
+`describeError()` in `stores/auth.ts` also had to stop conflating two GoTrue
+error codes that both contain the substring "rate limit" in their message but
+mean very different things: `over_request_rate_limit` (a ~60s per-address
+throttle — waiting actually helps) vs `over_email_send_rate_limit` (the
+project-wide hourly send cap above — waiting a minute does nothing). It now
+switches on `authError.code` first, falling back to the message-substring
+check only when `code` is absent. Both user-facing strings deliberately don't
+name Supabase or SMTP — that's an implementation detail no end user needs.
+
 **Two real bugs found via live testing, not by inspection.**
 
 First: Supabase's default email templates send a magic *link*
@@ -246,6 +266,20 @@ the broadcast arrived. Fixed by centralizing the dynamic import behind
 early as `requestMagicLink()` (not waiting for a code the app no longer even
 asks for) — so a sign-in completed on another tab or device now updates
 every open tab, not just the one that finished it.
+
+A constraint worth knowing when testing this (found while adapting
+`e2e/account.spec.ts` for the OAuth-only surface): PKCE requires a
+`code_verifier` that auth-js generates and stores locally *at the moment*
+`signInWithOtp`/`signInWithOAuth` is called, paired with the `code_challenge`
+sent to the server. A tab that never made that call has nothing to pair the
+returned `?code=` against — navigating a fresh, never-acted-on tab straight to
+a URL carrying a `?code=` does not fail loudly, it just never attempts the
+token exchange at all (no network request, no error — confirmed by request
+logging, not assumed). So a broadcast-propagation test needs the *other* tab
+to have actually triggered a real sign-in (or already have a stored session,
+which is what makes an idle-but-previously-signed-in tab receive a sign-out
+broadcast) — you cannot fake "signed in elsewhere" by just teleporting a code
+onto an idle tab that was never party to that flow.
 
 A related gap this surfaced: `sync.start()`/`sync.stop()` used to be called
 imperatively from the specific places sign-in/sign-out happened
