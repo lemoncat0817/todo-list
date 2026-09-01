@@ -289,3 +289,159 @@ export function compileFilter(
   if (!parsed.ok) return null
   return (task: StoredTask) => evaluateFilter(parsed.node, task, context)
 }
+
+// ------------------------------------------------------------ 未知的名稱
+
+export interface UnresolvedFilterNames {
+  projects: string[]
+  labels: string[]
+}
+
+/**
+ * 語法正確、但 `#專案`／`@標籤` 指到一個現在不存在的名稱時，
+ * 這段條件會永遠比對不到任何任務，而畫面只會顯示「符合 0 項」——
+ * 使用者分不出這是「打錯字」還是「剛好沒有符合的任務」。
+ * 把這兩種情況分開需要知道「這個名稱查無此項」，所以另外提供這個函式，
+ * 而不是塞進 evaluateFilter：求值只回答 true/false，不該背著回傳診斷資訊。
+ */
+export function findUnresolvedNames(
+  node: FilterNode,
+  context: Pick<FilterContext, 'projects' | 'tags'> = {},
+): UnresolvedFilterNames {
+  const projects = context.projects ?? []
+  const tags = context.tags ?? []
+  const unresolvedProjects = new Set<string>()
+  const unresolvedLabels = new Set<string>()
+
+  const hasName = (collection: readonly NamedCollection[], name: string): boolean =>
+    collection.some((c) => normalizeForSearch(c.name) === normalizeForSearch(name))
+
+  function walk(n: FilterNode): void {
+    switch (n.type) {
+      case 'and':
+      case 'or':
+        walk(n.left)
+        walk(n.right)
+        return
+      case 'not':
+        walk(n.operand)
+        return
+      case 'project':
+        if (!hasName(projects, n.name)) unresolvedProjects.add(n.name)
+        return
+      case 'label':
+        if (!hasName(tags, n.name)) unresolvedLabels.add(n.name)
+        return
+      default:
+        return
+    }
+  }
+
+  walk(node)
+  return { projects: [...unresolvedProjects], labels: [...unresolvedLabels] }
+}
+
+// ------------------------------------------------------------ 自動完成
+
+export interface FilterSuggestion {
+  kind: 'keyword' | 'project' | 'label'
+  /** 顯示用的完整詞（含 #／@ 前綴）。 */
+  label: string
+  /** 接受建議時要插入查詢字串的文字，必要時已加上引號。 */
+  insertText: string
+  /** 關鍵字的簡短說明；專案／標籤建議沒有這欄。 */
+  hint?: string
+}
+
+export interface FilterTokenRange {
+  start: number
+  end: number
+}
+
+/**
+ * 一個詞的邊界跟 tokenize() 用同一套字元（運算子、空白、引號），
+ * 這裡沒有重用 tokenize 是因為它要處理的是「游標所在、可能還沒打完」的半成品，
+ * tokenize 面對的是打完、準備解析的完整字串——兩者對「不完整輸入」的容錯需求不同。
+ */
+const TOKEN_BOUNDARY = /[\s&|!()"「」]/
+
+function tokenBounds(input: string, cursor: number): FilterTokenRange {
+  let start = cursor
+  while (start > 0 && !TOKEN_BOUNDARY.test(input[start - 1] as string)) start--
+  let end = cursor
+  while (end < input.length && !TOKEN_BOUNDARY.test(input[end] as string)) end++
+  return { start, end }
+}
+
+/** 名稱含運算子或空白時要加引號，否則插入後的字串會被切成好幾個詞。 */
+function quoteIfNeeded(name: string): string {
+  return /[\s&|!()]/.test(name) ? `"${name}"` : name
+}
+
+const KEYWORD_SUGGESTIONS: readonly { token: string; hint: string }[] = [
+  { token: 'today', hint: '今天或更早到期' },
+  { token: 'overdue', hint: '已逾期' },
+  { token: 'upcoming', hint: '未來幾天內到期' },
+  { token: 'nodate', hint: '沒有到期日' },
+  { token: 'done', hint: '已完成' },
+  { token: 'todo', hint: '未完成' },
+  { token: 'p1', hint: '優先度最高' },
+  { token: 'p2', hint: '優先度較高' },
+  { token: 'p3', hint: '優先度較低' },
+  { token: 'p4', hint: '優先度最低' },
+]
+
+function matchCollections(
+  collection: readonly NamedCollection[],
+  needle: string,
+  kind: 'project' | 'label',
+): FilterSuggestion[] {
+  const target = normalizeForSearch(needle)
+  const prefix = kind === 'project' ? '#' : '@'
+  return collection
+    .filter((c) => target === '' || normalizeForSearch(c.name).includes(target))
+    .map((c) => ({ kind, label: `${prefix}${c.name}`, insertText: `${prefix}${quoteIfNeeded(c.name)}` }))
+}
+
+/**
+ * 游標目前打到一半的那個詞該建議什麼，以及接受建議時要替換掉字串的哪一段。
+ *
+ * `#`／`@` 開頭時只從既有的專案／標籤名稱裡找，因為語法本來就只認得到這些；
+ * 其餘情況建議關鍵字——輸入框空著（游標落在一個空詞上）時回傳完整清單，
+ * 讓使用者不必先看過下方的語法說明才知道有哪些詞可以用。
+ */
+export function suggestFilterTokens(
+  input: string,
+  cursor: number,
+  context: Pick<FilterContext, 'projects' | 'tags'> = {},
+): { range: FilterTokenRange; suggestions: FilterSuggestion[] } {
+  const range = tokenBounds(input, cursor)
+  const word = input.slice(range.start, cursor)
+
+  if (word.startsWith('#')) {
+    return { range, suggestions: matchCollections(context.projects ?? [], word.slice(1), 'project') }
+  }
+  if (word.startsWith('@')) {
+    return { range, suggestions: matchCollections(context.tags ?? [], word.slice(1), 'label') }
+  }
+
+  const needle = normalizeForSearch(word)
+  const suggestions = KEYWORD_SUGGESTIONS.filter(
+    (k) => needle === '' || k.token.startsWith(needle),
+  ).map((k) => ({ kind: 'keyword' as const, label: k.token, insertText: k.token, hint: k.hint }))
+  return { range, suggestions }
+}
+
+// ------------------------------------------------------------------ 範本
+
+/**
+ * 建立篩選器時的起手式：涵蓋日期、優先度、狀態與組合語法各一個例子，
+ * 讓從沒寫過查詢語法的人也能一鍵開始，而不必先讀完語法說明才敢動手打字。
+ */
+export const FILTER_QUERY_PRESETS: readonly { label: string; query: string }[] = [
+  { label: '今天要做的', query: 'today' },
+  { label: '已逾期', query: 'overdue' },
+  { label: '今天的要事', query: 'today & p1' },
+  { label: '即將到來', query: 'upcoming' },
+  { label: '未完成且非低優先', query: 'todo & !p4' },
+]

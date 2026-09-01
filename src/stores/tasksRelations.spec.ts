@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { createApp } from 'vue'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { createApp, nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
+import * as db from '@/db'
 import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
 import { useHistoryStore } from '@/stores/history'
@@ -286,5 +287,27 @@ describe('moveTask 排序', () => {
 
     app.tasks.move('a', 'a', 'before')
     expect(app.tasks.items.find((t) => t.id === 'a')?.order).toBe(0)
+  })
+})
+
+describe('持久化 watcher 涵蓋所有會被存的狀態', () => {
+  /**
+   * filters 曾經漏在 tasks.ts 的 watch 依賴清單外：單獨新增一個篩選器
+   * 不會觸發 flush()，得等任務或專案／標籤也剛好變動才連帶存進去。
+   */
+  afterEach(() => vi.restoreAllMocks())
+
+  it('單獨新增一個篩選器也會觸發存檔，不需要搭配任務變動', async () => {
+    const app = setup()
+    await app.tasks.init()
+    const spy = vi.spyOn(db, 'saveFilters')
+
+    app.collections.addFilter('要事', 'today & p1')
+    await nextTick()
+    await app.tasks.flush()
+
+    expect(spy).toHaveBeenCalled()
+    const lastCall = spy.mock.calls.at(-1)
+    expect(lastCall?.[0]).toHaveLength(1)
   })
 })

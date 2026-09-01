@@ -46,12 +46,14 @@
     <!-- 就地建立：沒有這條路徑的話，第一次使用時專案與標籤永遠是空清單 -->
     <div class="flex gap-2">
       <input v-model.trim="newProjectName" aria-label="新專案名稱" placeholder="新增專案…"
+        :aria-invalid="projectNameError !== null"
         class="h-9 min-w-0 grow rounded-lg border border-line bg-surface px-2.5 text-[15px] text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
         @keydown.enter.prevent="createProject">
       <button type="button"
         class="shrink-0 rounded-lg bg-accent px-3 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
-        :disabled="newProjectName === ''" @click="createProject">建立</button>
+        :disabled="newProjectName === '' || projectNameError !== null" @click="createProject">建立</button>
     </div>
+    <p v-if="projectNameError" class="-mt-2 text-xs text-danger-ink">{{ projectNameError }}</p>
 
     <fieldset class="rounded-lg border border-line p-3">
       <legend class="px-1 text-sm font-medium text-ink-soft">標籤</legend>
@@ -65,12 +67,14 @@
       </label>
       <div class="mt-2 flex gap-2">
         <input v-model.trim="newTagName" aria-label="新標籤名稱" placeholder="新增標籤…"
+          :aria-invalid="tagNameError !== null"
           class="h-9 min-w-0 grow rounded-lg border border-line bg-surface px-2.5 text-[15px] text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
           @keydown.enter.prevent="createTag">
         <button type="button"
           class="shrink-0 rounded-lg bg-accent px-3 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
-          :disabled="newTagName === ''" @click="createTag">建立</button>
+          :disabled="newTagName === '' || tagNameError !== null" @click="createTag">建立</button>
       </div>
+      <p v-if="tagNameError" class="mt-1 text-xs text-danger-ink">{{ tagNameError }}</p>
     </fieldset>
 
     <fieldset class="flex flex-col gap-2.5 rounded-lg border border-line p-3">
@@ -124,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
 import {
@@ -137,6 +141,7 @@ import {
 } from '@/db/schema'
 import { DEFAULT_RECURRENCE, describeRecurrence } from '@/domain/recurrence'
 import { isValidISODate, isValidTime } from '@/domain/dates'
+import { findByNormalizedName } from '@/domain/filtering'
 
 /**
  * 任務詳情的表單本體。
@@ -180,15 +185,32 @@ watch(
   { immediate: true },
 )
 
+/**
+ * 同名（忽略大小寫／全形半形）就擋掉建立，而不是靜默重用——
+ * 這裡上面已經有下拉選單／核取方塊可以直接選到既有項目，
+ * 讓「建立」按鈕對一個已存在的名字生效只會讓人以為自己多建了一個。
+ */
+const projectNameError = computed(() =>
+  newProjectName.value !== '' && findByNormalizedName(collections.projects, newProjectName.value)
+    ? '已有相同名稱的專案，請從上方選單選取'
+    : null,
+)
+
+const tagNameError = computed(() =>
+  newTagName.value !== '' && findByNormalizedName(collections.tags, newTagName.value)
+    ? '已有相同名稱的標籤，請從上方勾選'
+    : null,
+)
+
 /** 建立後直接選中，省去「建立完還要再選一次」的來回。 */
 function createProject(): void {
-  if (newProjectName.value === '') return
+  if (newProjectName.value === '' || projectNameError.value) return
   projectInput.value = collections.addProject(newProjectName.value).id
   newProjectName.value = ''
 }
 
 function createTag(): void {
-  if (newTagName.value === '' || !draft.value) return
+  if (newTagName.value === '' || tagNameError.value || !draft.value) return
   const tag = collections.addTag(newTagName.value)
   draft.value.tagIds = [...draft.value.tagIds, tag.id]
   newTagName.value = ''

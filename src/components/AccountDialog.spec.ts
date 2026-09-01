@@ -1,0 +1,217 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
+import type { Pinia } from 'pinia'
+import type { AuthError, Session } from '@supabase/auth-js'
+import AccountDialog from '@/components/AccountDialog.vue'
+import { useAuthStore } from '@/stores/auth'
+import { useSyncStore } from '@/stores/sync'
+import { freshPinia, mountWith, type Wrapper } from '@/test/helpers'
+
+/**
+ * 表單送出一律用 `find('form').trigger('submit')` 而不是點送出按鈕——
+ * happy-dom 不會在點擊 `<button type="submit">` 時自動幫表單派送原生的
+ * submit 事件（那是瀏覽器的表單關聯行為，happy-dom 沒有完整實作）。
+ * 送出後一律 `await flushPromises()`：`@submit.prevent="submitEmail"`
+ * 呼叫的是一個 async 函式，Vue 不會等它完成，trigger() 的 await 只保證
+ * 目前這一輪的同步更新已經 flush，不包含 handler 內部後續的 await。
+ */
+async function submit(w: Wrapper): Promise<void> {
+  await w.find('form').trigger('submit')
+  await flushPromises()
+}
+
+/**
+ * 三個狀態（未登入／等待點連結／已登入）對應 stores/auth.ts 的 status。
+ * sync/authClient.ts 整份 mock 掉——這裡測的是畫面跟 store 之間的接線，
+ * 不是 GoTrueClient 本身（那是 stores/auth.spec.ts 的事）。
+ *
+ * 「等待」狀態不再有六碼驗證碼輸入框：Supabase 免費方案的內建信件服務
+ * 不給改範本，寄出的一律是連結，不是碼（實測發現，見 stores/auth.ts 的
+ * ensureAuthClient 註解）。畫面改成「去信箱點連結」，登入完成一律靠
+ * auth.status 被動變成 signed-in 反映出來——可能是這個分頁自己（同分頁
+ * 點連結），也可能是跨分頁廣播（另一個分頁點連結）。
+ *
+ * 信箱登入本身目前透過 EMAIL_LOGIN_ENABLED 暫時隱藏（同一個免費信件額度
+ * 的問題，見 AccountDialog.vue 該常數旁的註解），只留 Google／GitHub——
+ * 底下幾個信箱流程專屬的測試因此先 it.skip，不是刪除。
+ */
+vi.mock('@/sync/config', () => ({ isSyncConfigured: true }))
+
+const authClientMock = {
+  requestOtp: vi.fn<(email: string) => Promise<AuthError | null>>(),
+  verifyOtp: vi.fn<(email: string, code: string) => Promise<{ session: Session | null; error: AuthError | null }>>(),
+  signInWithOAuth: vi.fn<(provider: string) => Promise<AuthError | null>>(),
+  signOut: vi.fn<() => Promise<void>>(),
+  getSession: vi.fn<() => Promise<Session | null>>(),
+  onAuthStateChange: vi.fn<(cb: (s: Session | null) => void) => () => void>(() => () => {}),
+}
+vi.mock('@/sync/authClient', () => authClientMock)
+
+function fakeSession(email = 'me@example.com'): Session {
+  return {
+    access_token: 'token',
+    refresh_token: 'refresh',
+    expires_in: 3600,
+    token_type: 'bearer',
+    user: { id: 'u1', email },
+  } as unknown as Session
+}
+
+describe('AccountDialog.vue', () => {
+  let pinia: Pinia
+
+  beforeEach(() => {
+    pinia = freshPinia()
+    vi.clearAllMocks()
+    authClientMock.onAuthStateChange.mockReturnValue(() => {})
+    // stores/sync.ts 現在會自己 watch auth.status 決定要不要 start()——
+    // 這裡只要不讓它真的打網路，不需要另外 spy/停用。
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => [] } as Response)
+  })
+
+  /**
+   * auth.status 一旦被測試改成 signed-in（不管是直接賦值模擬跨分頁廣播，
+   * 還是掛載時就已經是 signed-in），stores/sync.ts 自己的 watcher 就會
+   * 呼叫 start()——一個有好幾段 await（讀 IndexedDB 的 fingerprint、
+   * 打網路）的非同步函式。測試本身的斷言不需要等它跑完，但如果放著不管，
+   * 這個承諾會在測試檔案結束、happy-dom 的 window 已經被回收之後才繼續跑到
+   * `window.addEventListener`，變成一個跨到下一個檔案才炸開的
+   * unhandled rejection（ReferenceError: window is not defined）。
+   * 跟 stores/sync.spec.ts 的 activeSync 清理是同一個道理：等它真的跑完
+   * （lastPulledAt 有值是唯一可靠的「整輪結束」訊號）才 stop()。
+   */
+  afterEach(async () => {
+    const sync = useSyncStore()
+    if (sync.enabled) {
+      await vi.waitFor(() => expect(sync.lastPulledAt).not.toBeNull(), { timeout: 2000 })
+    }
+    sync.stop()
+    vi.restoreAllMocks()
+  })
+
+  const mountDialog = () => mountWith(AccountDialog, pinia, { props: { open: true } })
+  const emailInput = (w: Wrapper) => w.find('input[type=email]')
+
+  it('未登入時只顯示 Google／GitHub 按鈕，信箱表單暫時隱藏，也不預先載入認證模組', () => {
+    // EMAIL_LOGIN_ENABLED 目前是 false：Supabase 免費方案「沒接自訂 SMTP」的
+    // 內建測試信件額度太低，反覆撞到「請求太頻繁」，OAuth 不經過這個信件
+    // 服務，先只留 OAuth。requestMagicLink／'verifying' 畫面都還在，只是
+    // 使用者點不到——底下幾個信箱流程的測試因此先 skip，不是刪除。
+    const w = mountDialog()
+    expect(emailInput(w).exists()).toBe(false)
+    expect(w.findAll('button').some((b) => b.text() === '以 Google 繼續')).toBe(true)
+    expect(w.findAll('button').some((b) => b.text() === '以 GitHub 繼續')).toBe(true)
+    expect(authClientMock.requestOtp).not.toHaveBeenCalled()
+  })
+
+  it('Google／GitHub 按鈕顯示，點下去呼叫對應 provider', async () => {
+    authClientMock.signInWithOAuth.mockResolvedValue(null)
+    const w = mountDialog()
+
+    const googleButton = w.findAll('button').find((b) => b.text() === '以 Google 繼續')
+    const githubButton = w.findAll('button').find((b) => b.text() === '以 GitHub 繼續')
+    expect(googleButton?.exists()).toBe(true)
+    expect(githubButton?.exists()).toBe(true)
+
+    await googleButton?.trigger('click')
+    await flushPromises()
+    // provider 對不對、失敗時的錯誤顯示在 stores/auth.spec.ts 的
+    // signInWithOAuthProvider 測過，這裡只驗證畫面接線接對了。
+    expect(authClientMock.signInWithOAuth).toHaveBeenCalledWith('google')
+  })
+
+  // EMAIL_LOGIN_ENABLED 目前是 false，表單不在畫面上，emailInput(w) 找不到
+  // 元素——skip 而不是刪除，底層 requestMagicLink／'verifying' 畫面邏輯沒變，
+  // 重新打開信箱登入時把這幾個 it.skip 換回 it 即可。
+  it.skip('送出信箱後顯示「去信箱點連結」，不是六碼驗證碼輸入框', async () => {
+    authClientMock.requestOtp.mockResolvedValue(null)
+    const w = mountDialog()
+
+    await emailInput(w).setValue('me@example.com')
+    await submit(w)
+
+    expect(authClientMock.requestOtp).toHaveBeenCalledWith('me@example.com')
+    expect(w.text()).toContain('me@example.com')
+    expect(w.text()).toContain('去信箱點裡面的連結')
+    expect(w.find('input[inputmode=numeric]').exists(), '不該再有驗證碼輸入框').toBe(false)
+  })
+
+  it.skip('寄送失敗時顯示錯誤，不進入等待狀態', async () => {
+    authClientMock.requestOtp.mockResolvedValue({ name: 'AuthApiError', message: 'boom', status: 500 } as AuthError)
+    const w = mountDialog()
+
+    await emailInput(w).setValue('me@example.com')
+    await submit(w)
+
+    expect(w.find('[role=alert]').exists()).toBe(true)
+    expect(w.text()).not.toContain('去信箱點裡面的連結')
+  })
+
+  it('登入在別的分頁（點 OAuth 連結或信箱連結）完成時，畫面被動反映成已登入，並自動開始同步', async () => {
+    const w = mountDialog()
+    const sync = useSyncStore()
+    expect(sync.enabled).toBe(false)
+
+    // 模擬跨分頁廣播：這個分頁自己完全沒有任何登入動作，登入狀態單純從
+    // 外部變成 signed-in（stores/auth.ts 的 ensureAuthClient 訂閱到的
+    // onAuthStateChange 就是這樣運作的，不管觸發登入的是 OAuth 還是信箱連結）
+    const auth = useAuthStore()
+    auth.session = fakeSession()
+    auth.status = 'signed-in'
+    await flushPromises()
+
+    expect(w.text()).toContain('已登入')
+    expect(w.text()).toContain('me@example.com')
+    // start() 不是這個元件呼叫的，是 stores/sync.ts 自己 watch auth.status 觸發——
+    // 用 sync.enabled（狀態）而不是 spy 那個函式來驗證：watcher 呼叫的是
+    // setup() 內的原始閉包，不是 store 物件上可以被 spyOn 攔截的那個屬性。
+    expect(sync.enabled).toBe(true)
+  })
+
+  it('已登入時同步失敗會顯示錯誤訊息', async () => {
+    const auth = useAuthStore()
+    const sync = useSyncStore()
+    auth.session = fakeSession()
+    auth.status = 'signed-in'
+    sync.syncError = '網路連不上'
+
+    const w = mountDialog()
+
+    expect(w.text()).toContain('上次同步失敗')
+    expect(w.text()).toContain('網路連不上')
+  })
+
+  it('登出後 session 清空，同步引擎也跟著自動停止', async () => {
+    const auth = useAuthStore()
+    const sync = useSyncStore()
+    auth.session = fakeSession()
+    auth.status = 'signed-in'
+    authClientMock.signOut.mockResolvedValue(undefined)
+
+    const w = mountDialog()
+    await flushPromises()
+    expect(sync.enabled, '掛載時 auth 已經是 signed-in，同步應該已經自動啟動').toBe(true)
+
+    const signOutButton = w.findAll('button').find((b) => b.text() === '登出')
+    await signOutButton?.trigger('click')
+    await flushPromises()
+
+    expect(auth.status).toBe('signed-out')
+    // stop() 不是元件呼叫的，是 stores/sync.ts watch 到 auth.status 變化才觸發
+    expect(sync.enabled, '同步應該跟著自動停止').toBe(false)
+  })
+
+  it.skip('換一個信箱回到信箱表單', async () => {
+    authClientMock.requestOtp.mockResolvedValue(null)
+    const w = mountDialog()
+
+    await emailInput(w).setValue('me@example.com')
+    await submit(w)
+    expect(w.text()).toContain('去信箱點裡面的連結')
+
+    const backButton = w.findAll('button').find((b) => b.text() === '換一個信箱')
+    await backButton?.trigger('click')
+
+    expect(emailInput(w).exists()).toBe(true)
+  })
+})

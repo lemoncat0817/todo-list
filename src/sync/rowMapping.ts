@@ -1,0 +1,138 @@
+import type { StoredFilter, StoredProject, StoredTag, StoredTask } from '@/db/schema'
+
+/**
+ * 本地形狀（camelCase）與遠端資料表（snake_case）之間的轉換。
+ *
+ * 推送方向（to*）：組出要送給 PostgREST 的 JSON body。刻意不帶 `user_id`——
+ * 資料表把它設成 `default auth.uid()`，讓「這筆屬於誰」完全由請求的 JWT
+ * 決定，client 端沒有欄位可以拿來造假別人的資料。
+ *
+ * 拉取方向（from*）：只做欄位改名（snake_case → camelCase），不做驗證。
+ * 驗證交給 `domain/task.ts` 既有的 normalize* 函式——遠端資料跟 IndexedDB、
+ * 舊版 localStorage、備份檔一樣是跨信任邊界的外部輸入，待遇必須一致。
+ */
+
+export const TABLE_TASKS = 'tasks'
+export const TABLE_PROJECTS = 'projects'
+export const TABLE_TAGS = 'tags'
+export const TABLE_FILTERS = 'filters'
+
+/** 墓碑：REST 輪詢沒有天生的刪除事件，用這個欄位標記「這筆已經不存在了」。 */
+export interface Tombstone {
+  id: string
+  deleted_at: number
+}
+
+export function isTombstone(row: { deleted_at?: unknown }): boolean {
+  return typeof row.deleted_at === 'number'
+}
+
+/**
+ * 回傳型別是 Record<string, unknown> 而非 Tombstone——這樣才能跟 toRemote*
+ * 的回傳型別一起放進同一個要送出去的陣列，不必額外轉型。
+ *
+ * 一定要帶 updated_at：pull 走的是 `updated_at > 游標` 這個查詢
+ * （sync/restClient.ts 的 fetchRowsSince），墓碑要是沒有一個夠新的
+ * updated_at，別的裝置的游標永遠會落在它後面，這筆刪除就永遠拉不到、
+ * 那台裝置會一直以為這筆資料還在——實測發現的，不是憑空補的欄位。
+ */
+export function makeTombstone(id: string): Record<string, unknown> {
+  const now = Date.now()
+  return { id, deleted_at: now, updated_at: now }
+}
+
+// ------------------------------------------------------------------ tasks
+
+export function toRemoteTask(task: StoredTask): Record<string, unknown> {
+  return {
+    id: task.id,
+    task_name: task.taskName,
+    is_completed: task.isCompleted,
+    order: task.order,
+    notes: task.notes,
+    priority: task.priority,
+    due_date: task.dueDate,
+    due_time: task.dueTime,
+    project_id: task.projectId,
+    tag_ids: task.tagIds,
+    parent_id: task.parentId,
+    recurrence: task.recurrence,
+    completed_at: task.completedAt,
+    created_at: task.createdAt,
+    updated_at: task.updatedAt,
+    deleted_at: null,
+  }
+}
+
+/** 只做改名，回傳的形狀交給 normalizeTask 驗證，這裡不假設任何欄位一定存在。 */
+export function fromRemoteTask(row: Record<string, unknown>): unknown {
+  return {
+    id: row.id,
+    taskName: row.task_name,
+    isCompleted: row.is_completed,
+    order: row.order,
+    notes: row.notes,
+    priority: row.priority,
+    dueDate: row.due_date,
+    dueTime: row.due_time,
+    projectId: row.project_id,
+    tagIds: row.tag_ids,
+    parentId: row.parent_id,
+    recurrence: row.recurrence,
+    completedAt: row.completed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+// ---------------------------------------------------------------- projects
+
+export function toRemoteProject(project: StoredProject): Record<string, unknown> {
+  return {
+    id: project.id,
+    name: project.name,
+    color: project.color,
+    order: project.order,
+    updated_at: project.updatedAt,
+    deleted_at: null,
+  }
+}
+
+export function fromRemoteProject(row: Record<string, unknown>): unknown {
+  return { id: row.id, name: row.name, color: row.color, order: row.order, updatedAt: row.updated_at }
+}
+
+// -------------------------------------------------------------------- tags
+
+export function toRemoteTag(tag: StoredTag): Record<string, unknown> {
+  return { id: tag.id, name: tag.name, color: tag.color, updated_at: tag.updatedAt, deleted_at: null }
+}
+
+export function fromRemoteTag(row: Record<string, unknown>): unknown {
+  return { id: row.id, name: row.name, color: row.color, updatedAt: row.updated_at }
+}
+
+// ----------------------------------------------------------------- filters
+
+export function toRemoteFilter(filter: StoredFilter): Record<string, unknown> {
+  return {
+    id: filter.id,
+    name: filter.name,
+    query: filter.query,
+    color: filter.color,
+    order: filter.order,
+    updated_at: filter.updatedAt,
+    deleted_at: null,
+  }
+}
+
+export function fromRemoteFilter(row: Record<string, unknown>): unknown {
+  return {
+    id: row.id,
+    name: row.name,
+    query: row.query,
+    color: row.color,
+    order: row.order,
+    updatedAt: row.updated_at,
+  }
+}

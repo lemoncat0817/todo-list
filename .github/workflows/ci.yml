@@ -39,7 +39,15 @@ jobs:
         run: pnpm test
 
       - name: 建置
+        # VITE_SUPABASE_URL／ANON_KEY 沒設定時就是空字串，等同沒接雲端同步——
+        # 帳號與同步入口整個不顯示（見 src/sync/config.ts 的 isSyncConfigured），
+        # 建置照樣完整成功。這兩個值本來就是給前端打包用的公開設定，
+        # ANON_KEY 也是設計上可公開的（真正的存取控制在 supabase/migrations 的 RLS），
+        # 用 secret 存放只是維持一致的謹慎程度。
         run: pnpm build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - name: 上傳建置產物
         uses: actions/upload-artifact@v7

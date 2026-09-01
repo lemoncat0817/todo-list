@@ -165,10 +165,47 @@ test('快捷鍵說明也維持零違規', async ({ page }) => {
   expect(found).toEqual([])
 })
 
+test('側邊導覽收合成僅圖示的窄行時也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.getByRole('button', { name: '收合導覽' }).click()
+  await expect(page.getByRole('button', { name: '展開導覽' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('任務詳情欄收合時也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.setViewportSize({ width: 1400, height: 800 })
+  await page.getByRole('button', { name: '收合任務詳情' }).click()
+  await expect(page.getByRole('button', { name: '展開任務詳情' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
 test('資料與提醒對話框也維持零違規', async ({ page }) => {
   await seed(page)
   await page.getByRole('button', { name: '資料與提醒' }).click()
   await expect(page.getByRole('heading', { name: '資料與提醒' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('帳號與同步對話框（未登入畫面）也維持零違規', async ({ page }) => {
+  // AccountDialog.vue 的 EMAIL_LOGIN_ENABLED 目前是 false（Supabase 免費
+  // 方案的信件額度太低，OAuth 不經過這個服務），畫面上只有 Google／GitHub
+  // 按鈕，沒有信箱表單、也就沒有「等待點連結」這個可以從 UI 到達的狀態了。
+  await seed(page)
+
+  await page.getByRole('button', { name: '登入以同步' }).click()
+  const dialog = page.getByRole('dialog').filter({ hasText: '帳號與同步' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '以 Google 繼續' })).toBeVisible()
 
   const found = await violationsOf(page)
   if (found.length) for (const f of found) console.log('    ' + f)

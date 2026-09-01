@@ -63,10 +63,20 @@ export default defineConfig({
   webServer: [
     {
       // 專用 port，且一律自行啟動：沿用既有伺服器曾導致測試連到別的專案。
+      //
+      // 這裡的 Supabase 值是假的、刻意寫死在這裡——E2E 從不真的打
+      // Supabase（見 e2e/account.spec.ts 用 page.route 攔截），只是要讓
+      // isSyncConfigured 為 true，「帳號與同步」入口才有東西可以測。
+      // 正式部署（.github/workflows/deploy.yml）讀的是真正的環境變數，
+      // 使用者沒有接 Supabase 之前那裡是空字串，同步功能維持隱藏，這是對的。
       command: 'pnpm build && pnpm preview --port 4319 --strictPort',
       url: 'http://localhost:4319',
       reuseExistingServer: false,
       timeout: 120_000,
+      env: {
+        VITE_SUPABASE_URL: 'https://e2e-fake-project.supabase.co',
+        VITE_SUPABASE_ANON_KEY: 'e2e-fake-anon-key',
+      },
     },
     {
       // 同一份 dist 掛在子路徑下，持續驗證 GitHub Pages 的部署形狀。

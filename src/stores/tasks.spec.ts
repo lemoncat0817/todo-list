@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { createApp, nextTick } from 'vue'
+import { createApp, nextTick, reactive } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useTasksStore } from '@/stores/tasks'
 import * as db from '@/db'
@@ -96,6 +96,43 @@ describe('todoTask store', () => {
       await store.flush()
       expect(store.writeError).toBeNull()
     })
+
+    /**
+     * 實測回歸：TaskDetailForm 的 draft 是一個 ref，讀出來的巢狀物件
+     * （這裡是 recurrence）會是 Vue 的 reactive Proxy，不是純物件。
+     * 過去 snapshot() 只淺層 toRaw，Proxy 會一路帶到 IndexedDB 的
+     * put()，觸發瀏覽器真實丟出的 DataCloneError——不是配額問題，
+     * 是巢狀物件沒被拆成純資料。這裡直接用 reactive() 模擬那個 Proxy，
+     * 不 mock db 層，讓測試真的走到會失敗的那一段程式碼。
+     */
+    it('update() 傳入巢狀的 reactive proxy（例如 recurrence）也能正常寫入', async () => {
+      const store = setup()
+      await store.init()
+
+      const task = store.add('會重複的任務')
+      const proxiedRecurrence = reactive({
+        freq: 'daily' as const,
+        interval: 1,
+        byDay: [],
+        byMonthDay: null,
+        until: null,
+        count: null,
+      })
+      store.update(task.id, { dueDate: '2026-01-01', recurrence: proxiedRecurrence })
+      await nextTick()
+      await store.flush()
+
+      expect(store.writeError, 'recurrence 帶著 reactive proxy 也不該寫入失敗').toBeNull()
+      const persisted = (await db.loadTasks()).find((t) => t.id === task.id)
+      expect(persisted?.recurrence).toEqual({
+        freq: 'daily',
+        interval: 1,
+        byDay: [],
+        byMonthDay: null,
+        until: null,
+        count: null,
+      })
+    })
   })
 
   describe('變更會落地到 IndexedDB', () => {
@@ -139,17 +176,64 @@ describe('todoTask store', () => {
 
       expect((await db.loadTasks()).map((t) => t.id)).toEqual(['keep'])
     })
+  })
 
-    it('全選 / 全取消一次改動所有項目', async () => {
+  describe('batchComplete', () => {
+    it('只改動被選中的項目，其餘不受影響', async () => {
       const store = setup()
       await store.init()
-      store.items = [makeTask('a', false, { order: 0 }), makeTask('b', false, { order: 1 })]
+      store.items = [
+        makeTask('a', false, { id: 'a', order: 0 }),
+        makeTask('b', false, { id: 'b', order: 1 }),
+      ]
 
-      store.setAllCompleted(true)
-      expect(store.items.every((t) => t.isCompleted)).toBe(true)
+      store.batchComplete(['a'], true)
+      expect(store.items.find((t) => t.id === 'a')?.isCompleted).toBe(true)
+      expect(store.items.find((t) => t.id === 'b')?.isCompleted).toBe(false)
 
-      store.setAllCompleted(false)
+      store.batchComplete(['a'], false)
+      expect(store.items.find((t) => t.id === 'a')?.isCompleted).toBe(false)
+    })
+
+    it('一次批次操作只推一筆復原紀錄', async () => {
+      const store = setup()
+      const history = useHistoryStore()
+      await store.init()
+      store.items = [
+        makeTask('a', false, { id: 'a', order: 0 }),
+        makeTask('b', false, { id: 'b', order: 1 }),
+      ]
+
+      store.batchComplete(['a', 'b'], true)
+      expect(history.depth).toBe(1)
+
+      await history.undo()
       expect(store.items.every((t) => !t.isCompleted)).toBe(true)
+    })
+
+    it('有重複規則的任務完成時推進到下一次，而不是直接標記完成', async () => {
+      const store = setup()
+      await store.init()
+      store.items = [
+        makeTask('每日任務', false, {
+          id: 'r',
+          order: 0,
+          dueDate: '2026-01-01',
+          recurrence: {
+            freq: 'daily',
+            interval: 1,
+            byDay: [],
+            byMonthDay: null,
+            until: null,
+            count: null,
+          },
+        }),
+      ]
+
+      store.batchComplete(['r'], true)
+      const task = store.items.find((t) => t.id === 'r')
+      expect(task?.isCompleted).toBe(false)
+      expect(task?.dueDate).toBe('2026-01-02')
     })
   })
 

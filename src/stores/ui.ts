@@ -20,6 +20,12 @@ export const useUiStore = defineStore('ui', () => {
   const detailTaskId = ref<string | null>(null)
   const isPaletteOpen = ref(false)
   /**
+   * 寬螢幕常駐詳情欄手動收合——只在「沒有任務被選」時有意義：一旦選了
+   * 任務就無條件展開（見 TaskDetailPanel），所以這裡不用持久化，
+   * 跟 isSearch 一樣是這次操作結束就該忘記的暫態，不是要記住的偏好。
+   */
+  const isDetailCollapsed = ref(false)
+  /**
    * 多選。用陣列而非 Set：Pinia 的 state 需要可序列化，
    * 而這裡的量級（一次選幾十筆）用陣列查找完全不是瓶頸。
    */
@@ -57,6 +63,10 @@ export const useUiStore = defineStore('ui', () => {
     return selectedIds.value.includes(id)
   }
 
+  function toggleDetailCollapsed(): void {
+    isDetailCollapsed.value = !isDetailCollapsed.value
+  }
+
   function openPalette(): void {
     isPaletteOpen.value = true
   }
@@ -79,11 +89,13 @@ export const useUiStore = defineStore('ui', () => {
     isSidebarOpen,
     detailTaskId,
     isPaletteOpen,
+    isDetailCollapsed,
     selectedIds,
     toggleSelected,
     setSelection,
     clearSelection,
     isSelected,
+    toggleDetailCollapsed,
     openPalette,
     closePalette,
     toggleSearch,
