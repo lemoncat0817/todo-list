@@ -1,6 +1,7 @@
 import {
   DEFAULT_TASK_FIELDS,
   type Priority,
+  type StoredFilter,
   type StoredProject,
   type StoredTag,
   type StoredTask,
@@ -114,6 +115,22 @@ export function normalizeTag(raw: unknown): StoredTag | null {
   const name = typeof raw.name === 'string' && raw.name.length > 0 ? raw.name : null
   if (id === null || name === null) return null
   return { id, name, color: str(raw.color, '#15803d') }
+}
+
+export function normalizeFilter(raw: unknown, fallbackOrder = 0): StoredFilter | null {
+  if (!isRecord(raw)) return null
+  const id = nullableId(raw.id)
+  const name = typeof raw.name === 'string' && raw.name.length > 0 ? raw.name : null
+  const query = typeof raw.query === 'string' && raw.query.length > 0 ? raw.query : null
+  // 沒有查詢字串的篩選器點進去只會是一片空白，直接視為無效
+  if (id === null || name === null || query === null) return null
+  return {
+    id,
+    name,
+    query,
+    color: str(raw.color, '#7c3aed'),
+    order: finiteNumber(raw.order, fallbackOrder),
+  }
 }
 
 /**

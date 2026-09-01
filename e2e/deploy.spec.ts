@@ -60,6 +60,37 @@ test.describe('GitHub Pages 子路徑部署', () => {
     expect(res?.status(), 'GitHub Pages 對未知路徑不做 fallback').toBe(404)
   })
 
+  test('PWA 的產物都在子路徑下就位，且路徑是相對的', async ({ page }) => {
+    // service worker 在測試中被封鎖（見 playwright.config.ts），
+    // 所以這裡驗證的是「安裝所需的檔案是否正確產出並可取得」——
+    // 那是這一層測得準的部分，執行期行為留給真實瀏覽器。
+    await page.goto(SUBPATH_BASE)
+
+    const manifestHref = await page.getAttribute('link[rel=manifest]', 'href')
+    expect(manifestHref, 'manifest 必須是相對路徑，否則子路徑部署會 404').not.toMatch(/^\//)
+
+    const manifestUrl = new URL(manifestHref ?? '', page.url()).href
+    const manifest = await page.request.get(manifestUrl)
+    expect(manifest.status()).toBe(200)
+
+    const parsed = (await manifest.json()) as {
+      start_url: string
+      scope: string
+      icons: { src: string }[]
+    }
+    console.log('\n  manifest:', JSON.stringify(parsed).slice(0, 160))
+    expect(parsed.start_url, 'start_url 要相對於 manifest').toBe('./')
+    expect(parsed.scope).toBe('./')
+
+    for (const icon of parsed.icons) {
+      const res = await page.request.get(new URL(icon.src, manifestUrl).href)
+      expect(res.status(), `圖示 ${icon.src} 應存在`).toBe(200)
+    }
+
+    const sw = await page.request.get(new URL('sw.js', page.url()).href)
+    expect(sw.status(), 'service worker 檔案應可取得').toBe(200)
+  })
+
   test('hash 深連結可直接開啟並重新整理', async ({ page }) => {
     page.on('dialog', (d) => d.accept())
     // hash 片段不會送到伺服器，所以任何 hash 路徑都會拿到 index.html。

@@ -16,14 +16,20 @@ import AxeBuilder from '@axe-core/playwright'
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 
 const SCREENS = [
-  { name: '全部', path: '/' },
+  { name: '今天', path: '/#/today' },
+  { name: '即將到來', path: '/#/upcoming' },
+  { name: '收件匣', path: '/#/inbox' },
+  { name: '全部', path: '/#/all' },
   { name: '未完成', path: '/#/active' },
   { name: '已完成', path: '/#/completed' },
+  { name: '統計', path: '/#/stats' },
 ]
 
 async function seed(page: Page) {
   page.on('dialog', (d) => d.accept())
-  await page.goto('/')
+  // 從「全部」開始 seed：在「今天」新增會自動帶上今天的到期日，
+  // 那是刻意的行為，但會讓這裡的固定情境變得依賴當天日期。
+  await page.goto('/#/all')
   for (const [name, done] of [
     ['未完成的事', false],
     ['已完成的事', true],
@@ -82,9 +88,96 @@ test('搜尋模式下也維持零違規', async ({ page }) => {
   expect(found).toEqual([])
 })
 
+test('管理專案與標籤的對話框也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.getByRole('button', { name: '管理專案與標籤' }).click()
+  await page.getByLabel('新專案名稱').fill('工作')
+  await page.getByRole('button', { name: '建立' }).first().click()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('窄螢幕的導覽抽屜也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.setViewportSize({ width: 375, height: 800 })
+  await page.getByRole('button', { name: '開啟導覽' }).click()
+  await expect(page.getByRole('navigation', { name: '檢視' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('排程選單展開時也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.locator('main li').first().getByRole('button', { name: /^排程/ }).click()
+  await expect(page.getByRole('menu')).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('展開子任務時也維持零違規', async ({ page }) => {
+  await seed(page)
+  const row = page.locator('main li').first()
+  await row.getByRole('button', { name: /的子任務$/ }).click()
+  const subInput = row.getByLabel(/的新子任務$/)
+  await subInput.fill('一個子任務')
+  await subInput.press('Enter')
+  await expect(row).toContainText('子任務 0/1')
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('命令面板也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.keyboard.press('Control+k')
+  await expect(page.getByRole('dialog', { name: '命令面板' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('批次操作列也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.locator('main li[data-test=task-row]').first().click({ modifiers: ['ControlOrMeta'] })
+  await expect(page.getByRole('region', { name: '批次操作' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('快捷鍵說明也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.locator('h1').click()
+  await page.keyboard.press('?')
+  await expect(page.getByRole('heading', { name: '鍵盤快捷鍵' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('資料與提醒對話框也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.getByRole('button', { name: '資料與提醒' }).click()
+  await expect(page.getByRole('heading', { name: '資料與提醒' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
 test('空清單狀態也維持零違規', async ({ page }) => {
   page.on('dialog', (d) => d.accept())
-  await page.goto('/')
+  await page.goto('/#/all')
   await page.waitForSelector('h1')
 
   const found = await violationsOf(page)

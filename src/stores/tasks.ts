@@ -1,11 +1,29 @@
 import { defineStore } from 'pinia'
 import { computed, nextTick, ref, toRaw, watch } from 'vue'
-import { loadTasks, migrateFromLocalStorage, saveTasks } from '@/db'
-import type { Priority, Recurrence, StoredTask } from '@/db/schema'
-import { createTask } from '@/domain/task'
+import { applyTaskChanges, loadTasks, migrateFromLocalStorage } from '@/db'
+import type {
+  Priority,
+  Recurrence,
+  StoredFilter,
+  StoredProject,
+  StoredTag,
+  StoredTask,
+} from '@/db/schema'
+import { createTask, groupByParent } from '@/domain/task'
+import { mergeById } from '@/db/backup'
 import { nextOccurrence } from '@/domain/recurrence'
 import { nextOrder, orderBetween, sortByOrder } from '@/domain/ordering'
 import { countByFilter, queryTasks, type TaskFilter, type TaskQuery } from '@/domain/filtering'
+import {
+  overdueCount,
+  resolveView,
+  viewCount,
+  type TaskGroup,
+  type ViewOptions,
+  type ViewSpec,
+} from '@/domain/views'
+import { compileFilter } from '@/domain/filterQuery'
+import { usePrefsStore } from './prefs'
 import { useHistoryStore } from './history'
 import { useCollectionsStore } from './collections'
 import { useUiStore } from './ui'
@@ -36,6 +54,7 @@ export const useTasksStore = defineStore('tasks', () => {
   const history = useHistoryStore()
   const collections = useCollectionsStore()
   const ui = useUiStore()
+  const prefs = usePrefsStore()
 
   // ------------------------------------------------------------ 查詢
 
@@ -45,6 +64,65 @@ export const useTasksStore = defineStore('tasks', () => {
   )
 
   const counts = computed(() => countByFilter(items.value, { keyword: ui.keyword }))
+
+  /**
+   * 組出 resolveView 的選項。
+   *
+   * filter 檢視要在這裡把查詢字串編譯成述詞：編譯失敗時傳 null，
+   * resolveView 會回傳空清單，畫面才有辦法區分「查詢寫錯」與「沒有結果」。
+   *
+   * 用條件展開而非直接指派 undefined：tsconfig 開了 exactOptionalPropertyTypes，
+   * 「不設這個屬性」與「設成 undefined」是兩件事。
+   */
+  function viewOptions(spec: ViewSpec, extra: ViewOptions = {}): ViewOptions {
+    const base: ViewOptions = { ...extra }
+    if (spec.kind === 'filter') {
+      base.predicate = compileFilter(spec.id ?? '', {
+        projects: collections.projects,
+        tags: collections.tags,
+      })
+    }
+    return base
+  }
+
+  /**
+   * 檢視的分組結果。清單本體與側邊欄徽章都走這條路徑（domain/views），
+   * 沿用「一條路徑」的規矩——數字與內容不可能對不上。
+   */
+  const groupsOf = computed(
+    () =>
+      (spec: ViewSpec): TaskGroup[] =>
+        resolveView(
+          items.value,
+          spec,
+          viewOptions(spec, {
+            keyword: ui.keyword,
+            sort: prefs.sortBy,
+            groupBy: prefs.groupBy,
+            projects: collections.projects,
+          }),
+        ),
+  )
+
+  /** 側邊欄徽章：刻意不套關鍵字，搜尋中仍要看得到各入口的真實數量。 */
+  const countOf = computed(
+    () =>
+      (spec: ViewSpec): number =>
+        viewCount(items.value, spec, viewOptions(spec)),
+  )
+
+  const overdue = computed(() => overdueCount(items.value))
+
+  /**
+   * 子任務索引：parentId → 依序排好的子項。
+   *
+   * 一次算好整張表而不是每列各自 filter：清單有 N 列時，後者是 N² 次掃描。
+   */
+  const childrenByParent = computed(() => groupByParent(items.value))
+
+  function childrenOf(parentId: string): StoredTask[] {
+    return childrenByParent.value.get(parentId) ?? []
+  }
 
   const remaining = computed(() => items.value.filter((t) => !t.isCompleted).length)
 
@@ -64,6 +142,18 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   /**
+   * 上一次成功寫入的內容指紋（id → JSON）。
+   *
+   * 用來算出「這次真的變了哪幾列」，只寫那幾列。先前每次變更都是
+   * clear() 再重寫整張表，上千筆時每打一個勾都要付整表的成本。
+   *
+   * 比對整串 JSON 而不是只看 updatedAt：復原會把舊物件放回去，
+   * 那時 updatedAt 反而是「比較舊」的，只看時間戳會漏掉這種變更。
+   * 序列化幾百個小物件是毫秒等級，真正貴的是 IndexedDB 的寫入。
+   */
+  let persistedIndex = new Map<string, string>()
+
+  /**
    * 回傳的 Promise 一定在資料真的寫完時才 resolve，即使呼叫時已有寫入在進行中。
    * 不做延遲防抖：那會讓「操作後立刻重新整理」出現丟資料的空窗。
    */
@@ -76,8 +166,20 @@ export const useTasksStore = defineStore('tasks', () => {
       try {
         do {
           dirty = false
-          await saveTasks(snapshot())
+          const rows = snapshot()
+          const nextIndex = new Map<string, string>()
+          const upserts: StoredTask[] = []
+          for (const row of rows) {
+            const signature = JSON.stringify(row)
+            nextIndex.set(row.id, signature)
+            if (persistedIndex.get(row.id) !== signature) upserts.push(row)
+          }
+          const deletes = [...persistedIndex.keys()].filter((id) => !nextIndex.has(id))
+
+          await applyTaskChanges({ upserts, deletes })
           await collections.flush()
+          // 寫成功之後才更新指紋：失敗時保持原狀，下一次會重試同一批
+          persistedIndex = nextIndex
         } while (dirty)
         writeError.value = null
       } catch (error) {
@@ -97,6 +199,9 @@ export const useTasksStore = defineStore('tasks', () => {
       const result = await migrateFromLocalStorage()
       if (result.ran) migration.value = { migrated: result.migrated, skipped: result.skipped }
       items.value = await loadTasks()
+      // 剛讀進來的內容就是資料庫裡的內容，先記下指紋，
+      // 否則第一次 flush 會把每一列都當成新的而重寫一遍
+      persistedIndex = new Map(snapshot().map((t) => [t.id, JSON.stringify(t)]))
       await collections.load()
     } catch (error) {
       loadError.value = error
@@ -127,6 +232,34 @@ export const useTasksStore = defineStore('tasks', () => {
     items.value.push(task)
     history.record({
       label: `新增「${taskName}」`,
+      undo: () => {
+        items.value = items.value.filter((t) => t.id !== task.id)
+      },
+      redo: () => {
+        items.value.push(task)
+      },
+    })
+    return task
+  }
+
+  /**
+   * 新增子任務。
+   *
+   * 只支援一層：父項本身有 parentId 時直接拒絕。無限層級對待辦工具是過度設計，
+   * 而且會帶來循環參照的風險（domain/task.ts 的 groupByParent 也是照這個前提寫的）。
+   * 子項預設繼承父項的專案——分類是父項的屬性，子項另外分類只會讓清單更難讀。
+   */
+  function addSubtask(parentId: string, taskName: string): StoredTask | null {
+    const parent = items.value.find((t) => t.id === parentId)
+    if (!parent || parent.parentId !== null) return null
+
+    const task = createTask(taskName, nextOrder(childrenOf(parentId)), {
+      parentId,
+      projectId: parent.projectId,
+    })
+    items.value.push(task)
+    history.record({
+      label: `新增子任務「${taskName}」`,
       undo: () => {
         items.value = items.value.filter((t) => t.id !== task.id)
       },
@@ -291,6 +424,14 @@ export const useTasksStore = defineStore('tasks', () => {
     update(id, { priority })
   }
 
+  /**
+   * 改期。清掉日期時一併清掉時間——沒有日期的時間沒有意義，
+   * 這條規則在 normalizeTask 與 quickAdd 都成立，這裡不能是例外。
+   */
+  function reschedule(id: string, dueDate: string | null): void {
+    update(id, dueDate === null ? { dueDate: null, dueTime: null } : { dueDate })
+  }
+
   function setRecurrence(id: string, recurrence: Recurrence | null): void {
     update(id, { recurrence })
   }
@@ -302,6 +443,108 @@ export const useTasksStore = defineStore('tasks', () => {
       tagIds: task.tagIds.includes(tagId)
         ? task.tagIds.filter((t) => t !== tagId)
         : [...task.tagIds, tagId],
+    })
+  }
+
+  // ------------------------------------------------------------ 批次操作
+
+  /**
+   * 一次改多筆。
+   *
+   * 整批只推一個 undo command，不是每筆一個：使用者按一次「全部順延到明天」
+   * 是一個決定，復原時也該一次回到原狀。二十筆各推一個的話，
+   * 要按二十次 Ctrl+Z 才回得去——那等於沒有復原。
+   */
+  function batchUpdate(ids: readonly string[], patch: Partial<StoredTask>, label: string): number {
+    const targets = new Set(ids)
+    const before = items.value.filter((t) => targets.has(t.id)).map((t) => ({ ...t }))
+    if (before.length === 0) return 0
+
+    const now = Date.now()
+    items.value = items.value.map((t) =>
+      targets.has(t.id) ? { ...t, ...patch, updatedAt: now } : t,
+    )
+    const after = items.value.filter((t) => targets.has(t.id)).map((t) => ({ ...t }))
+
+    const restore = (snapshot: StoredTask[]) => () => {
+      const byId = new Map(snapshot.map((t) => [t.id, t]))
+      items.value = items.value.map((t) => byId.get(t.id) ?? t)
+    }
+
+    history.record({
+      label: `${label}（${before.length} 項）`,
+      undo: restore(before),
+      redo: restore(after),
+    })
+    return before.length
+  }
+
+  /** 批次刪除，連同各自的子項；同樣只推一個 command。 */
+  function batchRemove(ids: readonly string[]): number {
+    const targets = new Set(ids)
+    const removed = items.value
+      .filter((t) => targets.has(t.id) || (t.parentId !== null && targets.has(t.parentId)))
+      .map((t) => ({ ...t }))
+    if (removed.length === 0) return 0
+
+    const removedIds = new Set(removed.map((t) => t.id))
+    const drop = () => {
+      items.value = items.value.filter((t) => !removedIds.has(t.id))
+    }
+    drop()
+
+    history.record({
+      label: `刪除 ${ids.length} 項`,
+      undo: () => {
+        items.value = sortByOrder([...items.value, ...removed])
+      },
+      redo: drop,
+    })
+    return removed.length
+  }
+
+  /** 批次改期。與單筆 reschedule 一致：清掉日期時一併清掉時間。 */
+  function batchReschedule(ids: readonly string[], dueDate: string | null): number {
+    return batchUpdate(
+      ids,
+      dueDate === null ? { dueDate: null, dueTime: null } : { dueDate },
+      dueDate === null ? '清除到期日' : `改期至 ${dueDate}`,
+    )
+  }
+
+  // ------------------------------------------------------------ 匯入
+
+  /**
+   * 匯入備份。
+   *
+   * 整份匯入只推一個 undo command：使用者選錯檔案或選錯模式時，
+   * 一次 Ctrl+Z 就該回到原狀。這是「取代」模式敢存在的前提。
+   *
+   * 呼叫端負責把外部資料先過 parseBackup（也就是既有的 normalize* 路徑），
+   * 這裡收到的已經是合法的形狀。
+   */
+  function importBackup(
+    data: {
+      tasks: readonly StoredTask[]
+      projects: readonly StoredProject[]
+      tags: readonly StoredTag[]
+      filters: readonly StoredFilter[]
+    },
+    mode: 'merge' | 'replace' = 'merge',
+  ): void {
+    const beforeTasks = snapshot()
+    const beforeCollections = collections.snapshot()
+
+    items.value =
+      mode === 'replace' ? [...data.tasks] : sortByOrder(mergeById(beforeTasks, data.tasks))
+    collections.applyImport(data, mode)
+
+    history.record({
+      label: `匯入 ${data.tasks.length} 筆任務`,
+      undo: () => {
+        items.value = beforeTasks
+        collections.restoreSnapshot(beforeCollections)
+      },
     })
   }
 
@@ -375,11 +618,16 @@ export const useTasksStore = defineStore('tasks', () => {
     migration,
     visible,
     counts,
+    groupsOf,
+    countOf,
+    overdue,
     remaining,
     query,
+    childrenOf,
     init,
     flush,
     add,
+    addSubtask,
     update,
     remove,
     clearCompleted,
@@ -387,6 +635,11 @@ export const useTasksStore = defineStore('tasks', () => {
     setAllCompleted,
     move,
     setPriority,
+    reschedule,
+    batchUpdate,
+    batchRemove,
+    batchReschedule,
+    importBackup,
     setRecurrence,
     toggleTag,
     removeProject,

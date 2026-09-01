@@ -3,7 +3,8 @@ import { createApp, nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useTasksStore } from '@/stores/tasks'
 import * as db from '@/db'
-import { makeTask } from '@/test/helpers'
+import { at, freshPinia, makeTask } from '@/test/helpers'
+import { useHistoryStore } from '@/stores/history'
 
 function setup() {
   const pinia = createPinia()
@@ -69,7 +70,7 @@ describe('todoTask store', () => {
       const store = setup()
       await store.init()
 
-      vi.spyOn(db, 'saveTasks').mockRejectedValue(new Error('配額已滿'))
+      vi.spyOn(db, 'applyTaskChanges').mockRejectedValue(new Error('配額已滿'))
       store.add('存不進去但要看得到')
       await nextTick()
       await store.flush()
@@ -83,7 +84,7 @@ describe('todoTask store', () => {
       const store = setup()
       await store.init()
 
-      const spy = vi.spyOn(db, 'saveTasks').mockRejectedValueOnce(new Error('暫時失敗'))
+      const spy = vi.spyOn(db, 'applyTaskChanges').mockRejectedValueOnce(new Error('暫時失敗'))
       store.add('第一次')
       await nextTick()
       await store.flush()
@@ -175,7 +176,7 @@ describe('todoTask store', () => {
   describe('載入期間不回寫', () => {
     it('init 尚未完成時的初始空陣列不會覆蓋既有資料', async () => {
       await db.saveTasks([makeTask('不可以不見', false, { id: 'a', order: 0 })])
-      const spy = vi.spyOn(db, 'saveTasks')
+      const spy = vi.spyOn(db, 'applyTaskChanges')
 
       const store = setup()
       await store.init()
@@ -184,5 +185,133 @@ describe('todoTask store', () => {
       expect(spy, '載入流程本身不應觸發寫入').not.toHaveBeenCalled()
       expect(store.items.map((t) => t.taskName)).toEqual(['不可以不見'])
     })
+  })
+})
+
+describe('批次操作', () => {
+  /**
+   * 整批只推一個 undo command 是這一組的重點：使用者按一次「全部順延」
+   * 是一個決定，要按二十次 Ctrl+Z 才回得去的話等於沒有復原。
+   */
+  let store: ReturnType<typeof useTasksStore>
+  let history: ReturnType<typeof useHistoryStore>
+
+  beforeEach(() => {
+    freshPinia()
+    store = useTasksStore()
+    history = useHistoryStore()
+    store.items = [
+      makeTask('一', false, { id: '1' }),
+      makeTask('二', false, { id: '2' }),
+      makeTask('三', false, { id: '3' }),
+    ]
+    history.clear()
+  })
+
+  it('batchUpdate 一次改多筆，只推一個可復原的命令', async () => {
+    const changed = store.batchUpdate(['1', '2'], { priority: 3 }, '設為 P1')
+    expect(changed).toBe(2)
+    expect(store.items.map((t) => t.priority)).toEqual([3, 3, 0])
+    expect(history.depth, '整批算一個命令').toBe(1)
+
+    await history.undo()
+    expect(store.items.map((t) => t.priority), '一次復原全部').toEqual([0, 0, 0])
+  })
+
+  it('batchRemove 連子項一起刪，也只推一個命令', async () => {
+    store.items.push(makeTask('一的子項', false, { id: '1a', parentId: '1' }))
+    const removed = store.batchRemove(['1', '2'])
+
+    expect(removed, '父項兩筆加子項一筆').toBe(3)
+    expect(store.items.map((t) => t.id)).toEqual(['3'])
+    expect(history.depth).toBe(1)
+
+    await history.undo()
+    expect(store.items).toHaveLength(4)
+  })
+
+  it('batchReschedule 清除日期時一併清掉時間', () => {
+    store.items = [makeTask('有時間', false, { id: '1', dueDate: '2030-01-01', dueTime: '09:00' })]
+    store.batchReschedule(['1'], null)
+    expect(at(store.items, 0).dueDate).toBeNull()
+    expect(at(store.items, 0).dueTime, '沒有日期的時間沒有意義').toBeNull()
+  })
+
+  it('沒有命中任何 id 時不留下空的復原紀錄', () => {
+    store.batchUpdate(['不存在'], { priority: 3 }, '設為 P1')
+    expect(history.depth).toBe(0)
+  })
+})
+
+describe('逐列寫入', () => {
+  /**
+   * 先前每一次變更都是 clear() 再把全部任務重寫一遍。幾十筆沒感覺，
+   * 上千筆時每打一個勾都要付整張表的成本——這一組把「只寫變動的列」釘住。
+   */
+  beforeEach(() => vi.restoreAllMocks())
+
+  it('只把真的變動的那一列送去寫入', async () => {
+    const store = setup()
+    await store.init()
+    store.items = [makeTask('一', false, { id: '1' }), makeTask('二', false, { id: '2' })]
+    await nextTick()
+    await store.flush()
+
+    const spy = vi.spyOn(db, 'applyTaskChanges')
+    store.update('2', { taskName: '二改過' })
+    await nextTick()
+    await store.flush()
+
+    // watcher 自己也會觸發一次 flush，所以看的是「所有寫入加起來碰了哪些列」，
+    // 而不是被呼叫幾次
+    const written = spy.mock.calls.flatMap((call) => call[0].upserts.map((t) => t.id))
+    expect([...new Set(written)], '只有第二筆變了').toEqual(['2'])
+    expect(spy.mock.calls.flatMap((call) => [...call[0].deletes])).toEqual([])
+  })
+
+  it('刪除以明確的 deletes 表達，不再靠整份覆寫', async () => {
+    const store = setup()
+    await store.init()
+    store.items = [makeTask('一', false, { id: '1' }), makeTask('二', false, { id: '2' })]
+    await nextTick()
+    await store.flush()
+
+    const spy = vi.spyOn(db, 'applyTaskChanges')
+    store.remove('1')
+    await nextTick()
+    await store.flush()
+
+    expect(spy.mock.calls[0]?.[0].deletes).toEqual(['1'])
+  })
+
+  it('復原把舊物件放回去時也算變更（只看 updatedAt 會漏掉）', async () => {
+    const store = setup()
+    await store.init()
+    store.items = [makeTask('原本的', false, { id: '1' })]
+    await nextTick()
+    await store.flush()
+
+    store.update('1', { taskName: '改過的' })
+    await nextTick()
+    await store.flush()
+
+    const spy = vi.spyOn(db, 'applyTaskChanges')
+    await useHistoryStore().undo()
+    await nextTick()
+    await store.flush()
+
+    expect(spy.mock.calls[0]?.[0].upserts.map((t) => t.taskName)).toEqual(['原本的'])
+  })
+
+  it('沒有任何變更時不發出寫入', async () => {
+    const store = setup()
+    await store.init()
+    store.items = [makeTask('一', false, { id: '1' })]
+    await nextTick()
+    await store.flush()
+
+    const spy = vi.spyOn(db, 'applyTaskChanges')
+    await store.flush()
+    expect(spy.mock.calls[0]?.[0]).toMatchObject({ upserts: [], deletes: [] })
   })
 })
