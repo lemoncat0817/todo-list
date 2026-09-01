@@ -106,8 +106,7 @@ today & p1 & #工作
 
 **帳號與跨裝置同步（選配）**
 - 預設仍是純本地：不設定 Supabase 環境變數，「帳號與同步」入口整個不顯示，行為與純前端版本完全一樣
-- 登入方式：Google／GitHub 一鍵登入，沒有密碼——OAuth 設定見下方章節。信箱寄送的登入連結底層邏輯還在，
-  目前先隱藏（Supabase 免費方案「沒接自訂 SMTP」的內建測試信件額度太低，容易撞到「請求太頻繁」）
+- 登入方式：Google／GitHub 一鍵登入，沒有密碼（信箱登入連結目前暫時隱藏）
 - 登入的裝置之間會互相同步任務／專案／標籤／篩選器
 - 同步是背景輪詢（開分頁、每 30 秒、恢復網路、本地編輯後三秒），**不是即時協作**——目前只支援單人跨裝置，還沒有共享專案或指派任務給別人
 - 衝突以逐列「最後寫入者為準」（比較 `updatedAt`），不是欄位級合併；同一筆在兩台裝置「幾乎同時」修改不同欄位時，較晚寫入的那次會整列覆蓋
@@ -115,26 +114,6 @@ today & p1 & #工作
 - 部署與本機開發設定見 [`.env.local.example`](.env.local.example) 與 [`supabase/migrations/`](supabase/migrations)；
   要開啟 Google／GitHub 登入，另外要在 Supabase Dashboard 的 Authentication → Providers 設定，
   步驟見下方「啟用 Google／GitHub 登入」
-
-## 版面
-
-| 寬度 | 導覽 | 詳情 |
-| --- | --- | --- |
-| < 1024px | 抽屜（原生 `<dialog>`） | 對話框 |
-| ≥ 1024px | 常駐左欄 | 對話框 |
-| ≥ 1280px | 常駐左欄 | 常駐右欄 |
-
-## 無障礙
-
-通過 WCAG 2.1 AA，並以 `@axe-core/playwright` 在 CI 自動驗證，
-涵蓋十九個情境（七個檢視、編輯中、搜尋、管理對話框、導覽抽屜、排程選單、
-展開子任務、命令面板、批次操作列、快捷鍵說明、資料對話框、帳號與同步對話框、
-空清單），**零違規**。
-
-- 所有互動元素可鍵盤操作，拖曳只是指標裝置的增強而非唯一路徑
-- 目前檢視以 `aria-current` 標示，不只靠顏色
-- 對話框使用原生 `<dialog>` 的 `showModal()`，焦點鎖定與 `Esc` 由平台提供
-- 色彩對比全數達標（最低一組 4.55:1）
 
 ## 技術棧
 
@@ -147,8 +126,8 @@ today & p1 & #工作
 | TypeScript | ~6.0.3 | |
 | Tailwind CSS | 4.3.3 | |
 | idb | 8.0.3 | IndexedDB 封裝 |
-| Vitest | 4.1.10 | 504 條單元測試（3 條因信箱登入暫時隱藏而 skip） |
-| Playwright | 1.62.1 | 125 條 E2E（2 條同上原因 skip） |
+| Vitest | 4.1.10 | 單元測試 |
+| Playwright | 1.62.1 | E2E（含無障礙檢測） |
 | ESLint | 10.8.1 | 含 vuejs-accessibility |
 
 ## 開發
@@ -191,8 +170,7 @@ pnpm test:e2e     # Playwright E2E（含無障礙檢測）
 還要在 Supabase Dashboard 那邊把對應供應商設定好，沒設定的供應商點下去
 只會在畫面上看到錯誤訊息：
 
-1. 去對應供應商的開發者主控台建立 OAuth App（都是免費自助式設定，不需要
-   付費開發者帳號）：
+1. 去對應供應商的開發者主控台建立 OAuth App：
 
    | 供應商 | 去哪裡建立 OAuth App | Authorized redirect URI |
    | --- | --- | --- |
@@ -211,12 +189,3 @@ pnpm test:e2e     # Playwright E2E（含無障礙檢測）
    `http://localhost:5173`）與正式站網址都加進 **Redirect URLs** 允許
    清單——Supabase 只會導回清單裡的網址，沒加的話登入完會卡在
    Supabase 自己的頁面
-
-信箱登入（連結）的表單目前隱藏（`EMAIL_LOGIN_ENABLED` 是 `false`）——沒接自訂
-SMTP 的話，Supabase 免費方案內建的測試信件額度太低，容易撞到「請求太頻繁」，
-先只留不經過信件服務的 Google／GitHub。底層邏輯沒有變，之後有需要（例如接了
-自訂 SMTP）把這個常數改回 `true` 就能恢復，兩條路徑本來就互不依賴。
-
-Apple（`Sign in with Apple` 需要付費的 Apple Developer Program，$99/年）與
-Facebook（現在公開使用需要商業驗證）評估過後跳過，不是漏掉——之後真的需要
-再依同樣的模式加。
