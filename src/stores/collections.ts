@@ -9,6 +9,7 @@ import {
   type StoredProject,
   type StoredTag,
 } from '@/db/schema'
+import { findByNormalizedName } from '@/domain/filtering'
 import { nextOrder } from '@/domain/ordering'
 import { useHistoryStore } from './history'
 
@@ -39,7 +40,14 @@ export const useCollectionsStore = defineStore('collections', () => {
 
   // ------------------------------------------------------------- 專案
 
+  /**
+   * 建立前先找同名（忽略大小寫／全形半形）專案——UI 端已經會擋掉這個情形並提示使用者，
+   * 這裡是最後一道防線：即使呼叫端漏擋，也不會因此產生兩個同名專案。
+   * 找到既有的就直接回傳它，不新增、不記錄復原（因為根本沒有變動發生）。
+   */
   function addProject(name: string, color = DEFAULT_PROJECT_COLOR): StoredProject {
+    const existing = findByNormalizedName(projects.value, name)
+    if (existing) return existing
     const project: StoredProject = {
       id: crypto.randomUUID(),
       name,
@@ -97,7 +105,10 @@ export const useCollectionsStore = defineStore('collections', () => {
 
   // ------------------------------------------------------------- 標籤
 
+  /** 同 addProject：先找同名標籤，找到就重用既有的，不建立重複項目。 */
   function addTag(name: string, color = DEFAULT_TAG_COLOR): StoredTag {
+    const existingTag = findByNormalizedName(tags.value, name)
+    if (existingTag) return existingTag
     const tag: StoredTag = { id: crypto.randomUUID(), name, color, updatedAt: Date.now() }
     tags.value.push(tag)
     history.record({
