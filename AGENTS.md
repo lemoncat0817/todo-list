@@ -208,10 +208,14 @@ was stored, but also when `?code=` (mid-login) or `?error=`/`error_description=`
 present in the URL — otherwise a fresh OAuth callback would silently do
 nothing on a first-time sign-in.
 
-The Google/GitHub buttons are implemented, tested, and currently **not
-shown** — `AccountDialog.vue`'s `OAUTH_PROVIDERS_ENABLED` const is `false`
-by request, flip it back on when ready. Nothing in `sync/authClient.ts` or
-`stores/auth.ts` is gated by it; only the UI surface is.
+The Google/GitHub buttons are implemented, tested, and **shown** —
+`AccountDialog.vue`'s `OAUTH_PROVIDERS_ENABLED` const is `true`. (It was kept
+`false` for a while by request while the email flow was being fixed; flipped
+back on once the email-quota friction made OAuth's no-email path worth
+having.) The const only gates the UI surface — nothing in
+`sync/authClient.ts` or `stores/auth.ts` is gated by it — and a provider that
+isn't actually configured in the Supabase Dashboard just surfaces an error in
+the dialog when clicked, it doesn't affect the email sign-in path.
 
 **Two real bugs found via live testing, not by inspection.**
 

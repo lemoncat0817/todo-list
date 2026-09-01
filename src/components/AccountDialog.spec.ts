@@ -94,14 +94,20 @@ describe('AccountDialog.vue', () => {
     expect(authClientMock.requestOtp).not.toHaveBeenCalled()
   })
 
-  it('OAUTH_PROVIDERS_ENABLED 為 false 時，Google／GitHub 按鈕不顯示——底層邏輯已經做完並保留，只是先不開放給使用者', () => {
+  it('Google／GitHub 按鈕顯示，點下去呼叫對應 provider', async () => {
+    authClientMock.signInWithOAuth.mockResolvedValue(null)
     const w = mountDialog()
-    expect(w.text()).not.toContain('以 Google 繼續')
-    expect(w.text()).not.toContain('以 GitHub 繼續')
-    // 這個常數目前應該是 false；點擊觸發的行為（provider 對不對、錯誤顯示）
-    // 在 stores/auth.spec.ts 的 signInWithOAuthProvider 測過，不在這裡重複，
-    // 因為這裡已經沒有按鈕可以點了
-    expect(authClientMock.signInWithOAuth).not.toHaveBeenCalled()
+
+    const googleButton = w.findAll('button').find((b) => b.text() === '以 Google 繼續')
+    const githubButton = w.findAll('button').find((b) => b.text() === '以 GitHub 繼續')
+    expect(googleButton?.exists()).toBe(true)
+    expect(githubButton?.exists()).toBe(true)
+
+    await googleButton?.trigger('click')
+    await flushPromises()
+    // provider 對不對、失敗時的錯誤顯示在 stores/auth.spec.ts 的
+    // signInWithOAuthProvider 測過，這裡只驗證畫面接線接對了。
+    expect(authClientMock.signInWithOAuth).toHaveBeenCalledWith('google')
   })
 
   it('送出信箱後顯示「去信箱點連結」，不是六碼驗證碼輸入框', async () => {

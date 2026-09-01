@@ -106,7 +106,7 @@ today & p1 & #工作
 
 **帳號與跨裝置同步（選配）**
 - 預設仍是純本地：不設定 Supabase 環境變數，「帳號與同步」入口整個不顯示，行為與純前端版本完全一樣
-- 登入方式：信箱寄送的登入連結，沒有密碼（Google／GitHub 一鍵登入邏輯已經做完，目前先不對外開放，見下方設定章節）
+- 登入方式：Google／GitHub 一鍵登入，或信箱寄送的登入連結，都沒有密碼——OAuth 設定見下方章節
 - 登入的裝置之間會互相同步任務／專案／標籤／篩選器
 - 同步是背景輪詢（開分頁、每 30 秒、恢復網路、本地編輯後三秒），**不是即時協作**——目前只支援單人跨裝置，還沒有共享專案或指派任務給別人
 - 衝突以逐列「最後寫入者為準」（比較 `updatedAt`），不是欄位級合併；同一筆在兩台裝置「幾乎同時」修改不同欄位時，較晚寫入的那次會整列覆蓋
@@ -147,7 +147,7 @@ today & p1 & #工作
 | Tailwind CSS | 3.4.4 | |
 | idb | 8.0.3 | IndexedDB 封裝 |
 | Vitest | 4.1.10 | 479 條單元測試 |
-| Playwright | 1.62.1 | 97 條 E2E（另 1 條待重新開放 OAuth 時解除 skip） |
+| Playwright | 1.62.1 | 98 條 E2E |
 | ESLint | 10.8.1 | 含 vuejs-accessibility |
 
 ## 開發
@@ -183,13 +183,12 @@ pnpm test:e2e     # Playwright E2E（含無障礙檢測）
    連結不用在同一個分頁點開，另一個分頁、手機、另一台裝置都可以，原本的
    分頁會自動反映成已登入（跨分頁廣播），不需要手動重新整理
 
-**Google／GitHub 一鍵登入**：底層邏輯（`sync/authClient.ts` 的
-`signInWithOAuth`、`stores/auth.ts` 的 `signInWithOAuthProvider`）已經做完並測過，
-但目前**先不對外開放**——`AccountDialog.vue` 的 `OAUTH_PROVIDERS_ENABLED`
-常數設成 `false`。要重新開放：
+**啟用 Google／GitHub 登入**：`AccountDialog.vue` 畫面上已經有按鈕
+（`OAUTH_PROVIDERS_ENABLED` 是 `true`），但按鈕能點不代表登入真的會成功——
+還要在 Supabase Dashboard 那邊把對應供應商設定好，沒設定的供應商點下去
+只會在畫面上看到錯誤訊息：
 
-1. 把 `OAUTH_PROVIDERS_ENABLED` 改回 `true`
-2. 去對應供應商的開發者主控台建立 OAuth App（都是免費自助式設定，不需要
+1. 去對應供應商的開發者主控台建立 OAuth App（都是免費自助式設定，不需要
    付費開發者帳號）：
 
    | 供應商 | 去哪裡建立 OAuth App | Authorized redirect URI |
@@ -197,18 +196,20 @@ pnpm test:e2e     # Playwright E2E（含無障礙檢測）
    | Google | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → 建立 OAuth 用戶端 ID（應用程式類型選「網頁應用程式」） | `https://<your-project-ref>.supabase.co/auth/v1/callback` |
    | GitHub | GitHub → Settings → Developer settings → OAuth Apps → New OAuth App | 同上 |
 
-3. 拿到兩邊各自的 Client ID／Client Secret 後，貼進 Supabase Dashboard 的
+2. 拿到兩邊各自的 Client ID／Client Secret 後，貼進 Supabase Dashboard 的
    **Authentication → Providers**，把 Google／GitHub 打開
-4. **Google 預設只有你自己能登入**：Google Cloud Console 的 OAuth 同意畫面
+3. **Google 預設只有你自己能登入**：Google Cloud Console 的 OAuth 同意畫面
    預設是 **Testing** 狀態，只有手動加進「測試使用者」名單的信箱能登入。
    要讓任何人都能用，把狀態改成 **In production**（發布）——只要求
    email／profile 這種基本權限不需要 Google 人工審查，但使用者登入時會看到
    一次「Google 未驗證此應用程式」的警告畫面，這是 Google 的預設行為，
    點「進階 → 前往（不安全）」才能繼續，不是設定錯誤
-5. 同時到 **Authentication → URL Configuration**，把你本機（例如
+4. 同時到 **Authentication → URL Configuration**，把你本機（例如
    `http://localhost:5173`）與正式站網址都加進 **Redirect URLs** 允許
    清單——Supabase 只會導回清單裡的網址，沒加的話登入完會卡在
    Supabase 自己的頁面
+
+沒設定 Google／GitHub 也完全不影響信箱登入那條路徑，兩者互不依賴。
 
 Apple（`Sign in with Apple` 需要付費的 Apple Developer Program，$99/年）與
 Facebook（現在公開使用需要商業驗證）評估過後跳過，不是漏掉——之後真的需要
