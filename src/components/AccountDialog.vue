@@ -51,11 +51,16 @@
 
         <p v-if="auth.error" role="alert" class="text-sm text-danger-ink">{{ auth.error }}</p>
 
-        <div class="flex justify-end">
+        <div class="flex justify-between gap-2">
           <button type="button"
             class="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft transition-colors hover:bg-sunken"
             @click="auth.cancelVerification()">
             換一個信箱
+          </button>
+          <button type="button"
+            class="rounded-lg border border-line px-3.5 py-2 text-sm font-medium text-ink-soft transition-colors hover:bg-sunken hover:text-ink"
+            @click="emit('close')">
+            關閉
           </button>
         </div>
       </template>
@@ -129,6 +134,14 @@
             {{ auth.status === 'sending' ? '寄送中…' : '寄送驗證碼' }}
           </button>
         </form>
+
+        <div class="flex justify-end border-t border-line pt-3">
+          <button type="button"
+            class="rounded-lg border border-line px-3.5 py-2 text-sm font-medium text-ink-soft transition-colors hover:bg-sunken hover:text-ink"
+            @click="emit('close')">
+            關閉
+          </button>
+        </div>
       </template>
     </div>
   </dialog>
