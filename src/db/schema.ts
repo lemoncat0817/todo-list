@@ -39,6 +39,24 @@ export const META_SYNC_FINGERPRINT_PROJECTS = 'syncFingerprintProjects'
 export const META_SYNC_FINGERPRINT_TAGS = 'syncFingerprintTags'
 export const META_SYNC_FINGERPRINT_FILTERS = 'syncFingerprintFilters'
 
+/**
+ * 記錄「這台裝置目前的本地快取（tasks／projects／tags／filters 加上上面
+ * 幾把游標／指紋）最後一次是跟哪個 Supabase user id 對過帳」。
+ *
+ * 這不是一般意義下的使用者資料，是同步引擎自己的簿記——刻意放在跟游標／
+ * 指紋同一個 meta store，理由相同：要跟本地資料的生命週期綁在一起，
+ * 清掉 IndexedDB 時它也該跟著歸零，不能活得比本地資料還久。
+ *
+ * 存在的唯一理由是讓 stores/sync.ts 的 start() 能分辨「這次登入的人，
+ * 跟上次留下這份本地快取的人是不是同一個」——不是同一個人時，本地快取
+ * 就不該被當成「這個人的資料」拿去合併或推送（見 stores/sync.ts
+ * reconcileAccountIdentity 的完整說明）。刻意不在 signOut() 時清掉：
+ * 登出後這份本地快取邏輯上仍然「屬於」剛登出的那個人（離線優先，
+ * signOut 本來就不動本地資料），下一次不管是同一個人重新登入、還是換了
+ * 別人登入，都要靠這把 key 還在，才分得出兩者的差異。
+ */
+export const META_SYNC_ACCOUNT_ID = 'syncAccountId'
+
 /** 未分類：刪除專案時任務的去處，不是一筆真的 project 紀錄。 */
 export const UNCATEGORIZED = null
 

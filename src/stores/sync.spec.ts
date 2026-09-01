@@ -7,8 +7,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
 import { makeTask } from '@/test/helpers'
-import { getMeta } from '@/db'
-import { META_SYNC_LAST_PULLED_AT } from '@/db/schema'
+import { getMeta, setMeta } from '@/db'
+import { META_SYNC_ACCOUNT_ID, META_SYNC_LAST_PULLED_AT } from '@/db/schema'
 
 /**
  * stores/sync.ts 的協調邏輯。真正的網路層（restClient）與純合併規則
@@ -27,13 +27,13 @@ function setup() {
   return app
 }
 
-function fakeSession(token = 'token-123'): Session {
+function fakeSession(token = 'token-123', userId = 'u1'): Session {
   return {
     access_token: token,
     refresh_token: 'refresh',
     expires_in: 3600,
     token_type: 'bearer',
-    user: { id: 'u1' },
+    user: { id: userId },
   } as unknown as Session
 }
 
@@ -94,6 +94,47 @@ describe('已登入時', () => {
     await vi.waitFor(() => expect(sync.syncError).not.toBeNull())
 
     expect(tasks.items.map((t) => t.id)).toEqual(['t1'])
+  })
+
+  /**
+   * 對應 stores/sync.ts 的 describeSyncError()——這裡曾經是真實的問題：
+   * syncError 直接存 error.message，把 PostgREST 的原始錯誤 JSON、資料表
+   * 名稱、HTTP 狀態碼整包顯示在 AccountDialog.vue／AppSidebar.vue 上
+   * （使用者實際回報過看到這種訊息）。畫面上該只留使用者看得懂、
+   * 不誤導的說法，技術細節改用 console.error 留給開發者查。
+   */
+  it('伺服器拒絕請求時，畫面上看到的是友善說法，不是原始的 HTTP／PostgREST 錯誤內容', async () => {
+    const { sync, auth, tasks } = setup()
+    auth.session = fakeSession()
+    tasks.isLoading = false
+    tasks.items = [makeTask('要送出的', false, { id: 't1' })]
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => '{"code":"PGRST102","details":null,"hint":null,"message":"All object keys must match"}',
+    } as Response)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await sync.start()
+    await vi.waitFor(() => expect(sync.syncError).not.toBeNull())
+
+    expect(sync.syncError).toBe('伺服器暫時無法處理，稍後會自動重試')
+    expect(sync.syncError).not.toContain('PGRST102')
+    expect(sync.syncError).not.toContain('tasks')
+    expect(sync.syncError).not.toContain('400')
+  })
+
+  it('連不上網路時顯示對應的說法，不是瀏覽器原生的 fetch 錯誤訊息', async () => {
+    const { sync, auth, tasks } = setup()
+    auth.session = fakeSession()
+    tasks.isLoading = false
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await sync.start()
+    await vi.waitFor(() => expect(sync.syncError).not.toBeNull())
+
+    expect(sync.syncError).toBe('目前連不上網路，恢復連線後會自動重試')
   })
 
   it('合併讀的是「現在」的本地狀態，不是呼叫當下的舊快照', async () => {
@@ -229,5 +270,122 @@ describe('觸發時機', () => {
     await vi.advanceTimersByTimeAsync(60_000)
 
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  /**
+   * flushPendingPush()：main.ts 在 pagehide／visibilitychange(hidden) 時呼叫，
+   * 補的是「編輯完（包括刪除）立刻關分頁，防抖計時器還沒到就沒送出去」
+   * 這個空窗——本地 IndexedDB 已經改好了，但伺服器上那幾筆還是舊的，
+   * 下次同步回來就會像是「已經刪除的東西又出現了」。
+   */
+  it('防抖計時器還掛著時，flushPendingPush 立刻送出這次變更，不等防抖時間到', async () => {
+    const { sync, tasks, fetchMock } = await startWithRealTimers()
+
+    tasks.items = [makeTask('要立刻補送的', false, { id: 't1' })]
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(fetchMock, '防抖時間（3000ms）還沒到，正常情況下還不會送出').not.toHaveBeenCalled()
+
+    await sync.flushPendingPush()
+
+    expect(fetchMock, '模擬頁面正要關閉，應該立刻送出，不能繼續等防抖').toHaveBeenCalled()
+  })
+
+  it('沒有還沒送出的變更時，flushPendingPush 是 no-op，不多打一次網路請求', async () => {
+    const { sync, fetchMock } = await startWithRealTimers()
+
+    await sync.flushPendingPush()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('遠端這輪完全沒有變化時，不重寫本地陣列、也不會自己排下一次推送', async () => {
+    // 釘住 syncOneTable 修過的問題：以前不管遠端有沒有變化都無條件呼叫
+    // applyMerge()，內容相同但參照不同的新陣列一樣會觸發下面這個防抖
+    // watcher，讓同步引擎每 3 秒自己觸發一次、完全繞過 30 秒輪詢間隔。
+    const { sync, tasks, fetchMock } = await startWithRealTimers()
+    const itemsBeforePoll = tasks.items
+
+    // 用固定間隔（PULL_INTERVAL_MS）模擬下一次輪詢，這一輪 mock 回應
+    // 仍然是空陣列——遠端沒有任何變化。
+    await vi.advanceTimersByTimeAsync(30_000)
+
+    expect(tasks.items, '沒有東西要合併時不該重寫陣列參照').toBe(itemsBeforePoll)
+    fetchMock.mockClear()
+    await sync.flushPendingPush()
+    expect(fetchMock, '這一輪沒有變化，不該有 pushTimer 掛著、也不該自己排出下一次推送').not.toHaveBeenCalled()
+  })
+})
+
+describe('帳號隔離：換了不同的人登入時，本地快取不能繼續冒充新使用者的資料', () => {
+  /**
+   * 對應 stores/sync.ts 的 reconcileAccountIdentity()——修的是這個真實情境：
+   * A 在這台裝置登入過、同步過，登出（signOut 刻意不清本地資料）；
+   * B 在同一台裝置登入。沒有這段邏輯的話，B 會直接看到 A 留下的任務，
+   * B 一旦編輯任何一筆還會用自己的 token 把「A 的資料」upsert 到遠端。
+   */
+  it('本地記錄的 owner 跟這次登入的 user id 不同時，清空本地任務／專案／標籤／篩選器並把游標歸零', async () => {
+    const { sync, auth, tasks, collections } = setup()
+    await setMeta(META_SYNC_ACCOUNT_ID, 'userA')
+    tasks.isLoading = false
+    tasks.items = [makeTask('A 的任務', false, { id: 'a-task' })]
+    collections.projects = [{ id: 'a-proj', name: 'A 的專案', color: '#000', order: 0, updatedAt: 1 }]
+    collections.tags = [{ id: 'a-tag', name: 'A 的標籤', color: '#000', updatedAt: 1 }]
+    collections.filters = [{ id: 'a-filter', name: 'A 的篩選', query: '', color: '#000', order: 0, updatedAt: 1 }]
+    const fetchMock = mockFetch()
+
+    auth.session = fakeSession('token-b', 'userB')
+    await sync.start()
+
+    expect(tasks.items, '不該讓 B 看到 A 留下的任務').toEqual([])
+    expect(collections.projects).toEqual([])
+    expect(collections.tags).toEqual([])
+    expect(collections.filters).toEqual([])
+    await vi.waitFor(async () => {
+      expect(await getMeta<string>(META_SYNC_ACCOUNT_ID)).toBe('userB')
+    })
+    // 等第一輪同步真的跑完（lastPulledAt 從 reconcile 寫入的 0 前進到真正的
+    // 時間戳），才去檢查這輪拉取實際打出去的請求——避免跟 fire-and-forget
+    // 的 syncOnce() 有時間差。
+    await vi.waitFor(async () => {
+      expect(await getMeta<number>(META_SYNC_LAST_PULLED_AT)).toBeGreaterThan(0)
+    })
+    // 換人登入後的第一輪拉取要用游標 0（不是 A 留下的舊游標），
+    // 才會完整拉一次 B 在伺服器上真正的資料，不會漏掉比 A 的舊游標更早的列。
+    const getCalls = fetchMock.mock.calls.filter(([, options]) => (options as RequestInit).method === 'GET')
+    expect(getCalls.length, '四張表都要重新拉一次').toBe(4)
+    for (const [url] of getCalls) {
+      expect(String(url)).toContain('updated_at=gt.0')
+    }
+  })
+
+  it('同一個人重新登入（同一個 user id）不會被當成換人，本地資料原封不動', async () => {
+    const { sync, auth, tasks } = setup()
+    await setMeta(META_SYNC_ACCOUNT_ID, 'userA')
+    tasks.isLoading = false
+    tasks.items = [makeTask('A 自己的任務', false, { id: 'a-task' })]
+    mockFetch()
+
+    auth.session = fakeSession('token-a-again', 'userA')
+    await sync.start()
+    await nextTick()
+
+    expect(tasks.items.map((t) => t.id)).toEqual(['a-task'])
+  })
+
+  it('本地從沒記錄過 owner（全新安裝或第一次登入）時不清空既有本地資料——維持既有的「登入後把本地資料併進帳號」行為', async () => {
+    const { sync, auth, tasks } = setup()
+    tasks.isLoading = false
+    tasks.items = [makeTask('登入前就存在的本地任務', false, { id: 'local-only' })]
+    mockFetch()
+
+    auth.session = fakeSession()
+    await sync.start()
+    await nextTick()
+
+    expect(tasks.items.map((t) => t.id)).toEqual(['local-only'])
+    await vi.waitFor(async () => {
+      expect(await getMeta<string>(META_SYNC_ACCOUNT_ID)).toBe('u1')
+    })
   })
 })

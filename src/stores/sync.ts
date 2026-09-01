@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { getMeta, setMeta } from '@/db'
 import {
+  META_SYNC_ACCOUNT_ID,
   META_SYNC_FINGERPRINT_FILTERS,
   META_SYNC_FINGERPRINT_PROJECTS,
   META_SYNC_FINGERPRINT_TAGS,
@@ -14,6 +15,7 @@ import {
 } from '@/db/schema'
 import { normalizeFilter, normalizeProject, normalizeTag, normalizeTask } from '@/domain/task'
 import { mergeByUpdatedAt } from '@/sync/merge'
+import { SyncHttpError } from '@/sync/restClient'
 import { pullTable, pushTable, type TableBinding } from '@/sync/tableSync'
 import {
   TABLE_FILTERS,
@@ -83,6 +85,31 @@ const filterBinding: TableBinding<StoredFilter> = {
 }
 
 /**
+ * 把同步失敗的原因轉成使用者看得懂的中文，不直接把技術錯誤丟到畫面上。
+ *
+ * 修 PGRST102 那個 bug 時發現的另一個問題：`syncError.value` 原本直接存
+ * `error.message`，`SyncHttpError` 的訊息長這樣——
+ * `[sync] upsert tasks 失敗（HTTP 400）：{"code":"PGRST102","details":null,...}`
+ * ——資料表名稱、HTTP 狀態碼、PostgREST 原始錯誤 JSON 全部照樣顯示在
+ * `AccountDialog.vue`／`AppSidebar.vue` 上。這跟 `stores/auth.ts` 的
+ * `describeError()` 已經在做的事（見那邊的註解：「使用者不需要、也不該
+ * 知道這個工具背後接的是什麼服務」）是同一個原則，卻只做了一半——認證
+ * 錯誤有翻譯，同步錯誤沒有。這裡補上同一套處理：只分「網路連不上」跟
+ * 「伺服器那邊出了問題」兩種使用者看得懂、也不會誤導的說法，兩種都誠實
+ * 告知「會自動重試」（`syncOnce()` 本來就會被 30 秒輪詢、回到分頁、恢復
+ * 連線重新呼叫，不是空話）。技術細節改用 `console.error` 留給開發者
+ * 從 DevTools 查，不再出現在使用者看得到的畫面上。
+ */
+function describeSyncError(error: unknown): string {
+  // fetch 本身連不上（離線、DNS、CORS 之類）在瀏覽器一律是拋出
+  // `TypeError: Failed to fetch`，跟「伺服器回應了、但回應是錯的」
+  // （SyncHttpError）性質不同，值得分開講。
+  if (error instanceof TypeError) return '目前連不上網路，恢復連線後會自動重試'
+  if (error instanceof SyncHttpError) return '伺服器暫時無法處理，稍後會自動重試'
+  return '發生未預期的問題，稍後會自動重試'
+}
+
+/**
  * 跨裝置同步的協調層。
  *
  * 依賴方向是 sync → tasks／collections／auth，不是反過來：tasks.ts／
@@ -127,6 +154,19 @@ export const useSyncStore = defineStore('sync', () => {
    * 不是進函式當時就固定住的參數——中間有兩次網路等待，這段時間本地如果
    * 發生「整份陣列替換」式的操作（remove／batchUpdate／undo…），合併時
    * 用一份舊快照當基準會把那個操作靜靜蓋掉。細節見 sync/tableSync.ts 開頭。
+   *
+   * `applyMerge()` 只在真的有東西要改（遠端贏了某幾列、或遠端回報刪除）
+   * 時才呼叫——這裡曾經是無條件呼叫，就算這一輪遠端完全沒有變化，
+   * `mergeByUpdatedAt` 仍然回傳一個內容相同、但參照不同的新陣列，把它
+   * 寫回 `tasks.items`／`collections.*` 一樣會觸發下面 `start()` 那個
+   * 「本地編輯」防抖 watcher（它分不出這次陣列替換是使用者剛編輯的，
+   * 還是同步自己寫回去的），排出下一次推送。下一次推送又是同一輪
+   * 「沒變化 → 還是整批寫回 → 又觸發 watcher」，整個同步引擎因此陷入
+   * 每 PUSH_DEBOUNCE_MS 就自己觸發一次的無窮迴圈，完全繞過原本設計的
+   * PULL_INTERVAL_MS 輪詢間隔——多打的每一次網路請求都是純粹浪費，
+   * 一直安靜地跑不會有錯誤訊息，只是在背景持續打 API。是寫這次的
+   * flushPendingPush() 回歸測試時才發現的：一輪同步剛跑完，照理不該有
+   * 任何「還沒送出的變更」，但 pushTimer 卻總是掛著。
    */
   async function syncOneTable<T extends { id: string; updatedAt: number }>(
     binding: TableBinding<T>,
@@ -143,7 +183,7 @@ export const useSyncStore = defineStore('sync', () => {
     // 兩次網路呼叫都結束了，這裡才第一次讀「現在」的本地狀態來合併——
     // 跟上面那次 readLocal() 之間完全沒有 await，不會有時間差。
     const merge = mergeByUpdatedAt(readLocal(), live, deletedIds)
-    applyMerge(merge.merged)
+    if (merge.remoteWon.length > 0 || merge.removedIds.length > 0) applyMerge(merge.merged)
     for (const row of merge.remoteWon) pushedFingerprint.set(row.id, JSON.stringify(row))
     for (const id of merge.removedIds) pushedFingerprint.delete(id)
 
@@ -208,7 +248,10 @@ export const useSyncStore = defineStore('sync', () => {
           syncError.value = null
         } while (dirty)
       } catch (error) {
-        syncError.value = error instanceof Error ? error.message : String(error)
+        // 技術細節（表名、HTTP 狀態碼、PostgREST 原始錯誤 JSON）留給 DevTools，
+        // 畫面上只顯示 describeSyncError() 翻譯過的說法。
+        console.error('[sync] 同步失敗', error)
+        syncError.value = describeSyncError(error)
       }
     })().finally(() => {
       inFlight = null
@@ -222,6 +265,74 @@ export const useSyncStore = defineStore('sync', () => {
   }
 
   /**
+   * 離開頁面前盡力把還沒送出的推送送出去——跟 main.ts 對本地 IndexedDB
+   * 寫入做的事（pagehide／visibilitychange 觸發 store.flush()）是同一個
+   * 道理，補的是本地寫入沒涵蓋到的那一段。
+   *
+   * 本地寫入本身沒有防抖（tasks.ts 的 flush() 是即時觸發，寫的是 IndexedDB），
+   * 但推送到遠端刻意防抖 PUSH_DEBOUNCE_MS（一串連續編輯只值得推一次）——
+   * 這代表「編輯完（包括刪除）就立刻關分頁、切換帳號、或登出」時，防抖
+   * 計時器很可能還沒觸發：這次修改從頭到尾沒有送到伺服器過，本機
+   * IndexedDB 看起來改好了／刪除了，伺服器上那幾筆卻還是原封不動。下次
+   * 從別的裝置、別的分頁、甚至同一台裝置換帳號再換回來同步時，會像是
+   * 「已經刪除的東西又出現了」——不是同步機制本身壞掉，是那次變更根本
+   * 沒机会真的送出去過。
+   *
+   * 只在真的有還沒送出的變更時（pushTimer 還掛著）才補送一次；沒有掛著
+   * 代表已經送過或本來就沒有變更，不需要多打一次網路請求。跟本地端那個
+   * flush() 一樣，這裡不能保證頁面關閉前一定送完（fetch 可能來不及完成
+   * 瀏覽器就終止了分頁），只能盡量把空窗縮到最小。
+   */
+  function flushPendingPush(): Promise<void> {
+    if (!pushTimer) return Promise.resolve()
+    clearTimeout(pushTimer)
+    pushTimer = null
+    return syncOnce()
+  }
+
+  /**
+   * 本地快取（IndexedDB 裡的 tasks／projects／tags／filters，加上這個 store
+   * 的同步游標與指紋）從頭到尾沒有依「目前登入的是誰」分區——這是刻意的
+   * 離線優先設計：`stores/auth.ts` 的 `signOut()` 明確不清本地資料，
+   * 這裡的 `stop()` 也一樣。但這只涵蓋了「同一個人換裝置」，沒有涵蓋
+   * 「同一台裝置／瀏覽器換了不同的人登入」——這種情況下，新登入的帳號會
+   * 直接繼承、甚至把上一個帳號留在本機的資料當成自己的推送上去，是真正
+   * 的資料隔離缺陷，不是單純的畫面顯示問題：使用者會看到不屬於自己的
+   * 待辦內容，而且只要在那個狀態下編輯任何一筆，就會嘗試用自己的帳號
+   * 去 upsert 一筆 id 屬於另一個使用者的遠端列。
+   *
+   * 做法比照業界慣例（Google Drive／Dropbox 換帳號登入時的處理）：本地
+   * 額外記一把「這份快取上次是跟哪個 user id 對過帳」（`META_SYNC_ACCOUNT_ID`）。
+   * 登入時發現跟上次不同，代表這份本地快取邏輯上不屬於新使用者，直接
+   * 清空（`mergeRemote([])`／`mergeRemote({ projects: [], tags: [], filters: [] })`
+   * ——跟遠端合併結果套用是同一條路徑，不特別記一筆復原命令，理由跟
+   * `tasks.ts` 的 `mergeRemote` 一致：這不是使用者在這台裝置上剛做的操作）
+   * 並把游標歸零、指紋清空——下一輪同步會用乾淨狀態完整拉一次新帳號在
+   * 伺服器上真正的資料，不會有任何本地殘留被誤判成新帳號的內容，也不會
+   * 有本地殘留被誤推到新帳號名下。
+   *
+   * 「本地從沒記錄過任何 owner」時（全新安裝、或使用者第一次登入前就已經
+   * 累積的本地待辦）刻意不清——那是使用者真正想要的既有行為：登入後把
+   * 裝置上原有的本地資料併進帳號、推上雲端。這個修法只處理「已經有一個
+   * 明確 owner，換了另一個人」這一種情況，不影響「還沒有 owner」的首次登入。
+   */
+  async function reconcileAccountIdentity(): Promise<void> {
+    const currentUserId = auth.session?.user.id
+    if (!currentUserId) return
+
+    const lastOwnerId = await getMeta<string>(META_SYNC_ACCOUNT_ID)
+    if (lastOwnerId && lastOwnerId !== currentUserId) {
+      tasks.mergeRemote([])
+      collections.mergeRemote({ projects: [], tags: [], filters: [] })
+      lastPulledAt.value = 0
+      fingerprints = { tasks: new Map(), projects: new Map(), tags: new Map(), filters: new Map() }
+      await persist()
+    }
+
+    await setMeta(META_SYNC_ACCOUNT_ID, currentUserId)
+  }
+
+  /**
    * 由下面的 auth.status watcher 自動呼叫，不需要（也不該）由元件手動呼叫——
    * 手動呼叫還留著只是方便測試直接驗證 start() 本身的行為。
    */
@@ -229,6 +340,8 @@ export const useSyncStore = defineStore('sync', () => {
     if (enabled.value) return
     enabled.value = true
     syncError.value = null
+
+    await reconcileAccountIdentity()
 
     lastPulledAt.value = (await getMeta<number>(META_SYNC_LAST_PULLED_AT)) ?? 0
     fingerprints = {
@@ -281,5 +394,5 @@ export const useSyncStore = defineStore('sync', () => {
     { immediate: true },
   )
 
-  return { enabled, syncError, lastPulledAt, start, stop }
+  return { enabled, syncError, lastPulledAt, start, stop, flushPendingPush }
 })

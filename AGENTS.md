@@ -367,6 +367,130 @@ the whole array (`remove`, `batchUpdate`, `undo`) happens in that window, a
 merge built on the stale snapshot would silently discard it. `stores/sync.spec.ts`
 has a dedicated regression test for this exact race.
 
+**The local cache is per-device, not per-account — `reconcileAccountIdentity()`
+exists to paper over that mismatch.** Everything above (fingerprints, cursor,
+IndexedDB itself) is scoped to *this browser*, never to *whoever is currently
+signed in*, and `stores/auth.ts`'s `signOut()` deliberately leaves local data
+untouched (offline-first — see its comment). That combination has a gap
+neither decision considered on its own: a second, different account signing
+in on a device that still has the first account's cached data. Found via
+review, not live testing. Without a check, the newly signed-in account would
+see the previous account's tasks (the first sync round diffs local data
+against a fingerprint that already matches it, so nothing looks changed —
+the UI just keeps showing stale data that happens to still be sitting in
+IndexedDB), and editing anything in that state would push the previous
+account's rows to the new account's remote table via `upsertRows`'s
+`on_conflict=id` — an id the server already has, owned by someone else.
+
+The fix (`stores/sync.ts`) is the same shape other sync clients use:
+remember, in IndexedDB's `meta` store, which `user.id` this local cache was
+last reconciled against (`META_SYNC_ACCOUNT_ID`). `start()` calls
+`reconcileAccountIdentity()` before anything else — if a *different* id was
+recorded, the local cache doesn't belong to whoever just signed in, so it's
+wiped via the same `mergeRemote([])` path used for real remote merges (no
+undo command, same rationale as `mergeRemote` itself), and the cursor/
+fingerprints reset to zero so the next pull fetches that account's data from
+scratch instead of skipping anything older than the previous account's
+cursor. Deliberately does *not* wipe when no owner was recorded yet (a fresh
+install, or local-only tasks made before ever signing in) — that's the
+existing, intended "sign in and fold my local data into my account" path,
+not the bug. Deliberately does *not* clear `META_SYNC_ACCOUNT_ID` on
+`signOut()` either — it has to survive the signed-out gap, or the very next
+sign-in (same account or different) would look like a fresh device and skip
+the check it exists for.
+
+**A deletion made right before closing the tab could silently never reach
+the server — the remote push had no unload safety net, only the local
+IndexedDB write did.** Found from a user report: delete everything, close
+the tab/window quickly, sign in again elsewhere, and the "deleted" tasks are
+back. Root cause: `stores/tasks.ts`'s local write is immediate (no debounce)
+*and* `main.ts` already flushes it on `pagehide`/`visibilitychange`-hidden to
+close the async IndexedDB window — but the *remote* push in `stores/sync.ts`
+is deliberately debounced by `PUSH_DEBOUNCE_MS` (3s, so a burst of edits only
+pushes once), and nothing forced that pending push out before the page
+disappeared. `onReconnectOrFocus` is bound to `visibilitychange` too, but it
+explicitly *skips* when the page is hiding (`if (document.visibilityState ===
+'hidden') return`) — it exists for the opposite case, coming back. So "edit
+(including delete), close the tab within 3s" could leave the change sitting
+in a `setTimeout` that never fires: local IndexedDB already reflects the
+delete, the server's row is still live, and the next device (or the same
+device signing in fresh) pulls that still-live row right back down. Not a
+merge-logic bug — the deletion never left the browser.
+
+Fixed with `stores/sync.ts`'s `flushPendingPush()`: if a push is currently
+debounced (`pushTimer` set), cancel the timer and run `syncOnce()`
+immediately instead of waiting; a no-op (no network call) when nothing is
+pending. `main.ts` calls it alongside the existing `store.flush()` in both
+the `pagehide` and `visibilitychange`-hidden handlers — same best-effort
+caveat as the local flush (the browser can still kill the tab before the
+`fetch` resolves), but it closes the same window the local write already
+gets protection for.
+
+**Found while writing that fix's regression test, not by inspection: the
+sync engine had a self-sustaining ~3-second loop that bypassed
+`PULL_INTERVAL_MS` entirely.** The test asserted "right after a sync round
+settles, there's no pending push" and it kept failing — a `pushTimer` was
+always armed. Cause: `syncOneTable` called `applyMerge(merge.merged)`
+*unconditionally*, even when the remote side had nothing new
+(`merge.remoteWon`/`merge.removedIds` both empty). `mergeByUpdatedAt` always
+returns a fresh array (`[...byId.values()]`), so even a no-op round replaced
+`tasks.items`/`collections.*` with a new-but-identical-content array —
+which the `watch([...], ..., { deep: true })` in `start()` that arms
+`pushTimer` can't tell apart from a real local edit, since it only sees "the
+source changed." That queued another `syncOnce()` `PUSH_DEBOUNCE_MS` later,
+which (still nothing to merge) did the same thing again — forever, every
+~3 seconds, for as long as the tab stayed open and signed in, instead of the
+intended 30-second `PULL_INTERVAL_MS` cadence. Silent (no error, correct
+data), just constant unnecessary API traffic. Fixed by only calling
+`applyMerge` when there's actually something to apply
+(`merge.remoteWon.length > 0 || merge.removedIds.length > 0`) — the common
+steady-state round (nothing changed on the server) now touches no reactive
+state at all, so it can't retrigger the push watcher or `tasks.ts`'s own
+IndexedDB-flush watcher either.
+
+**A third real bug, reported live: a batch that both changed and deleted
+rows in the same table failed every single time with PostgREST's `PGRST102
+All object keys must match`.** `sync/tableSync.ts`'s `pushTable` used to
+build one combined array — `[...diff.upserts.map(binding.toRemote),
+...diff.deletes.map(makeTombstone)]` — and POST it as a single batch upsert.
+`toRemoteTask`/etc. always return the row's full column set (a dozen-plus
+keys); `makeTombstone` returns only `{ id, deleted_at, updated_at }`. Mixing
+both shapes in one PostgREST bulk-upsert array is invalid — it requires
+every object in the array to carry the same keys — so any sync round whose
+diff happened to contain *both* a changed/new row *and* a deleted row in the
+same table (ordinary usage: edit one task and delete another inside the same
+debounce window) got the whole batch rejected. Worse than a one-off failure:
+the throw happens before the fingerprint advances, so the next round
+recomputes the *identical* diff against the *same* stale fingerprint and
+fails the same way — permanently stuck until some unrelated edit happened to
+change the diff's shape, during which neither the edit nor the delete ever
+reached the server. This is a second, independent way the "deleted item
+comes back" symptom above could happen, on top of the missed-debounce-window
+one. Fixed by sending upserts and tombstones as two separate requests
+(`pushTable` now calls `upsertRows` up to twice) — each request is
+internally uniform, and the two id sets are disjoint by construction (an id
+in this round's `nextFingerprint` can't also be in `deletes`), so there's no
+ordering concern between them.
+
+**Sync errors were showing the user raw backend detail — table names, HTTP
+status codes, PostgREST's JSON error body — with no translation layer,
+unlike auth errors.** `stores/auth.ts`'s `describeError()` already existed
+specifically to keep Supabase/SMTP implementation detail out of user-facing
+text (see its own comment); `stores/sync.ts`'s `syncError.value = error
+instanceof Error ? error.message : String(error)` never got the same
+treatment, so `AccountDialog.vue` and `AppSidebar.vue`'s tooltip both
+rendered whatever `SyncHttpError`'s message happened to contain verbatim —
+including the PGRST102 payload above, which is exactly what surfaced this.
+Fixed with an equivalent `describeSyncError()`: a `TypeError` (what a failed
+`fetch` itself throws — offline, DNS, CORS) gets "目前連不上網路，恢復連線後會自動重試"; a
+`SyncHttpError` (the server responded, just not successfully) gets "伺服器暫時無法處理，稍後會自動重試";
+anything else falls back to a generic "發生未預期的問題，稍後會自動重試". All three are honest, not
+placating — the interval/reconnect/focus triggers really do retry
+automatically, so "will retry" isn't a hollow promise. The technical detail
+isn't discarded, just relocated: `console.error('[sync] 同步失敗', error)` runs
+before the friendly string is set, so it's still one DevTools console open
+away for whoever's debugging.
+
 `domain/filterQuery.ts` is a small recursive-descent parser producing an AST,
 plus an evaluator. Parse errors are **returned**, never swallowed: a query with
 a typo that silently matches everything makes the user believe their condition
