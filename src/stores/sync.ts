@@ -342,6 +342,10 @@ export const useSyncStore = defineStore('sync', () => {
     syncError.value = null
 
     await reconcileAccountIdentity()
+    // reconcileAccountIdentity 讀 IndexedDB，中途 stop() 可能已經被呼叫
+    // （例如登入後很快又登出）——這裡不檢查的話，下面還是會照樣掛上
+    // window/document 監聽器與 interval，讓一個已經 stop() 的同步又悄悄復活。
+    if (!enabled.value) return
 
     lastPulledAt.value = (await getMeta<number>(META_SYNC_LAST_PULLED_AT)) ?? 0
     fingerprints = {
@@ -350,6 +354,9 @@ export const useSyncStore = defineStore('sync', () => {
       tags: await loadFingerprint(META_SYNC_FINGERPRINT_TAGS),
       filters: await loadFingerprint(META_SYNC_FINGERPRINT_FILTERS),
     }
+    // 同一個理由再檢查一次：上面四次 fingerprint 讀取都是各自獨立的
+    // await，stop() 一樣可能發生在其中任何一次之間。
+    if (!enabled.value) return
 
     void syncOnce()
     interval = setInterval(() => void syncOnce(), PULL_INTERVAL_MS)
