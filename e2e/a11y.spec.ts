@@ -165,6 +165,27 @@ test('快捷鍵說明也維持零違規', async ({ page }) => {
   expect(found).toEqual([])
 })
 
+test('側邊導覽收合成僅圖示的窄行時也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.getByRole('button', { name: '收合導覽' }).click()
+  await expect(page.getByRole('button', { name: '展開導覽' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
+test('任務詳情欄收合時也維持零違規', async ({ page }) => {
+  await seed(page)
+  await page.setViewportSize({ width: 1400, height: 800 })
+  await page.getByRole('button', { name: '收合任務詳情' }).click()
+  await expect(page.getByRole('button', { name: '展開任務詳情' })).toBeVisible()
+
+  const found = await violationsOf(page)
+  if (found.length) for (const f of found) console.log('    ' + f)
+  expect(found).toEqual([])
+})
+
 test('資料與提醒對話框也維持零違規', async ({ page }) => {
   await seed(page)
   await page.getByRole('button', { name: '資料與提醒' }).click()
