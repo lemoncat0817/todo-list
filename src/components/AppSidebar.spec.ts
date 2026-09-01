@@ -133,4 +133,32 @@ describe('AppSidebar.vue', () => {
     const w = mountSidebar()
     expect(w.text()).not.toContain('同步')
   })
+
+  describe('collapsed（收合成僅圖示的窄行）', () => {
+    const mountCollapsed = () => mountWith(AppSidebar, pinia, { router, props: { collapsed: true } })
+
+    it('固定檢視仍是可點的連結，但不顯示文字標籤——用 title 取代', () => {
+      const w = mountCollapsed()
+      expect(hrefs(w)).toEqual(['/today', '/upcoming', '/inbox'])
+      expect(w.text()).not.toContain('今天')
+      expect(links(w)[0]?.attributes('title')).toBe('今天')
+    })
+
+    it('專案／標籤仍可點，用顏色圓點取代名稱文字，但 title 帶著名字', async () => {
+      const project = collections.addProject('工作')
+      const w = mountCollapsed()
+      await w.vm.$nextTick()
+
+      const link = links(w).find((a) => a.attributes('href') === `/project/${project.id}`)
+      expect(link?.attributes('title')).toBe('工作')
+      expect(w.text()).not.toContain('工作')
+    })
+
+    it('次要入口（統計／資料與提醒／管理按鈕）收合時不顯示——沒有圖示可用，展開回去才拿得到', () => {
+      const w = mountCollapsed()
+      expect(w.find('button[aria-label="管理專案與標籤"]').exists()).toBe(false)
+      expect(w.text()).not.toContain('統計')
+      expect(w.text()).not.toContain('資料與提醒')
+    })
+  })
 })

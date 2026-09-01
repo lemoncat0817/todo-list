@@ -1,5 +1,65 @@
 <template>
-  <nav aria-label="檢視" class="flex h-full min-h-0 flex-col gap-4 overflow-y-auto px-3 py-4">
+  <!--
+    收合成窄行時，只留得下「有圖示可用」的入口：今天／即將到來／收件匣
+    本來就有圖示，專案／標籤／篩選器有顏色圓點可以頂替圖示。次要入口
+    （統計、資料與提醒、帳號…）目前完全沒有圖示，硬湊一套新圖示是另一件
+    要單獨設計的事，這裡先不做——展開回去就拿得到，不是被藏死。
+
+    這裡用原生 title 而非 data-tooltip：這一條是直向、緊密排列、
+    包在 overflow-y-auto 容器裡的圖示列，CSS 提示框不管往哪個方向冒都會
+    被同一個容器裁掉（往下冒疊到下一個圖示，往右冒被容器的 overflow-x
+    ——因為 overflow-y 非 visible 時 overflow-x 的計算值也會跟著變成
+    auto——裁掉，這點是實測出來的，不是猜的）。原生 title 由瀏覽器
+    另外一層繪製，不受任何祖先 overflow 影響，這裡換慢一點的原生提示
+    換取真的看得到，好過又快又不會出現的提示框。
+  -->
+  <nav v-if="collapsed" aria-label="檢視" class="flex h-full min-h-0 flex-col items-center gap-3 overflow-y-auto py-2">
+    <ul class="flex flex-col gap-0.5">
+      <li v-for="entry in PRIMARY_VIEWS" :key="entry.kind">
+        <RouterLink :to="entry.path" :class="collapsedLinkClass" :title="entry.label" @click="emit('navigate')">
+          <svg v-if="entry.kind === 'today'" viewBox="0 0 20 20" class="size-4.5" fill="none"
+            stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+            <rect x="3" y="4.5" width="14" height="12" rx="2" />
+            <path d="M3 8h14M7 2.8v3.4M13 2.8v3.4" stroke-linecap="round" />
+          </svg>
+          <svg v-else-if="entry.kind === 'upcoming'" viewBox="0 0 20 20" class="size-4.5" fill="none"
+            stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="10" cy="10" r="7" />
+            <path d="M10 5.8V10l2.8 1.8" />
+          </svg>
+          <svg v-else viewBox="0 0 20 20" class="size-4.5" fill="none" stroke="currentColor"
+            stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 11.5 5 4.5h10l2 7v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z" />
+            <path d="M3 11.5h3.5l1 2h5l1-2H17" />
+          </svg>
+          <span v-if="entry.kind === 'today' && tasks.overdue > 0"
+            class="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-danger" aria-hidden="true" />
+        </RouterLink>
+      </li>
+    </ul>
+
+    <ul v-if="collections.projects.length > 0" class="flex flex-col gap-1 border-t border-line pt-3">
+      <li v-for="project in collections.projects" :key="project.id">
+        <RouterLink :to="`/project/${project.id}`" :class="collapsedLinkClass" :title="project.name"
+          @click="emit('navigate')">
+          <span class="size-2.5 shrink-0 rounded-full" :style="{ backgroundColor: project.color }"
+            aria-hidden="true" />
+        </RouterLink>
+      </li>
+    </ul>
+
+    <ul v-if="collections.tags.length > 0" class="flex flex-col gap-1 border-t border-line pt-3">
+      <li v-for="tag in collections.tags" :key="tag.id">
+        <RouterLink :to="`/label/${tag.id}`" :class="collapsedLinkClass" :title="`#${tag.name}`"
+          @click="emit('navigate')">
+          <span class="size-2.5 shrink-0 rounded-full" :style="{ backgroundColor: tag.color }"
+            aria-hidden="true" />
+        </RouterLink>
+      </li>
+    </ul>
+  </nav>
+
+  <nav v-else aria-label="檢視" class="flex h-full min-h-0 flex-col gap-4 overflow-y-auto px-3 py-4">
     <ul class="flex flex-col gap-0.5">
       <li v-for="entry in PRIMARY_VIEWS" :key="entry.kind">
         <RouterLink :to="entry.path" :class="linkClass" @click="emit('navigate')">
@@ -147,6 +207,10 @@ import { isSyncConfigured } from '@/sync/config'
  * 目前檢視的標示交給 RouterLink 內建的 aria-current="page"，不是只靠底色：
  * 只用顏色表達狀態在螢幕閱讀器上等於沒有表達（稽核 P5/P6）。
  */
+withDefaults(defineProps<{ /** 桌面版收合成僅圖示的窄行——抽屜模式一律不收合 */ collapsed?: boolean }>(), {
+  collapsed: false,
+})
+
 const emit = defineEmits<{
   /** 點了任一連結——抽屜模式下要順手關掉自己 */
   navigate: []
@@ -167,6 +231,10 @@ const linkClass =
   'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[15px] text-ink-soft transition-colors ' +
   'hover:bg-sunken hover:text-ink aria-[current=page]:bg-accent-soft aria-[current=page]:font-medium ' +
   'aria-[current=page]:text-accent-ink'
+
+const collapsedLinkClass =
+  'relative grid size-9 place-items-center rounded-md text-ink-soft transition-colors ' +
+  'hover:bg-sunken hover:text-ink aria-[current=page]:bg-accent-soft aria-[current=page]:text-accent-ink'
 
 const badgeClass = 'shrink-0 text-xs tabular-nums text-ink-faint'
 

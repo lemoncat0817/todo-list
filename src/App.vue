@@ -8,10 +8,30 @@
     卡片那個形狀撐得住三個分頁，撐不住「今天」「專案」「標籤」這些彼此獨立的入口。
   -->
   <div class="flex h-dvh min-h-dvh overflow-hidden bg-canvas">
-    <aside v-if="isDesktop"
-      class="flex w-60 shrink-0 flex-col border-r border-line bg-surface xl:w-64">
-      <p class="shrink-0 px-4 pt-4 pb-1 text-sm font-semibold tracking-tight text-ink">代辦事項</p>
-      <AppSidebar @manage="isManaging = true" @data="isDataOpen = true"
+    <aside v-if="isDesktop" class="flex shrink-0 flex-col border-r border-line bg-surface"
+      :class="prefs.sidebarCollapsed ? 'w-14' : 'w-60 xl:w-64'">
+      <div class="flex shrink-0 items-center gap-1 pt-4 pb-1"
+        :class="prefs.sidebarCollapsed ? 'justify-center px-0' : 'justify-between px-4'">
+        <p v-if="!prefs.sidebarCollapsed" class="truncate text-sm font-semibold tracking-tight text-ink">
+          代辦事項
+        </p>
+        <button type="button" :aria-label="prefs.sidebarCollapsed ? '展開導覽' : '收合導覽'"
+          :data-tooltip="prefs.sidebarCollapsed ? '展開' : '收合'"
+          class="grid size-7 shrink-0 place-items-center rounded-md text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
+          @click="prefs.toggleSidebarCollapsed()">
+          <!--
+            左側導覽：展開時箭頭朝左（收合會把它推向左邊界），收合時箭頭朝右
+            （展開會把內容從左邊界拉出來）——跟右側任務詳情欄互為鏡像，
+            不是同一套邏輯複製過去就好（先前這裡兩顆按鈕的朝向剛好都貼反了）。
+          -->
+          <svg viewBox="0 0 16 16" class="size-3.5 transition-transform"
+            :class="{ 'rotate-180': !prefs.sidebarCollapsed }" aria-hidden="true" fill="none"
+            stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m6.5 3.5 5 4.5-5 4.5" />
+          </svg>
+        </button>
+      </div>
+      <AppSidebar :collapsed="prefs.sidebarCollapsed" @manage="isManaging = true" @data="isDataOpen = true"
         @account="isAccountOpen = true" />
     </aside>
 
@@ -72,6 +92,7 @@ import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import { useHistoryStore } from '@/stores/history'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
+import { usePrefsStore } from '@/stores/prefs'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { useTheme } from '@/composables/useTheme'
 import { useMediaQuery } from '@/composables/useMediaQuery'
@@ -80,6 +101,7 @@ import { isSyncConfigured } from '@/sync/config'
 const history = useHistoryStore()
 const tasks = useTasksStore()
 const ui = useUiStore()
+const prefs = usePrefsStore()
 const router = useRouter()
 
 // 主題在 index.html 的內聯腳本已先套用，這裡接手後續切換與系統偏好變化
