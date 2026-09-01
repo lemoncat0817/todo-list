@@ -1,6 +1,6 @@
 import type { Priority, Recurrence, Weekday } from '@/db/schema'
 import { addDays, daysInMonth, isValidISODate, today as todayOf, weekdayIndex } from './dates'
-import { normalizeForSearch } from './filtering'
+import { findByNormalizedName } from './filtering'
 import type { NamedCollection } from './views'
 
 /**
@@ -314,7 +314,7 @@ export function parseQuickAdd(raw: string, context: QuickAddContext = {}): Quick
   while ((pm = projectRe.exec(input)) !== null) {
     if (cuts.taken(pm.index, pm.index + pm[0].length)) continue
     const name = pm[1] ?? ''
-    const found = findByName(projects, name)
+    const found = findByNormalizedName(projects, name)
     cuts.add(pm.index, pm.index + pm[0].length)
     if (found) {
       fields.projectId = found.id
@@ -332,7 +332,7 @@ export function parseQuickAdd(raw: string, context: QuickAddContext = {}): Quick
   while ((tm = tagRe.exec(input)) !== null) {
     if (cuts.taken(tm.index, tm.index + tm[0].length)) continue
     const name = tm[1] ?? ''
-    const found = findByName(tags, name)
+    const found = findByNormalizedName(tags, name)
     cuts.add(tm.index, tm.index + tm[0].length)
     if (found) {
       if (!fields.tagIds.includes(found.id)) fields.tagIds.push(found.id)
@@ -359,14 +359,6 @@ export function parseQuickAdd(raw: string, context: QuickAddContext = {}): Quick
   }
 
   return { taskName, fields, tokens, unknownProject, unknownTags }
-}
-
-function findByName(
-  collection: readonly NamedCollection[],
-  name: string,
-): NamedCollection | null {
-  const needle = normalizeForSearch(name)
-  return collection.find((c) => normalizeForSearch(c.name) === needle) ?? null
 }
 
 interface RecurrenceMatch {

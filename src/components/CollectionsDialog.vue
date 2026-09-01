@@ -45,14 +45,16 @@
         <div class="flex gap-2">
           <label class="sr-only" for="new-project">新專案名稱</label>
           <input id="new-project" v-model.trim="newProjectName" placeholder="新增專案…"
+            :aria-invalid="projectNameError !== null"
             class="h-9 min-w-0 grow rounded-lg border border-line bg-surface px-2.5 text-[15px] text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
             @keydown.enter.prevent="createProject">
           <button type="button"
             class="shrink-0 rounded-lg bg-accent px-3 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
-            :disabled="newProjectName === ''" @click="createProject">
+            :disabled="newProjectName === '' || projectNameError !== null" @click="createProject">
             建立
           </button>
         </div>
+        <p v-if="projectNameError" class="text-xs text-danger-ink">{{ projectNameError }}</p>
       </section>
 
       <section class="flex flex-col gap-2">
@@ -91,14 +93,16 @@
         <div class="flex gap-2">
           <label class="sr-only" for="new-tag">新標籤名稱</label>
           <input id="new-tag" v-model.trim="newTagName" placeholder="新增標籤…"
+            :aria-invalid="tagNameError !== null"
             class="h-9 min-w-0 grow rounded-lg border border-line bg-surface px-2.5 text-[15px] text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
             @keydown.enter.prevent="createTag">
           <button type="button"
             class="shrink-0 rounded-lg bg-accent px-3 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
-            :disabled="newTagName === ''" @click="createTag">
+            :disabled="newTagName === '' || tagNameError !== null" @click="createTag">
             建立
           </button>
         </div>
+        <p v-if="tagNameError" class="text-xs text-danger-ink">{{ tagNameError }}</p>
       </section>
 
       <section class="flex flex-col gap-2">
@@ -179,6 +183,7 @@ import { useCollectionsStore } from '@/stores/collections'
 import { useTasksStore } from '@/stores/tasks'
 import { useRoute, useRouter } from 'vue-router'
 import { parseFilterQuery } from '@/domain/filterQuery'
+import { findByNormalizedName } from '@/domain/filtering'
 
 /**
  * 專案與標籤的管理介面。
@@ -202,6 +207,23 @@ const newProjectName = ref('')
 const newTagName = ref('')
 const newFilterName = ref('')
 const newFilterQuery = ref('')
+
+/**
+ * 建立前先擋掉同名（忽略大小寫／全形半形）——store 的 addProject/addTag
+ * 雖然也會擋，但那裡是靜默重用既有項目；使用者按了「建立」卻什麼都沒發生，
+ * 不說明原因會誤以為是壞掉了。
+ */
+const projectNameError = computed(() =>
+  newProjectName.value !== '' && findByNormalizedName(collections.projects, newProjectName.value)
+    ? '已有相同名稱的專案'
+    : null,
+)
+
+const tagNameError = computed(() =>
+  newTagName.value !== '' && findByNormalizedName(collections.tags, newTagName.value)
+    ? '已有相同名稱的標籤'
+    : null,
+)
 
 /** 建立前就先告訴使用者條件對不對、會match 幾項——存下一個永遠是空的篩選器沒有意義。 */
 const queryError = computed(() => {
@@ -274,13 +296,13 @@ function removeTag(id: string): void {
 }
 
 function createProject(): void {
-  if (newProjectName.value === '') return
+  if (newProjectName.value === '' || projectNameError.value) return
   collections.addProject(newProjectName.value)
   newProjectName.value = ''
 }
 
 function createTag(): void {
-  if (newTagName.value === '') return
+  if (newTagName.value === '' || tagNameError.value) return
   collections.addTag(newTagName.value)
   newTagName.value = ''
 }
