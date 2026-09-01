@@ -5,6 +5,9 @@ import '@/style.css'
 import { createPersistPlugin } from '@/infra/persist'
 import router from '@/router'
 import { useTasksStore } from '@/stores/tasks'
+import { useAuthStore } from '@/stores/auth'
+import { useSyncStore } from '@/stores/sync'
+import { isSyncConfigured } from '@/sync/config'
 
 const app = createApp(App)
 const pinia = createPinia()
@@ -17,6 +20,22 @@ app.mount('#app')
 
 const store = useTasksStore()
 void store.init()
+
+/**
+ * 還原既有的登入狀態，還原成功才啟動同步。
+ *
+ * auth.restore() 內部會先檢查有沒有 `todoTask:auth` 這把 localStorage key，
+ * 沒有登入過的使用者不會觸發任何 import()，也不會打任何 API——
+ * 這裡外層再加一層 isSyncConfigured 判斷，是避免 fork 這個 repo、
+ * 沒有接 Supabase 的人連 restore() 都不用呼叫。
+ */
+if (isSyncConfigured) {
+  void useAuthStore()
+    .restore()
+    .then(() => {
+      if (useAuthStore().status === 'signed-in') void useSyncStore().start()
+    })
+}
 
 /**
  * 離開頁面前盡力把未完成的寫入送出去。

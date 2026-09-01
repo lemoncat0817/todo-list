@@ -10,6 +10,7 @@ import type {
   StoredTask,
 } from '@/db/schema'
 import { createTask, groupByParent } from '@/domain/task'
+import { diffAgainstFingerprint } from '@/domain/diff'
 import { mergeById } from '@/db/backup'
 import { nextOccurrence } from '@/domain/recurrence'
 import { nextOrder, orderBetween, sortByOrder } from '@/domain/ordering'
@@ -166,20 +167,12 @@ export const useTasksStore = defineStore('tasks', () => {
       try {
         do {
           dirty = false
-          const rows = snapshot()
-          const nextIndex = new Map<string, string>()
-          const upserts: StoredTask[] = []
-          for (const row of rows) {
-            const signature = JSON.stringify(row)
-            nextIndex.set(row.id, signature)
-            if (persistedIndex.get(row.id) !== signature) upserts.push(row)
-          }
-          const deletes = [...persistedIndex.keys()].filter((id) => !nextIndex.has(id))
+          const { upserts, deletes, nextFingerprint } = diffAgainstFingerprint(snapshot(), persistedIndex)
 
           await applyTaskChanges({ upserts, deletes })
           await collections.flush()
           // 寫成功之後才更新指紋：失敗時保持原狀，下一次會重試同一批
-          persistedIndex = nextIndex
+          persistedIndex = nextFingerprint
         } while (dirty)
         writeError.value = null
       } catch (error) {
@@ -215,7 +208,9 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   watch(
-    [items, () => collections.projects, () => collections.tags],
+    // filters 曾經漏在這份清單外——單獨新增／改名／刪除一個篩選器不會觸發
+    // flush()，要等任務或專案／標籤也剛好變動才會連帶存進去。
+    [items, () => collections.projects, () => collections.tags, () => collections.filters],
     () => {
       if (hydrating) return
       void flush()
@@ -548,6 +543,19 @@ export const useTasksStore = defineStore('tasks', () => {
     })
   }
 
+  // ------------------------------------------------------------ 跨裝置同步
+
+  /**
+   * 套用跨裝置同步的合併結果。
+   *
+   * 刻意不經過 history.record——遠端合併不是這台裝置的使用者剛做的動作，
+   * 推進復原堆疊會讓人「復原」到一個不上不下的狀態（跟 init() 載入資料
+   * 不記錄復原是同一個道理）。合併規則在 sync/merge.ts，這裡只負責寫回。
+   */
+  function mergeRemote(rows: readonly StoredTask[]): void {
+    items.value = sortByOrder(rows)
+  }
+
   // -------------------------------------------- 跨 store 的關聯處理
 
   /**
@@ -640,6 +648,7 @@ export const useTasksStore = defineStore('tasks', () => {
     batchRemove,
     batchReschedule,
     importBackup,
+    mergeRemote,
     setRecurrence,
     toggleTag,
     removeProject,
