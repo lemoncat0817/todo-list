@@ -91,7 +91,10 @@ test.describe('帳號與同步', () => {
     await expect(dialog).not.toContainText('已登入')
   })
 
-  test('Google 一鍵登入的完整往返：授權導向 → 帶碼回來 → 換成 session', async ({ page }) => {
+  // AccountDialog.vue 的 OAUTH_PROVIDERS_ENABLED 目前是 false（保留但不對外開放，
+  // 見該常數旁的註解），畫面上沒有按鈕可以點——skip 而不是刪除，底層的
+  // PKCE／hash 路由往返邏輯沒有變，重新開放時把這個 test.skip 換回 test 即可。
+  test.skip('Google 一鍵登入的完整往返：授權導向 → 帶碼回來 → 換成 session', async ({ page }) => {
     await mockSupabase(page)
 
     // 攔截 GoTrue 的 /authorize：真正的流程是瀏覽器被導去 Google 的同意畫面，

@@ -75,10 +75,25 @@ describe('requestMagicLink', () => {
     expect(auth.status).toBe('signed-out')
     expect(auth.error).toContain('太頻繁')
   })
+
+  it('寄出後就已經訂閱狀態變化，不用等使用者自己貼碼——Supabase 預設信件範本寄的是連結不是驗證碼，使用者常常是在另一個分頁點連結完成登入，這個分頁要能收到跨分頁廣播', async () => {
+    authClientMock.requestOtp.mockResolvedValue(null)
+    const auth = setup()
+
+    await auth.requestMagicLink('me@example.com')
+    expect(authClientMock.onAuthStateChange, '寄出當下就該訂閱好，不是等 verifyCode 成功之後').toHaveBeenCalledTimes(1)
+
+    // 模擬：使用者在另一個分頁點了信裡的連結完成登入，
+    // GoTrueClient 用 BroadcastChannel 把這個 session 廣播過來
+    const onChange = authClientMock.onAuthStateChange.mock.calls[0]?.[0] as (s: Session | null) => void
+    onChange(fakeSession())
+
+    expect(auth.status, '這個分頁應該自動變成已登入，不需要使用者自己貼碼').toBe('signed-in')
+  })
 })
 
 describe('verifyCode', () => {
-  it('成功時套用 session 並訂閱後續狀態變化', async () => {
+  it('成功時套用 session，且不會重複訂閱狀態變化', async () => {
     authClientMock.requestOtp.mockResolvedValue(null)
     authClientMock.verifyOtp.mockResolvedValue({ session: fakeSession(), error: null })
     const auth = setup()
@@ -89,7 +104,8 @@ describe('verifyCode', () => {
     expect(ok).toBe(true)
     expect(auth.status).toBe('signed-in')
     expect(auth.session?.user.email).toBe('me@example.com')
-    expect(authClientMock.onAuthStateChange).toHaveBeenCalled()
+    // requestMagicLink 那一步已經訂閱過一次，這裡不該再訂閱第二次
+    expect(authClientMock.onAuthStateChange).toHaveBeenCalledTimes(1)
   })
 
   it('驗證碼錯誤時不改變登入狀態，並顯示錯誤', async () => {
