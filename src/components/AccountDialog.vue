@@ -75,10 +75,11 @@
         <p v-if="auth.error" role="alert" class="text-sm text-danger-ink">{{ auth.error }}</p>
 
         <!--
-          Google／GitHub 一鍵登入的邏輯（stores/auth.ts 的 signInWithOAuthProvider、
-          sync/authClient.ts 的 signInWithOAuth）已經做完並測過，OAUTH_PROVIDERS_ENABLED
-          只是先不對外開放——見常數旁的註解。要重新開放只需要把它改回 true，
-          不需要動任何登入邏輯。
+          Google／GitHub 一鍵登入：sync/authClient.ts 的 signInWithOAuth、
+          stores/auth.ts 的 signInWithOAuthProvider。OAUTH_PROVIDERS_ENABLED
+          只是控制這裡的按鈕要不要顯示，跟 Supabase Dashboard 有沒有真的設定好
+          對應供應商是兩件事——沒設定的供應商點下去只會在這個對話框看到
+          錯誤訊息，不影響信箱登入。
         -->
         <template v-if="OAUTH_PROVIDERS_ENABLED">
           <div class="flex flex-col gap-2">
@@ -146,11 +147,13 @@ const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 
 /**
- * Google／GitHub 一鍵登入暫時不對外開放（使用者要求先保留、不上線）。
- * 底層邏輯已經做完並測過（stores/auth.spec.ts、sync/authClient.ts），
- * 之後要重新開放只需要把這個常數改回 true。
+ * Google／GitHub 一鍵登入。底層邏輯做完並測過後曾經先關著保留一段時間
+ * （stores/auth.spec.ts、sync/authClient.ts），現在打開——要在 Supabase
+ * Dashboard 的 Authentication → Providers 設定好對應的 OAuth App 才會真的
+ * 生效，步驟見 README.md「啟用 Google／GitHub 登入」。沒設定的供應商，
+ * 使用者點下去只會在這個畫面看到錯誤訊息，不影響信箱登入那條路徑。
  */
-const OAUTH_PROVIDERS_ENABLED = false
+const OAUTH_PROVIDERS_ENABLED = true
 
 const auth = useAuthStore()
 const sync = useSyncStore()
