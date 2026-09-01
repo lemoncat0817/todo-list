@@ -49,8 +49,13 @@ describe('pushTable', () => {
     const next = await pushTable(binding, [], fingerprint, 'token')
 
     const [, options] = fetchMock.mock.calls[0] as [string, RequestInit]
-    const body = JSON.parse(options.body as string) as { id: string; deleted_at: number }[]
-    expect(body).toEqual([{ id: 'a', deleted_at: expect.any(Number) as unknown as number }])
+    const body = JSON.parse(options.body as string) as { id: string; deleted_at: number; updated_at: number }[]
+    // updated_at 也要帶：這個 id 如果從沒推送成功過，遠端得走 INSERT 而不是
+    // UPDATE，沒有 updated_at 就等於永遠拉不到（見 rowMapping.ts 的
+    // makeTombstone 註解）——不是只有 deleted_at 就夠。
+    expect(body).toEqual([
+      { id: 'a', deleted_at: expect.any(Number) as unknown as number, updated_at: expect.any(Number) as unknown as number },
+    ])
     expect(next.has('a')).toBe(false)
   })
 })

@@ -317,6 +317,34 @@ mark `deleted_at` instead; pull treats a tombstoned row as a removal via
 acceptable at personal-task-list scale, called out rather than silently
 deferred.
 
+**Two real tombstone bugs found via live testing, not by inspection**
+(surfaced the first time a real account actually pushed real data, after
+weeks of the login flow itself being broken/rate-limited during development —
+exactly the condition that makes a stale local fingerprint point at ids the
+server has never seen). `sync/restClient.ts`'s `upsertRows` uses
+`on_conflict=id` + `resolution=merge-duplicates`: an id the server already has
+takes the UPDATE branch (fields not sent are left alone), but an id the
+server has *never seen* takes the INSERT branch instead — and
+`sync/rowMapping.ts`'s `makeTombstone(id)` only ever sent
+`{ id, deleted_at }`. Two consequences:
+1. Every `not null` column with no `default` on that table (`tasks.task_name`
+   first in column order, but `order`/`created_at` on the same row and the
+   equivalent required columns on `projects`/`tags`/`filters` were exactly as
+   broken) rejected the INSERT outright — the user's real first sync failed
+   with `null value in column "task_name" ... violates not-null constraint`.
+   Fixed at the schema layer (`supabase/migrations/0002_tombstone_defaults.sql`):
+   every such column gets a harmless default (`''`/`0`) — a tombstone row's
+   content is never read by anything (`sync/merge.ts` only looks at
+   `id`/`deleted_at`/`updated_at`), so a default is semantically fine, not a
+   workaround.
+2. Independent of the first bug: even a tombstone that *does* successfully
+   reach the UPDATE branch had no `updated_at`, and pull is
+   `updated_at > cursor` (`fetchRowsSince`) — a tombstone with no fresh
+   `updated_at` is invisible to every other device's next pull forever, since
+   its implicit value never exceeds any real cursor. `makeTombstone` now sets
+   `updated_at: Date.now()` alongside `deleted_at`, same as every other
+   row `toRemote*` produces.
+
 **The sync fingerprint is durable, the local one isn't — on purpose.**
 `stores/tasks.ts`'s `persistedIndex` (what's in IndexedDB) is rebuilt fresh
 from `loadTasks()` every session, because local storage only needs to know

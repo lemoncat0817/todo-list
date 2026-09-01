@@ -59,11 +59,14 @@ describe('rowMapping — projects／tags／filters', () => {
 })
 
 describe('墓碑', () => {
-  it('makeTombstone 帶上現在的時間', () => {
+  it('makeTombstone 帶上現在的時間，deleted_at／updated_at 都要有', () => {
     const before = Date.now()
     const tomb = makeTombstone('a')
     expect(tomb.id).toBe('a')
     expect(tomb.deleted_at).toBeGreaterThanOrEqual(before)
+    // updated_at 沒有的話，別的裝置的 pull（走 updated_at > 游標）永遠拉不到
+    // 這筆墓碑——這筆刪除就永遠不會同步過去，是實測踩到的臭蟲，見常數旁註解。
+    expect(tomb.updated_at).toBeGreaterThanOrEqual(before)
   })
 
   it('isTombstone 只看 deleted_at 是不是數字', () => {

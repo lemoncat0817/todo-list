@@ -172,7 +172,9 @@ pnpm test:e2e     # Playwright E2E（含無障礙檢測）
 不做這一段，`pnpm dev` 就是完整可用的純本地版本。
 
 1. 到 https://supabase.com/dashboard 建一個免費專案
-2. SQL Editor 貼上 [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) 執行一次
+2. SQL Editor 依序貼上 [`supabase/migrations/`](supabase/migrations) 底下每個檔案執行一次
+   （目前是 `0001_init.sql`、`0002_tombstone_defaults.sql`——已經照舊版本做過 `0001` 的人，
+   之後新增檔案時記得補跑，不會自動套用）
 3. Project Settings → API，把 `Project URL` 和 `anon public` key 填進複製自
    [`.env.local.example`](.env.local.example) 的 `.env.local`
 4. 不用改 Email 範本——Supabase 內建（免費方案）的寄信服務預設寄的就是一個
