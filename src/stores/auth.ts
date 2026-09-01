@@ -167,11 +167,14 @@ export const useAuthStore = defineStore('auth', () => {
  *   要嘛等到額度重置、要嘛接自訂 SMTP。
  * `authError.code` 是 GoTrue 明確吐出來的錯誤代碼，比對訊息字串準確，優先用它；
  * 訊息比對留著當沒有 code（例如比較舊版本、或其他沒建模到的錯誤）時的備援。
+ *
+ * 兩句錯誤訊息都刻意不提 Supabase／SMTP 這類實作細節——使用者不需要、
+ * 也不該知道這個工具背後接的是什麼服務，只需要知道「現在不能寄、等一下再試」。
  */
 function describeError(authError: AuthError | null): string {
   if (!authError) return '驗證碼不正確或已過期，請重新申請'
   if (authError.code === 'over_email_send_rate_limit') {
-    return '這個 Supabase 專案內建的測試信件額度用完了（免費方案預設每小時只能寄幾封）。等一分鐘沒有用——要嘛等額度重置，要嘛改接自訂 SMTP'
+    return '這段時間寄出的登入信太多，請稍後再試（通常一小時內會恢復）'
   }
   if (authError.code === 'over_request_rate_limit' || authError.message.toLowerCase().includes('rate limit')) {
     return '請求太頻繁，請稍等一分鐘再試'
