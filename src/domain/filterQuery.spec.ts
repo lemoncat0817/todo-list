@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { compileFilter, evaluateFilter, parseFilterQuery } from './filterQuery'
+import {
+  compileFilter,
+  evaluateFilter,
+  findUnresolvedNames,
+  parseFilterQuery,
+  suggestFilterTokens,
+} from './filterQuery'
 import { makeTask } from '@/test/helpers'
 
 const NOW = new Date(2030, 0, 15, 9, 0, 0) // 2030-01-15
@@ -137,5 +143,79 @@ describe('compileFilter', () => {
     expect(predicate).not.toBeNull()
     expect(predicate?.(makeTask('a', false, { dueDate: '2030-01-15', priority: 3 }))).toBe(true)
     expect(predicate?.(makeTask('b', false, { dueDate: '2030-01-15', priority: 0 }))).toBe(false)
+  })
+})
+
+describe('findUnresolvedNames', () => {
+  it('語法正確但名稱查無此項時回報，讓畫面能區分「打錯字」與「剛好沒有符合的任務」', () => {
+    expect(findUnresolvedNames(parse('#不存在'), ctx)).toEqual({ projects: ['不存在'], labels: [] })
+    expect(findUnresolvedNames(parse('@也不存在'), ctx)).toEqual({ projects: [], labels: ['也不存在'] })
+  })
+
+  it('名稱存在時不回報任何東西', () => {
+    expect(findUnresolvedNames(parse('#工作 & @等待中'), ctx)).toEqual({ projects: [], labels: [] })
+  })
+
+  it('忽略大小寫與全形半形，跟 evaluateFilter 用同一套比對規則', () => {
+    expect(findUnresolvedNames(parse('#Ｗｏｒｋ'), { projects: [{ id: 'p', name: 'work' }] })).toEqual({
+      projects: [],
+      labels: [],
+    })
+  })
+
+  it('會走進 and／or／not 底下找，不是只看最外層節點', () => {
+    expect(findUnresolvedNames(parse('today & (#不存在 | !@也不存在)'), ctx)).toEqual({
+      projects: ['不存在'],
+      labels: ['也不存在'],
+    })
+  })
+
+  it('同一個名稱出現多次只回報一次', () => {
+    expect(findUnresolvedNames(parse('#不存在 | #不存在'), ctx)).toEqual({
+      projects: ['不存在'],
+      labels: [],
+    })
+  })
+})
+
+describe('suggestFilterTokens', () => {
+  it('空字串時列出完整的關鍵字清單，不用先看過語法說明才知道有哪些詞', () => {
+    const { range, suggestions } = suggestFilterTokens('', 0)
+    expect(range).toEqual({ start: 0, end: 0 })
+    expect(suggestions.map((s) => s.label)).toContain('today')
+    expect(suggestions.map((s) => s.label)).toContain('p1')
+  })
+
+  it('依游標所在的詞做前綴篩選', () => {
+    const { suggestions } = suggestFilterTokens('ov', 2)
+    expect(suggestions.map((s) => s.label)).toEqual(['overdue'])
+  })
+
+  it('# 開頭只從既有專案找，不會混進標籤或關鍵字', () => {
+    const { suggestions } = suggestFilterTokens('#工', 2, ctx)
+    expect(suggestions).toEqual([{ kind: 'project', label: '#工作', insertText: '#工作' }])
+  })
+
+  it('@ 開頭只從既有標籤找', () => {
+    const { suggestions } = suggestFilterTokens('@', 1, ctx)
+    expect(suggestions).toEqual([{ kind: 'label', label: '@等待中', insertText: '@等待中' }])
+  })
+
+  it('名稱含空白時，插入用的文字會自動加上引號', () => {
+    const withSpace = { projects: [{ id: 'p', name: '下半年 OKR' }], tags: [] }
+    const { suggestions } = suggestFilterTokens('#', 1, withSpace)
+    expect(suggestions).toEqual([
+      { kind: 'project', label: '#下半年 OKR', insertText: '#"下半年 OKR"' },
+    ])
+  })
+
+  it('建議的範圍只框住游標所在的那個詞，前後已經打完的詞不受影響', () => {
+    const { range } = suggestFilterTokens('today & ov', 10)
+    expect(range).toEqual({ start: 8, end: 10 })
+  })
+
+  it('游標停在字中間時，範圍會延伸到整個詞的結尾，接受建議會整詞替換', () => {
+    const { range } = suggestFilterTokens('overdue', 2)
+    expect(range).toEqual({ start: 0, end: 7 })
   })
 })

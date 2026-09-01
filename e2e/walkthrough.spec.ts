@@ -200,7 +200,7 @@ test('P17 已修正：id 為 UUID，不再是可能碰撞的時間戳', async ({
  * P2 調查：在真實瀏覽器的完整流程下，各種壞資料實際會發生什麼事。
  * 稽核報告的 P2 是用 node 層直接呼叫 $patch 重現的；這裡驗證真實路徑。
  */
-// Phase 1 之後：全部 10 種壞資料都應正常渲染，無效項目被靜靜濾除。
+// 修正後：全部 10 種壞資料都應正常渲染，無效項目被靜靜濾除。
 // 第四欄 = 修正後應顯示的列數。
 const BAD_PAYLOADS: Array<[label: string, payload: string, expectedRows: number]> = [
   ['todoList 為 null', '{"todoList":null}', 0],

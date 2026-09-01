@@ -20,6 +20,11 @@ export const usePrefsStore = defineStore(
     const groupBy = ref<GroupKey>('none')
     /** 到期提醒。只在分頁開著時有效，這一點由畫面說明。 */
     const remindersEnabled = ref(false)
+    /**
+     * 桌面版側邊導覽是否收合成僅圖示的窄行。放這裡而不是 ui.ts：
+     * 跟排序／分組一樣是「下次打開還想維持的樣子」，不是操作完就該忘記的暫態。
+     */
+    const sidebarCollapsed = ref(false)
 
     function setSort(value: SortKey): void {
       sortBy.value = value
@@ -33,7 +38,20 @@ export const usePrefsStore = defineStore(
       remindersEnabled.value = value
     }
 
-    return { sortBy, groupBy, remindersEnabled, setSort, setGroupBy, setReminders }
+    function toggleSidebarCollapsed(): void {
+      sidebarCollapsed.value = !sidebarCollapsed.value
+    }
+
+    return {
+      sortBy,
+      groupBy,
+      remindersEnabled,
+      sidebarCollapsed,
+      setSort,
+      setGroupBy,
+      setReminders,
+      toggleSidebarCollapsed,
+    }
   },
   {
     /**
@@ -51,7 +69,12 @@ export const usePrefsStore = defineStore(
         typeof record.groupBy === 'string' && record.groupBy in GROUP_LABELS
           ? (record.groupBy as GroupKey)
           : 'none'
-      return { sortBy, groupBy, remindersEnabled: record.remindersEnabled === true }
+      return {
+        sortBy,
+        groupBy,
+        remindersEnabled: record.remindersEnabled === true,
+        sidebarCollapsed: record.sidebarCollapsed === true,
+      }
     }),
   },
 )

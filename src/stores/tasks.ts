@@ -10,6 +10,7 @@ import type {
   StoredTask,
 } from '@/db/schema'
 import { createTask, groupByParent } from '@/domain/task'
+import { diffAgainstFingerprint } from '@/domain/diff'
 import { mergeById } from '@/db/backup'
 import { nextOccurrence } from '@/domain/recurrence'
 import { nextOrder, orderBetween, sortByOrder } from '@/domain/ordering'
@@ -137,8 +138,20 @@ export const useTasksStore = defineStore('tasks', () => {
   /** 載入期間為 true；watcher 是非同步的，不能只靠 isLoading 判斷。 */
   let hydrating = false
 
+  /**
+   * 實測抓到的缺陷：`recurrence` 是任務裡唯一的巢狀物件欄位，`tagIds` 一直有
+   * 明確淺拷貝，`recurrence` 之前沒有——它會從 TaskDetailForm 的 `draft`（一個
+   * ref）一路帶著 Vue 的 reactive Proxy 流進來（`{ ...toRaw(t) }` 只淺層展開，
+   * 不會把巢狀屬性也 toRaw），最後整包丟給 IndexedDB 的 `put()`。
+   * structured clone 認不得 Proxy，會直接丟 DataCloneError，
+   * 使用者看到的就是「變更尚未存檔」——跟儲存空間滿不滿全無關係。
+   */
   function snapshot(): StoredTask[] {
-    return toRaw(items.value).map((t) => ({ ...toRaw(t), tagIds: [...t.tagIds] }))
+    return toRaw(items.value).map((t) => ({
+      ...toRaw(t),
+      tagIds: [...t.tagIds],
+      recurrence: t.recurrence ? { ...t.recurrence, byDay: [...t.recurrence.byDay] } : null,
+    }))
   }
 
   /**
@@ -166,23 +179,19 @@ export const useTasksStore = defineStore('tasks', () => {
       try {
         do {
           dirty = false
-          const rows = snapshot()
-          const nextIndex = new Map<string, string>()
-          const upserts: StoredTask[] = []
-          for (const row of rows) {
-            const signature = JSON.stringify(row)
-            nextIndex.set(row.id, signature)
-            if (persistedIndex.get(row.id) !== signature) upserts.push(row)
-          }
-          const deletes = [...persistedIndex.keys()].filter((id) => !nextIndex.has(id))
+          const { upserts, deletes, nextFingerprint } = diffAgainstFingerprint(snapshot(), persistedIndex)
 
           await applyTaskChanges({ upserts, deletes })
           await collections.flush()
           // 寫成功之後才更新指紋：失敗時保持原狀，下一次會重試同一批
-          persistedIndex = nextIndex
+          persistedIndex = nextFingerprint
         } while (dirty)
         writeError.value = null
       } catch (error) {
+        // 畫面只給「變更尚未存檔」這種不點名成因的通用訊息（稽核既有慣例，
+        // 見 stores/sync.ts 的 describeSyncError）；真正的錯誤內容留在
+        // console，不然像 DataCloneError 這種能一眼看出根因的線索就白白遺失。
+        console.error('[tasks] 寫入失敗', error)
         writeError.value = error
       }
     })().finally(() => {
@@ -215,7 +224,9 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   watch(
-    [items, () => collections.projects, () => collections.tags],
+    // filters 曾經漏在這份清單外——單獨新增／改名／刪除一個篩選器不會觸發
+    // flush()，要等任務或專案／標籤也剛好變動才會連帶存進去。
+    [items, () => collections.projects, () => collections.tags, () => collections.filters],
     () => {
       if (hydrating) return
       void flush()
@@ -377,22 +388,6 @@ export const useTasksStore = defineStore('tasks', () => {
     })
   }
 
-  function setAllCompleted(value: boolean): void {
-    const before = items.value.map((t) => ({ ...t }))
-    const now = Date.now()
-    for (const task of items.value) {
-      task.isCompleted = value
-      task.completedAt = value ? now : null
-      task.updatedAt = now
-    }
-    history.record({
-      label: value ? '全部標記為完成' : '全部取消完成',
-      undo: () => {
-        items.value = before
-      },
-    })
-  }
-
   /** 拖曳／鍵盤排序：把 id 移到 targetId 之前或之後。 */
   function move(id: string, targetId: string, position: 'before' | 'after'): void {
     const moving = items.value.find((t) => t.id === id)
@@ -503,6 +498,45 @@ export const useTasksStore = defineStore('tasks', () => {
     return removed.length
   }
 
+  /**
+   * 批次完成／取消完成。取代舊的「全部標記為完成」——那顆按鈕動的是
+   * 全部任務（不分專案、不分視圖），跟使用者當下看到的畫面對不上；
+   * 這裡改成跟其他批次操作一樣，只作用在使用者親自選取的幾筆。
+   *
+   * 完成邏輯與單筆 toggle() 一致：有重複規則且未完成的任務，完成時是推進到
+   * 下一次發生日、保持未完成，不是直接標記完成——重複任務的語意不能因為
+   * 走的是批次路徑就不一樣。取消完成則單純，不涉及推進日期。
+   * 跟 batchUpdate 一樣整批只推一個 undo command。
+   */
+  function batchComplete(ids: readonly string[], value: boolean): number {
+    const targets = new Set(ids)
+    const before = items.value.filter((t) => targets.has(t.id)).map((t) => ({ ...t }))
+    if (before.length === 0) return 0
+
+    const now = Date.now()
+    items.value = items.value.map((t) => {
+      if (!targets.has(t.id)) return t
+      if (value && !t.isCompleted && t.recurrence && t.dueDate) {
+        const next = nextOccurrence(t.recurrence, t.dueDate)
+        if (next !== null) return { ...t, dueDate: next, updatedAt: now }
+      }
+      return { ...t, isCompleted: value, completedAt: value ? now : null, updatedAt: now }
+    })
+    const after = items.value.filter((t) => targets.has(t.id)).map((t) => ({ ...t }))
+
+    const restore = (snapshot: StoredTask[]) => () => {
+      const byId = new Map(snapshot.map((t) => [t.id, t]))
+      items.value = items.value.map((t) => byId.get(t.id) ?? t)
+    }
+
+    history.record({
+      label: `${value ? '標記完成' : '取消完成'}（${before.length} 項）`,
+      undo: restore(before),
+      redo: restore(after),
+    })
+    return before.length
+  }
+
   /** 批次改期。與單筆 reschedule 一致：清掉日期時一併清掉時間。 */
   function batchReschedule(ids: readonly string[], dueDate: string | null): number {
     return batchUpdate(
@@ -546,6 +580,19 @@ export const useTasksStore = defineStore('tasks', () => {
         collections.restoreSnapshot(beforeCollections)
       },
     })
+  }
+
+  // ------------------------------------------------------------ 跨裝置同步
+
+  /**
+   * 套用跨裝置同步的合併結果。
+   *
+   * 刻意不經過 history.record——遠端合併不是這台裝置的使用者剛做的動作，
+   * 推進復原堆疊會讓人「復原」到一個不上不下的狀態（跟 init() 載入資料
+   * 不記錄復原是同一個道理）。合併規則在 sync/merge.ts，這裡只負責寫回。
+   */
+  function mergeRemote(rows: readonly StoredTask[]): void {
+    items.value = sortByOrder(rows)
   }
 
   // -------------------------------------------- 跨 store 的關聯處理
@@ -632,14 +679,15 @@ export const useTasksStore = defineStore('tasks', () => {
     remove,
     clearCompleted,
     toggle,
-    setAllCompleted,
     move,
     setPriority,
     reschedule,
     batchUpdate,
     batchRemove,
+    batchComplete,
     batchReschedule,
     importBackup,
+    mergeRemote,
     setRecurrence,
     toggleTag,
     removeProject,

@@ -23,6 +23,15 @@ describe('prefs store', () => {
     const prefs = setup()
     expect(prefs.sortBy).toBe('manual')
     expect(prefs.groupBy).toBe('none')
+    expect(prefs.sidebarCollapsed, '預設展開，不無故收合導覽').toBe(false)
+  })
+
+  it('側邊導覽收合狀態會被記住', async () => {
+    const prefs = setup()
+    prefs.toggleSidebarCollapsed()
+    expect(prefs.sidebarCollapsed).toBe(true)
+    await nextTick()
+    expect(setup().sidebarCollapsed, '重新建立後仍是收合').toBe(true)
   })
 
   it('選擇會被記住', async () => {
@@ -44,6 +53,7 @@ describe('prefs store', () => {
       const prefs = setup()
       expect(prefs.sortBy, bad).toBe('manual')
       expect(prefs.groupBy, bad).toBe('none')
+      expect(prefs.sidebarCollapsed, bad).toBe(false)
     }
   })
 

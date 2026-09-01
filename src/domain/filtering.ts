@@ -34,6 +34,22 @@ export function matchesKeyword(task: StoredTask, keyword: string): boolean {
   )
 }
 
+/**
+ * 在專案／標籤這類「有名字的集合」裡找同名項目（大小寫、全形半形不分）。
+ *
+ * 泛型只要求 `name`，不綁定 `NamedCollection` 型別，避免 domain 內產生循環匯入
+ * （`views.ts` 已經匯入本檔案的 `matchesKeyword`）。快速輸入解析
+ * （`quickAdd.ts`）與專案／標籤的建立入口（`stores/collections.ts`）共用這一份，
+ * 是同一個問題：兩者都要判斷「這個名字是不是已經存在」。
+ */
+export function findByNormalizedName<T extends { name: string }>(
+  collection: readonly T[],
+  name: string,
+): T | null {
+  const needle = normalizeForSearch(name)
+  return collection.find((c) => normalizeForSearch(c.name) === needle) ?? null
+}
+
 export function matchesFilter(task: StoredTask, filter: TaskFilter): boolean {
   // filter 是封閉的字面量聯集，switch 有 default 收尾，
   // 型別層面就不可能出現「未涵蓋的值」（稽核 P3 的結構性解法）。

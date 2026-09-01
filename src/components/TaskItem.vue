@@ -30,7 +30,8 @@
 
       <input :checked="task.isCompleted" type="checkbox"
         :aria-label="`標記「${task.taskName}」為已完成`"
-        class="mt-0.5 size-4.5 shrink-0 cursor-pointer accent-accent" @change="emit('toggle')">
+        class="task-complete-checkbox mt-0.5 size-5 shrink-0 cursor-pointer accent-accent"
+        @change="emit('toggle')">
 
       <div class="min-w-0 grow">
         <p v-if="!editing" data-test="task-name" class="break-words text-[15px] leading-snug"
@@ -67,13 +68,13 @@
             <li v-for="child in children" :key="child.id" class="flex items-center gap-2">
               <input :checked="child.isCompleted" type="checkbox"
                 :aria-label="`標記子任務「${child.taskName}」為已完成`"
-                class="size-4 shrink-0 cursor-pointer accent-accent"
+                class="task-complete-checkbox size-4 shrink-0 cursor-pointer accent-accent"
                 @change="emit('toggle-child', child.id)">
               <span class="min-w-0 grow break-words text-[13px]"
                 :class="child.isCompleted ? 'text-ink-faint line-through' : 'text-ink-soft'">
                 {{ child.taskName }}
               </span>
-              <button type="button" :aria-label="`刪除子任務「${child.taskName}」`"
+              <button type="button" :aria-label="`刪除子任務「${child.taskName}」`" data-tooltip="刪除"
                 class="grid size-6 shrink-0 place-items-center rounded text-ink-faint transition-colors hover:bg-danger-soft hover:text-danger-ink"
                 @click="emit('remove-child', child.id)">
                 <svg viewBox="0 0 16 16" class="size-3.5" aria-hidden="true" fill="none"
@@ -104,10 +105,10 @@
       -->
       <div
         class="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity group-focus-within:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
-        <button type="button" :disabled="isFirst" :aria-label="`將「${task.taskName}」上移`"
+        <button type="button" :disabled="isFirst" :aria-label="`將「${task.taskName}」上移`" data-tooltip="上移"
           class="grid size-7 place-items-center rounded text-ink-faint transition-colors hover:bg-sunken hover:text-ink disabled:pointer-events-none disabled:opacity-30"
           @click="emit('move-up')">↑</button>
-        <button type="button" :disabled="isLast" :aria-label="`將「${task.taskName}」下移`"
+        <button type="button" :disabled="isLast" :aria-label="`將「${task.taskName}」下移`" data-tooltip="下移"
           class="grid size-7 place-items-center rounded text-ink-faint transition-colors hover:bg-sunken hover:text-ink disabled:pointer-events-none disabled:opacity-30"
           @click="emit('move-down')">↓</button>
 
@@ -116,7 +117,7 @@
 
         <!-- 用「加入」而非「新增」：新增代辦事項那顆按鈕的可及名稱是「新增」，
              兩者互相包含會讓依名稱定位的工具（含輔助科技的搜尋）分不出來 -->
-        <button type="button" :aria-label="`加入「${task.taskName}」的子任務`"
+        <button type="button" :aria-label="`加入「${task.taskName}」的子任務`" data-tooltip="加入子任務"
           class="grid size-7 place-items-center rounded text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
           @click="startSub">
           <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true" fill="none" stroke="currentColor"
@@ -125,7 +126,7 @@
           </svg>
         </button>
 
-        <button v-if="!editing" type="button" :aria-label="`編輯「${task.taskName}」`"
+        <button v-if="!editing" type="button" :aria-label="`編輯「${task.taskName}」`" data-tooltip="編輯"
           class="grid size-7 place-items-center rounded text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
           @click="emit('start-edit')">
           <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true" fill="none" stroke="currentColor"
@@ -133,7 +134,7 @@
             <path d="M11.2 2.3 13.7 4.8 5.5 13H3v-2.5Z" />
           </svg>
         </button>
-        <button v-else type="button" :aria-label="`保存「${task.taskName}」`"
+        <button v-else type="button" :aria-label="`保存「${task.taskName}」`" data-tooltip="保存"
           class="grid size-7 place-items-center rounded text-accent transition-colors hover:bg-accent-soft"
           @click="commit">
           <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true" fill="none" stroke="currentColor"
@@ -142,7 +143,7 @@
           </svg>
         </button>
 
-        <button type="button" :aria-label="`設定「${task.taskName}」的細節`"
+        <button type="button" :aria-label="`設定「${task.taskName}」的細節`" data-tooltip="詳情"
           class="grid size-7 place-items-center rounded text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
           @click="emit('open-detail')">
           <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true" fill="currentColor">
@@ -151,7 +152,7 @@
             <circle cx="12.5" cy="8" r="1.2" />
           </svg>
         </button>
-        <button type="button" :aria-label="`刪除「${task.taskName}」`"
+        <button type="button" :aria-label="`刪除「${task.taskName}」`" data-tooltip="刪除"
           class="grid size-7 place-items-center rounded text-ink-faint transition-colors hover:bg-danger-soft hover:text-danger-ink"
           @click="emit('remove')">
           <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true" fill="none" stroke="currentColor"

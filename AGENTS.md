@@ -4,9 +4,13 @@ Guidance for AI coding agents working in this repository.
 
 ## What this is
 
-A client-only todo app (Vue 3 + Pinia + Vue Router + IndexedDB). No backend — all
-data lives in the browser's IndexedDB, deployed as a static site to GitHub Pages.
-See [README.md](README.md) for the user-facing feature list.
+A client-first todo app (Vue 3 + Pinia + Vue Router + IndexedDB), deployed as a
+static site to GitHub Pages. By default there is no backend — all data lives in
+the browser's IndexedDB. An **optional** Supabase-backed sync layer (see
+[Cross-device sync](#cross-device-sync-optional)) lets a signed-in user's data
+follow them across devices; without `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`
+set, that entire layer stays dormant and the app is exactly the client-only tool
+it always was. See [README.md](README.md) for the user-facing feature list.
 
 ## Commands
 
@@ -150,7 +154,342 @@ back — a timestamp comparison would miss it. `flush()` is re-entrant-safe (con
 and is also fired from `pagehide`/`visibilitychange` in `main.ts` to minimize
 the async write window before a tab closes.
 
-### Filters
+### Cross-device sync (optional)
+
+Dormant unless `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` are set
+(`sync/config.ts`'s `isSyncConfigured`) — the "帳號與同步" sidebar entry
+doesn't even render otherwise, so a fork without a Supabase project is a fully
+working client-only app, not a broken button. Scope is deliberately narrow:
+**single-user sync across a person's own devices**, not multi-user
+collaboration (no shared projects, no realtime, no field-level merge). Those
+are explicit non-goals for now, not gaps someone forgot.
+
+**No `@supabase/supabase-js`.** Every other dependency choice in this repo is
+justified by a measured gzip number (`idb` over Dexie, hand-rolled dates over
+date-fns, hand-rolled recurrence over `rrule`), and the full SDK — auth +
+postgrest + realtime + storage + functions — is disproportionate to the five
+or six fixed operations sync actually needs. Split instead:
+- **`sync/authClient.ts`** wraps `@supabase/auth-js` (GoTrue's real client, not
+  the umbrella package) — token refresh/expiry/storage are security-sensitive
+  enough to not reinvent. Measured: 23.16 kB gzip as its own chunk.
+- **`sync/restClient.ts`** hand-rolls `fetch` calls against PostgREST — the
+  query shapes are fixed (`fetchRowsSince`/`upsertRows`), so a general query
+  builder buys nothing.
+- Both are dynamically `import()`ed only when an account action actually runs
+  (`stores/auth.ts`, `stores/sync.ts`) — a user who never signs in never
+  downloads either, and the base bundle is unaffected.
+
+**Sign-in is an email magic link or OAuth (Google/GitHub), never a
+password.** (`sync/authClient.ts`'s `requestOtp`/`verifyOtp` names still say
+"OTP" — that's Supabase's GoTrue API surface, `signInWithOtp`/`verifyOtp`,
+which can send either a code or a link depending on the email template; this
+app only ever uses the link. See below for why.) No reset/strength UI to
+build, no password to leak, and it matches the app's existing low-friction
+ethos (no confirm dialogs anywhere, do-then-undo instead). OAuth is scoped to
+providers with free, self-serve developer
+consoles — Google Cloud Console and GitHub OAuth Apps both need no paid
+account or app review for personal-scale use; Apple (`Sign in with Apple`
+needs a paid $99/yr Apple Developer Program membership) and Facebook (now
+needs Business verification for public use) were evaluated and skipped for
+that reason, not forgotten.
+
+OAuth forced a real architectural decision: `sync/authClient.ts` sets
+`flowType: 'pkce'` (auth-js defaults to `'implicit'`) and
+`detectSessionInUrl: true`. Implicit flow returns the session in the URL
+*hash* (`#access_token=...`) and clears `location.hash` after reading it —
+a direct collision with this app's hash-based routing (`#/today`). PKCE
+returns a `?code=` *query* parameter instead; Vue Router's hash history never
+reads `location.search`, so the two coexist by construction — confirmed by
+reading `_getSessionFromURL` in `@supabase/auth-js` itself, not assumed.
+`stores/auth.ts`'s `restore()` is the one place that has to know about this:
+it now triggers the authClient `import()` not just when a previous session
+was stored, but also when `?code=` (mid-login) or `?error=`/`error_description=`
+(user cancelled at the provider, or the provider isn't configured yet) is
+present in the URL — otherwise a fresh OAuth callback would silently do
+nothing on a first-time sign-in.
+
+The Google/GitHub buttons are implemented, tested, and **shown** —
+`AccountDialog.vue`'s `OAUTH_PROVIDERS_ENABLED` const is `true`. (It was kept
+`false` for a while by request while the email flow was being fixed; flipped
+back on once the email-quota friction made OAuth's no-email path worth
+having.) The const only gates the UI surface — nothing in
+`sync/authClient.ts` or `stores/auth.ts` is gated by it — and a provider that
+isn't actually configured in the Supabase Dashboard just surfaces an error in
+the dialog when clicked, it doesn't affect the email sign-in path.
+
+The email (magic link) form is conversely **hidden** —
+`AccountDialog.vue`'s `EMAIL_LOGIN_ENABLED` const is `false`. Same underlying
+problem as the SMTP template lock below, one layer up: Supabase's free/default
+email sender caps at a handful of sends per *project* per hour (not per
+address), and this project's own live testing burned through that cap
+repeatedly, surfacing `over_email_send_rate_limit`. OAuth doesn't touch that
+sender at all, so with the quota being a real recurring nuisance rather than a
+one-time setup cost, email sign-in got turned off (form, `requestMagicLink`
+call site) while OAuth stayed on — `requestMagicLink`/`cancelVerification`/the
+`'verifying'` screen are all still there, gated only by this one const.
+
+`describeError()` in `stores/auth.ts` also had to stop conflating two GoTrue
+error codes that both contain the substring "rate limit" in their message but
+mean very different things: `over_request_rate_limit` (a ~60s per-address
+throttle — waiting actually helps) vs `over_email_send_rate_limit` (the
+project-wide hourly send cap above — waiting a minute does nothing). It now
+switches on `authError.code` first, falling back to the message-substring
+check only when `code` is absent. Both user-facing strings deliberately don't
+name Supabase or SMTP — that's an implementation detail no end user needs.
+
+**Two real bugs found via live testing, not by inspection.**
+
+First: Supabase's default email templates send a magic *link*
+(`{{ .ConfirmationURL }}`), not a numeric code. The original UI asked the
+user to paste a "驗證碼" that never arrived — getting an actual pasteable
+`{{ .Token }}` instead requires editing both the "Confirm signup" and "Magic
+Link" templates in the Supabase Dashboard, which itself requires **setting up
+custom SMTP first** (Supabase's free/default email service locks template
+editing behind it — discovered from a screenshot of the Dashboard, not
+assumed). Since custom SMTP is a real external dependency this project
+doesn't want to require, the fix went the other way: `AccountDialog.vue`'s
+`'verifying'` state was redesigned around the link Supabase actually sends —
+"go click the link in your email", no code input at all. This is also *more*
+correct for cross-device sign-in (open the link on your phone, no code to
+retype) and matches what OAuth already does under the hood (see below).
+
+Second, a consequence of the first: clicking the link completes sign-in (via
+the same `?code=` PKCE path OAuth uses) in *whichever tab or device opens
+it*, which is not necessarily the tab that's still showing the waiting
+screen. That tab has no way to know sign-in happened elsewhere unless it's
+listening — GoTrueClient broadcasts session changes across tabs via
+`BroadcastChannel` keyed on `storageKey`, but the store previously only
+called `onAuthStateChange` *after* the (now-removed) `verifyCode()`
+succeeded, so a tab that only ever sent the email was never subscribed when
+the broadcast arrived. Fixed by centralizing the dynamic import behind
+`ensureAuthClient()` in `stores/auth.ts`, which subscribes exactly once as
+early as `requestMagicLink()` (not waiting for a code the app no longer even
+asks for) — so a sign-in completed on another tab or device now updates
+every open tab, not just the one that finished it.
+
+A constraint worth knowing when testing this (found while adapting
+`e2e/account.spec.ts` for the OAuth-only surface): PKCE requires a
+`code_verifier` that auth-js generates and stores locally *at the moment*
+`signInWithOtp`/`signInWithOAuth` is called, paired with the `code_challenge`
+sent to the server. A tab that never made that call has nothing to pair the
+returned `?code=` against — navigating a fresh, never-acted-on tab straight to
+a URL carrying a `?code=` does not fail loudly, it just never attempts the
+token exchange at all (no network request, no error — confirmed by request
+logging, not assumed). So a broadcast-propagation test needs the *other* tab
+to have actually triggered a real sign-in (or already have a stored session,
+which is what makes an idle-but-previously-signed-in tab receive a sign-out
+broadcast) — you cannot fake "signed in elsewhere" by just teleporting a code
+onto an idle tab that was never party to that flow.
+
+A related gap this surfaced: `sync.start()`/`sync.stop()` used to be called
+imperatively from the specific places sign-in/sign-out happened
+(`AccountDialog.vue`'s submit handler, `main.ts`'s boot sequence) — which
+covers "this tab completed its own sign-in" but not "this tab found out about
+a sign-in that happened elsewhere via broadcast". `stores/sync.ts` now
+`watch()`es `auth.status` itself (`immediate: true`) and starts/stops
+accordingly, so no call site has to remember to react to a session change it
+didn't initiate. `start`/`stop` stay exported for tests and possible manual
+use, but nothing in the app is expected to call them directly any more.
+
+**Pull is polling, not Realtime.** `stores/sync.ts` pulls on `start()`, every
+30s, on `online`, and on `visibilitychange`, mirroring the polling pattern
+already used by `useDueReminders.ts`. Realtime (websocket) would be the
+natural upgrade *if* live multi-user collaboration is ever built — until then
+it would only add `realtime-js`'s bundle weight for no behavioral benefit.
+
+**Conflicts are row-level last-write-wins**, comparing `updatedAt`
+(`sync/merge.ts`'s `mergeByUpdatedAt`). Two devices editing *different fields*
+of the same row within the same sync window will have one edit lose entirely
+— an accepted, documented tradeoff for a single-user feature, not a hidden
+gap. `StoredProject`/`StoredTag`/`StoredFilter` gained an `updatedAt` field
+for this (they didn't need one before sync existed); `domain/task.ts`'s
+`normalize*` functions backfill it for pre-existing rows, so no IndexedDB
+version bump was needed — adding a field to a schemaless object store never
+requires one, only new stores/indexes do.
+
+**Deletes are soft (tombstones), not real `DELETE`s.** Plain REST polling has
+no delete-event feed the way Realtime would — a hard delete just makes a row
+stop appearing in `SELECT`, indistinguishable from "never existed" to a
+device that hasn't synced since. Both push (`sync/tableSync.ts`'s
+`pushTable`) and the Postgres schema (`supabase/migrations/0001_init.sql`)
+mark `deleted_at` instead; pull treats a tombstoned row as a removal via
+`mergeByUpdatedAt`'s `remoteDeletedIds`. Tombstones accumulate with no GC —
+acceptable at personal-task-list scale, called out rather than silently
+deferred.
+
+**Two real tombstone bugs found via live testing, not by inspection**
+(surfaced the first time a real account actually pushed real data, after
+weeks of the login flow itself being broken/rate-limited during development —
+exactly the condition that makes a stale local fingerprint point at ids the
+server has never seen). `sync/restClient.ts`'s `upsertRows` uses
+`on_conflict=id` + `resolution=merge-duplicates`: an id the server already has
+takes the UPDATE branch (fields not sent are left alone), but an id the
+server has *never seen* takes the INSERT branch instead — and
+`sync/rowMapping.ts`'s `makeTombstone(id)` only ever sent
+`{ id, deleted_at }`. Two consequences:
+1. Every `not null` column with no `default` on that table (`tasks.task_name`
+   first in column order, but `order`/`created_at` on the same row and the
+   equivalent required columns on `projects`/`tags`/`filters` were exactly as
+   broken) rejected the INSERT outright — the user's real first sync failed
+   with `null value in column "task_name" ... violates not-null constraint`.
+   Fixed at the schema layer (`supabase/migrations/0002_tombstone_defaults.sql`):
+   every such column gets a harmless default (`''`/`0`) — a tombstone row's
+   content is never read by anything (`sync/merge.ts` only looks at
+   `id`/`deleted_at`/`updated_at`), so a default is semantically fine, not a
+   workaround.
+2. Independent of the first bug: even a tombstone that *does* successfully
+   reach the UPDATE branch had no `updated_at`, and pull is
+   `updated_at > cursor` (`fetchRowsSince`) — a tombstone with no fresh
+   `updated_at` is invisible to every other device's next pull forever, since
+   its implicit value never exceeds any real cursor. `makeTombstone` now sets
+   `updated_at: Date.now()` alongside `deleted_at`, same as every other
+   row `toRemote*` produces.
+
+**The sync fingerprint is durable, the local one isn't — on purpose.**
+`stores/tasks.ts`'s `persistedIndex` (what's in IndexedDB) is rebuilt fresh
+from `loadTasks()` every session, because local storage only needs to know
+"what's true now." The sync fingerprint (what's been pushed to the server)
+is persisted separately in IndexedDB's `meta` store
+(`META_SYNC_FINGERPRINT_*`), because it needs to survive a reload: a task
+deleted locally while offline is *gone* from `loadTasks()`'s result by the
+next launch, so only a fingerprint that remembers "this id used to exist"
+can still produce the tombstone that tells other devices about the deletion.
+Both fingerprints share one diffing algorithm, `domain/diff.ts`'s
+`diffAgainstFingerprint` (extracted from what was inline in `tasks.ts`'s
+`flush()`), applied against two independently-lived maps.
+
+**Merge always re-reads local state after the network round-trip, never
+before it.** `stores/sync.ts` pushes first, pulls second, and only then calls
+`mergeByUpdatedAt` against a *fresh* read of `tasks.items`/`collections.*` —
+not the snapshot captured when the sync cycle started. Two `await`s sit
+between "diff computed" and "merge applied"; if a local edit that reassigns
+the whole array (`remove`, `batchUpdate`, `undo`) happens in that window, a
+merge built on the stale snapshot would silently discard it. `stores/sync.spec.ts`
+has a dedicated regression test for this exact race.
+
+**The local cache is per-device, not per-account — `reconcileAccountIdentity()`
+exists to paper over that mismatch.** Everything above (fingerprints, cursor,
+IndexedDB itself) is scoped to *this browser*, never to *whoever is currently
+signed in*, and `stores/auth.ts`'s `signOut()` deliberately leaves local data
+untouched (offline-first — see its comment). That combination has a gap
+neither decision considered on its own: a second, different account signing
+in on a device that still has the first account's cached data. Found via
+review, not live testing. Without a check, the newly signed-in account would
+see the previous account's tasks (the first sync round diffs local data
+against a fingerprint that already matches it, so nothing looks changed —
+the UI just keeps showing stale data that happens to still be sitting in
+IndexedDB), and editing anything in that state would push the previous
+account's rows to the new account's remote table via `upsertRows`'s
+`on_conflict=id` — an id the server already has, owned by someone else.
+
+The fix (`stores/sync.ts`) is the same shape other sync clients use:
+remember, in IndexedDB's `meta` store, which `user.id` this local cache was
+last reconciled against (`META_SYNC_ACCOUNT_ID`). `start()` calls
+`reconcileAccountIdentity()` before anything else — if a *different* id was
+recorded, the local cache doesn't belong to whoever just signed in, so it's
+wiped via the same `mergeRemote([])` path used for real remote merges (no
+undo command, same rationale as `mergeRemote` itself), and the cursor/
+fingerprints reset to zero so the next pull fetches that account's data from
+scratch instead of skipping anything older than the previous account's
+cursor. Deliberately does *not* wipe when no owner was recorded yet (a fresh
+install, or local-only tasks made before ever signing in) — that's the
+existing, intended "sign in and fold my local data into my account" path,
+not the bug. Deliberately does *not* clear `META_SYNC_ACCOUNT_ID` on
+`signOut()` either — it has to survive the signed-out gap, or the very next
+sign-in (same account or different) would look like a fresh device and skip
+the check it exists for.
+
+**A deletion made right before closing the tab could silently never reach
+the server — the remote push had no unload safety net, only the local
+IndexedDB write did.** Found from a user report: delete everything, close
+the tab/window quickly, sign in again elsewhere, and the "deleted" tasks are
+back. Root cause: `stores/tasks.ts`'s local write is immediate (no debounce)
+*and* `main.ts` already flushes it on `pagehide`/`visibilitychange`-hidden to
+close the async IndexedDB window — but the *remote* push in `stores/sync.ts`
+is deliberately debounced by `PUSH_DEBOUNCE_MS` (3s, so a burst of edits only
+pushes once), and nothing forced that pending push out before the page
+disappeared. `onReconnectOrFocus` is bound to `visibilitychange` too, but it
+explicitly *skips* when the page is hiding (`if (document.visibilityState ===
+'hidden') return`) — it exists for the opposite case, coming back. So "edit
+(including delete), close the tab within 3s" could leave the change sitting
+in a `setTimeout` that never fires: local IndexedDB already reflects the
+delete, the server's row is still live, and the next device (or the same
+device signing in fresh) pulls that still-live row right back down. Not a
+merge-logic bug — the deletion never left the browser.
+
+Fixed with `stores/sync.ts`'s `flushPendingPush()`: if a push is currently
+debounced (`pushTimer` set), cancel the timer and run `syncOnce()`
+immediately instead of waiting; a no-op (no network call) when nothing is
+pending. `main.ts` calls it alongside the existing `store.flush()` in both
+the `pagehide` and `visibilitychange`-hidden handlers — same best-effort
+caveat as the local flush (the browser can still kill the tab before the
+`fetch` resolves), but it closes the same window the local write already
+gets protection for.
+
+**Found while writing that fix's regression test, not by inspection: the
+sync engine had a self-sustaining ~3-second loop that bypassed
+`PULL_INTERVAL_MS` entirely.** The test asserted "right after a sync round
+settles, there's no pending push" and it kept failing — a `pushTimer` was
+always armed. Cause: `syncOneTable` called `applyMerge(merge.merged)`
+*unconditionally*, even when the remote side had nothing new
+(`merge.remoteWon`/`merge.removedIds` both empty). `mergeByUpdatedAt` always
+returns a fresh array (`[...byId.values()]`), so even a no-op round replaced
+`tasks.items`/`collections.*` with a new-but-identical-content array —
+which the `watch([...], ..., { deep: true })` in `start()` that arms
+`pushTimer` can't tell apart from a real local edit, since it only sees "the
+source changed." That queued another `syncOnce()` `PUSH_DEBOUNCE_MS` later,
+which (still nothing to merge) did the same thing again — forever, every
+~3 seconds, for as long as the tab stayed open and signed in, instead of the
+intended 30-second `PULL_INTERVAL_MS` cadence. Silent (no error, correct
+data), just constant unnecessary API traffic. Fixed by only calling
+`applyMerge` when there's actually something to apply
+(`merge.remoteWon.length > 0 || merge.removedIds.length > 0`) — the common
+steady-state round (nothing changed on the server) now touches no reactive
+state at all, so it can't retrigger the push watcher or `tasks.ts`'s own
+IndexedDB-flush watcher either.
+
+**A third real bug, reported live: a batch that both changed and deleted
+rows in the same table failed every single time with PostgREST's `PGRST102
+All object keys must match`.** `sync/tableSync.ts`'s `pushTable` used to
+build one combined array — `[...diff.upserts.map(binding.toRemote),
+...diff.deletes.map(makeTombstone)]` — and POST it as a single batch upsert.
+`toRemoteTask`/etc. always return the row's full column set (a dozen-plus
+keys); `makeTombstone` returns only `{ id, deleted_at, updated_at }`. Mixing
+both shapes in one PostgREST bulk-upsert array is invalid — it requires
+every object in the array to carry the same keys — so any sync round whose
+diff happened to contain *both* a changed/new row *and* a deleted row in the
+same table (ordinary usage: edit one task and delete another inside the same
+debounce window) got the whole batch rejected. Worse than a one-off failure:
+the throw happens before the fingerprint advances, so the next round
+recomputes the *identical* diff against the *same* stale fingerprint and
+fails the same way — permanently stuck until some unrelated edit happened to
+change the diff's shape, during which neither the edit nor the delete ever
+reached the server. This is a second, independent way the "deleted item
+comes back" symptom above could happen, on top of the missed-debounce-window
+one. Fixed by sending upserts and tombstones as two separate requests
+(`pushTable` now calls `upsertRows` up to twice) — each request is
+internally uniform, and the two id sets are disjoint by construction (an id
+in this round's `nextFingerprint` can't also be in `deletes`), so there's no
+ordering concern between them.
+
+**Sync errors were showing the user raw backend detail — table names, HTTP
+status codes, PostgREST's JSON error body — with no translation layer,
+unlike auth errors.** `stores/auth.ts`'s `describeError()` already existed
+specifically to keep Supabase/SMTP implementation detail out of user-facing
+text (see its own comment); `stores/sync.ts`'s `syncError.value = error
+instanceof Error ? error.message : String(error)` never got the same
+treatment, so `AccountDialog.vue` and `AppSidebar.vue`'s tooltip both
+rendered whatever `SyncHttpError`'s message happened to contain verbatim —
+including the PGRST102 payload above, which is exactly what surfaced this.
+Fixed with an equivalent `describeSyncError()`: a `TypeError` (what a failed
+`fetch` itself throws — offline, DNS, CORS) gets "目前連不上網路，恢復連線後會自動重試"; a
+`SyncHttpError` (the server responded, just not successfully) gets "伺服器暫時無法處理，稍後會自動重試";
+anything else falls back to a generic "發生未預期的問題，稍後會自動重試". All three are honest, not
+placating — the interval/reconnect/focus triggers really do retry
+automatically, so "will retry" isn't a hollow promise. The technical detail
+isn't discarded, just relocated: `console.error('[sync] 同步失敗', error)` runs
+before the friendly string is set, so it's still one DevTools console open
+away for whoever's debugging.
 
 `domain/filterQuery.ts` is a small recursive-descent parser producing an AST,
 plus an evaluator. Parse errors are **returned**, never swallowed: a query with
@@ -246,3 +585,33 @@ dialog. `Ctrl`/`Cmd`+`Z` and the toast's "復原" button both call
 - CI (`.github/workflows/ci.yml`) runs typecheck/lint (`--max-warnings 0`)/unit
   tests/build in one job and E2E in a separate job; `deploy.yml` re-runs
   typecheck/test/build before publishing `master` to Pages.
+- **Sync tests never hit real Supabase.** `sync/restClient.spec.ts` and
+  `sync/tableSync.spec.ts` mock `globalThis.fetch`; `stores/auth.spec.ts` and
+  `components/AccountDialog.spec.ts` `vi.mock('@/sync/authClient', ...)`
+  wholesale (it's dynamically imported, which `vi.mock` intercepts
+  transparently) plus `vi.mock('@/sync/config', () => ({ isSyncConfigured: true }))`
+  since the default test env has no `VITE_SUPABASE_URL`. `e2e/account.spec.ts`
+  intercepts the real GoTrue endpoints with `page.route` (`/auth/v1/otp`,
+  `/verify`, `/logout` — miss one and the awaited call just hangs against a
+  fake host until the test times out) — `playwright.config.ts`'s `webServer.env`
+  sets fake-but-well-formed Supabase values so the gated UI has something to
+  test at all, never a real project.
+- **Three gotchas hit while writing these tests, worth not re-discovering:**
+  happy-dom does not dispatch a native `submit` event when a
+  `<button type="submit">` inside a `<form>` is clicked (real browsers do) —
+  component tests must `find('form').trigger('submit')` directly, then
+  `await flushPromises()` from `@vue/test-utils` since Vue doesn't await a
+  `@submit.prevent` handler's returned promise. `vi.useFakeTimers()`
+  combined with `fake-indexeddb` hangs indefinitely if IndexedDB calls happen
+  while fake timers are active — `stores/sync.spec.ts` only switches to
+  `vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })`
+  *after* an IndexedDB-touching `start()` has fully settled under real timers.
+  And Vitest (via Vite's `loadEnv`) reads a developer's real `.env.local` by
+  default — once anyone configures a real Supabase project for `pnpm dev`,
+  every unit test would see `isSyncConfigured: true` unless overridden,
+  making "not configured" tests pass or fail based on whose machine runs them
+  rather than what the code does. `vitest.config.ts` pins
+  `test.env.VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` to `''` explicitly so
+  the unit test baseline is always "not configured" regardless of local
+  `.env.local`; tests that need the configured branch still opt in via
+  `vi.mock('@/sync/config', ...)`.

@@ -9,6 +9,7 @@ import {
   type StoredProject,
   type StoredTag,
 } from '@/db/schema'
+import { findByNormalizedName } from '@/domain/filtering'
 import { nextOrder } from '@/domain/ordering'
 import { useHistoryStore } from './history'
 
@@ -39,12 +40,20 @@ export const useCollectionsStore = defineStore('collections', () => {
 
   // ------------------------------------------------------------- 專案
 
+  /**
+   * 建立前先找同名（忽略大小寫／全形半形）專案——UI 端已經會擋掉這個情形並提示使用者，
+   * 這裡是最後一道防線：即使呼叫端漏擋，也不會因此產生兩個同名專案。
+   * 找到既有的就直接回傳它，不新增、不記錄復原（因為根本沒有變動發生）。
+   */
   function addProject(name: string, color = DEFAULT_PROJECT_COLOR): StoredProject {
+    const existing = findByNormalizedName(projects.value, name)
+    if (existing) return existing
     const project: StoredProject = {
       id: crypto.randomUUID(),
       name,
       color,
       order: nextOrder(projects.value),
+      updatedAt: Date.now(),
     }
     projects.value.push(project)
     history.record({
@@ -64,7 +73,7 @@ export const useCollectionsStore = defineStore('collections', () => {
     const index = projects.value.findIndex((p) => p.id === id)
     if (index === -1) return
     const before = { ...(projects.value[index] as StoredProject) }
-    const after = { ...before, ...patch }
+    const after = { ...before, ...patch, updatedAt: Date.now() }
     projects.value[index] = after
     history.record({
       label: `修改專案「${before.name}」`,
@@ -96,8 +105,11 @@ export const useCollectionsStore = defineStore('collections', () => {
 
   // ------------------------------------------------------------- 標籤
 
+  /** 同 addProject：先找同名標籤，找到就重用既有的，不建立重複項目。 */
   function addTag(name: string, color = DEFAULT_TAG_COLOR): StoredTag {
-    const tag: StoredTag = { id: crypto.randomUUID(), name, color }
+    const existingTag = findByNormalizedName(tags.value, name)
+    if (existingTag) return existingTag
+    const tag: StoredTag = { id: crypto.randomUUID(), name, color, updatedAt: Date.now() }
     tags.value.push(tag)
     history.record({
       label: `新增標籤「${name}」`,
@@ -112,7 +124,7 @@ export const useCollectionsStore = defineStore('collections', () => {
     const index = tags.value.findIndex((t) => t.id === id)
     if (index === -1) return
     const before = { ...(tags.value[index] as StoredTag) }
-    const after = { ...before, ...patch }
+    const after = { ...before, ...patch, updatedAt: Date.now() }
     tags.value[index] = after
     history.record({
       label: `修改標籤「${before.name}」`,
@@ -153,6 +165,7 @@ export const useCollectionsStore = defineStore('collections', () => {
       query,
       color,
       order: nextOrder(filters.value),
+      updatedAt: Date.now(),
     }
     filters.value.push(filter)
     history.record({
@@ -171,7 +184,7 @@ export const useCollectionsStore = defineStore('collections', () => {
     const index = filters.value.findIndex((f) => f.id === id)
     if (index === -1) return
     const before = { ...(filters.value[index] as StoredFilter) }
-    const after = { ...before, ...patch }
+    const after = { ...before, ...patch, updatedAt: Date.now() }
     filters.value[index] = after
     history.record({
       label: `修改篩選器「${before.name}」`,
@@ -243,6 +256,20 @@ export const useCollectionsStore = defineStore('collections', () => {
     filters.value = merge(filters.value, data.filters)
   }
 
+  /**
+   * 套用跨裝置同步的合併結果，三份一起換掉。
+   * 同樣不經過 history.record，理由跟 stores/tasks.ts 的 mergeRemote 一致。
+   */
+  function mergeRemote(data: {
+    projects: readonly StoredProject[]
+    tags: readonly StoredTag[]
+    filters: readonly StoredFilter[]
+  }): void {
+    projects.value = [...data.projects]
+    tags.value = [...data.tags]
+    filters.value = [...data.filters]
+  }
+
   return {
     projects,
     tags,
@@ -250,6 +277,7 @@ export const useCollectionsStore = defineStore('collections', () => {
     snapshot,
     restoreSnapshot,
     applyImport,
+    mergeRemote,
     addFilter,
     updateFilter,
     removeFilter,
