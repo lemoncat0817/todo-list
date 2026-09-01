@@ -156,10 +156,24 @@ export const useAuthStore = defineStore('auth', () => {
   }
 })
 
-/** AuthError 的訊息通常是英文技術字串；只挑常見情境轉成中文，其餘原樣顯示總比空白好。 */
+/**
+ * AuthError 的訊息通常是英文技術字串；只挑常見情境轉成中文，其餘原樣顯示總比空白好。
+ *
+ * GoTrue 的「請求太頻繁」其實是兩種完全不同的限制疊在一起，訊息文字都含
+ * "rate limit"，但等待時間差非常多——不分清楚會誤導使用者：
+ * - `over_request_rate_limit`：同一信箱的請求節流，預設約 60 秒，等一下就好。
+ * - `over_email_send_rate_limit`：Supabase 免費方案「內建、沒接自訂 SMTP」
+ *   的共用測試信件額度，低到大概每小時個位數，撞到了等一分鐘完全沒用，
+ *   要嘛等到額度重置、要嘛接自訂 SMTP。
+ * `authError.code` 是 GoTrue 明確吐出來的錯誤代碼，比對訊息字串準確，優先用它；
+ * 訊息比對留著當沒有 code（例如比較舊版本、或其他沒建模到的錯誤）時的備援。
+ */
 function describeError(authError: AuthError | null): string {
   if (!authError) return '驗證碼不正確或已過期，請重新申請'
-  if (authError.message.toLowerCase().includes('rate limit')) {
+  if (authError.code === 'over_email_send_rate_limit') {
+    return '這個 Supabase 專案內建的測試信件額度用完了（免費方案預設每小時只能寄幾封）。等一分鐘沒有用——要嘛等額度重置，要嘛改接自訂 SMTP'
+  }
+  if (authError.code === 'over_request_rate_limit' || authError.message.toLowerCase().includes('rate limit')) {
     return '請求太頻繁，請稍等一分鐘再試'
   }
   return authError.message

@@ -43,8 +43,8 @@ function fakeSession(email = 'me@example.com'): Session {
   } as unknown as Session
 }
 
-function fakeAuthError(message: string): AuthError {
-  return { name: 'AuthApiError', message, status: 400 } as AuthError
+function fakeAuthError(message: string, code?: string): AuthError {
+  return { name: 'AuthApiError', message, status: 400, code } as AuthError
 }
 
 beforeEach(() => {
@@ -66,7 +66,7 @@ describe('requestMagicLink', () => {
   })
 
   it('失敗時回到 signed-out 並記錄錯誤訊息', async () => {
-    authClientMock.requestOtp.mockResolvedValue(fakeAuthError('rate limit exceeded'))
+    authClientMock.requestOtp.mockResolvedValue(fakeAuthError('rate limit exceeded', 'over_request_rate_limit'))
     const auth = setup()
 
     const ok = await auth.requestMagicLink('me@example.com')
@@ -74,6 +74,21 @@ describe('requestMagicLink', () => {
     expect(ok).toBe(false)
     expect(auth.status).toBe('signed-out')
     expect(auth.error).toContain('太頻繁')
+  })
+
+  it('信件額度用完（不是請求節流）時顯示不同的錯誤訊息，不會誤導成「等一分鐘就好」', async () => {
+    // 這兩個是 GoTrue 明確區分的不同錯誤代碼：over_request_rate_limit 是
+    // 短暫節流（~60 秒），over_email_send_rate_limit 是 Supabase 免費方案
+    // 內建信件服務的低額度（每小時個位數），等一分鐘完全沒用——訊息字串
+    // 都含 "rate limit"，只能靠 code 分辨，見 stores/auth.ts 的 describeError。
+    authClientMock.requestOtp.mockResolvedValue(fakeAuthError('Email rate limit exceeded', 'over_email_send_rate_limit'))
+    const auth = setup()
+
+    const ok = await auth.requestMagicLink('me@example.com')
+
+    expect(ok).toBe(false)
+    expect(auth.error).not.toContain('太頻繁')
+    expect(auth.error).toContain('額度')
   })
 
   it('寄出後就已經訂閱狀態變化，不用等使用者自己貼碼——Supabase 預設信件範本寄的是連結不是驗證碼，使用者常常是在另一個分頁點連結完成登入，這個分頁要能收到跨分頁廣播', async () => {
