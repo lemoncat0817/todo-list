@@ -18,22 +18,22 @@ export default defineConfigWithVueTs(
   pluginVue.configs['flat/recommended'],
   vueTsConfigs.recommended,
 
-  // 無障礙靜態檢查。Phase 6 會把這些從警告收斂成零違規，
-  // 現階段先讓它可見而不擋建置。
+  // 無障礙靜態檢查。目前先讓它以警告可見，暫不擋建置；
+  // 待逐步修正到零違規後，下方 app/a11y-pending 覆寫區塊即可整段刪除。
   ...pluginA11y.configs['flat/recommended'],
 
   {
     name: 'app/rules',
     rules: {
-      // 元件檔名沿用專案既有的 camelCase（todoHeader.vue），不在此階段重新命名。
+      // 元件檔名沿用專案既有的 camelCase（todoHeader.vue），暫不重新命名。
       'vue/multi-word-component-names': 'off',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
 
-      // 純排版規則：現有樣板全部觸發。Phase 2 的界線是「零行為變更、零視覺變更」，
-      // 大規模重排不屬於本階段；Phase 6 會重寫整份樣板，屆時再開回來。
+      // 純排版規則：現有樣板全部觸發，目標是零行為變更、零視覺變更，
+      // 因此暫不做大規模重排；日後若重寫樣板，屆時再開回來。
       'vue/html-indent': 'off',
       'vue/max-attributes-per-line': 'off',
       'vue/first-attribute-linebreak': 'off',
@@ -51,10 +51,10 @@ export default defineConfigWithVueTs(
     },
   },
   {
-    name: 'app/a11y-pending-phase-6',
+    name: 'app/a11y-pending',
     // 這三條精準命中稽核報告的 P6（分頁標籤是 div，鍵盤不可操作）與
     // P7（checkbox 無可及名稱）—— lint 獨立證實了人工稽核的結論。
-    // Phase 6 修正後把這一段整個刪掉，讓它們回到 error。
+    // 修正後把這一段整個刪掉，讓它們回到 error。
     rules: {
       'vuejs-accessibility/click-events-have-key-events': 'warn',
       'vuejs-accessibility/no-static-element-interactions': 'warn',
