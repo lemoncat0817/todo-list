@@ -27,10 +27,18 @@ export function isTombstone(row: { deleted_at?: unknown }): boolean {
   return typeof row.deleted_at === 'number'
 }
 
-/** 回傳型別是 Record<string, unknown> 而非 Tombstone——這樣才能跟 toRemote*
- *  的回傳型別一起放進同一個要送出去的陣列，不必額外轉型。 */
+/**
+ * 回傳型別是 Record<string, unknown> 而非 Tombstone——這樣才能跟 toRemote*
+ * 的回傳型別一起放進同一個要送出去的陣列，不必額外轉型。
+ *
+ * 一定要帶 updated_at：pull 走的是 `updated_at > 游標` 這個查詢
+ * （sync/restClient.ts 的 fetchRowsSince），墓碑要是沒有一個夠新的
+ * updated_at，別的裝置的游標永遠會落在它後面，這筆刪除就永遠拉不到、
+ * 那台裝置會一直以為這筆資料還在——實測發現的，不是憑空補的欄位。
+ */
 export function makeTombstone(id: string): Record<string, unknown> {
-  return { id, deleted_at: Date.now() }
+  const now = Date.now()
+  return { id, deleted_at: now, updated_at: now }
 }
 
 // ------------------------------------------------------------------ tasks
