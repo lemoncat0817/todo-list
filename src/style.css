@@ -183,6 +183,60 @@
     text-wrap: pretty;
   }
 
+  /*
+   * 完成任務的核取方塊打勾時回彈一下，給「完成」這個最常用的動作一點手感回饋，
+   * 不然使用者只看到文字瞬間變成刪除線，容易懷疑自己是不是真的按到了。
+   * 只做 transform，不動版面也不影響觸控目標大小；
+   * 減少動態偏好由上面的全域規則統一蓋掉 transition-duration，這裡不用另外判斷。
+   */
+  .task-complete-checkbox {
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .task-complete-checkbox:checked {
+    transform: scale(1.15);
+  }
+
+  /*
+   * 輕量提示文字：原生 title 屬性的出現延遲由瀏覽器／作業系統決定，
+   * 通常要 hover 住半秒以上才會跳出來，且無法調整。這裡改用純 CSS 的
+   * 懸浮提示（用 data-tooltip 而不是 title，避免瀏覽器把兩顆一起顯示），
+   * 延遲縮到 150ms，且鍵盤 Tab 到按鈕（:focus-visible）也會出現，
+   * 不是只有滑鼠使用者看得到。不用元件庫實作，跟 DueDateMenu 手刻選單
+   * 是同一套精神：一個偽元素就解決，犯不著為此多引一個依賴。
+   *
+   * 往下（而不是往上）冒出來是刻意的：任務清單本身是 overflow-y-auto
+   * 的捲動容器，往上冒的提示框在清單第一列會直接被容器頂端裁掉一截
+   * （實測發現，不是猜的）——這是 CSS-only 提示的物理限制：偽元素還是
+   * 祖先 overflow 裁切範圍內的後代，沒有 JS 算座標、Teleport 出裁切容器
+   * 就跳不出去。往下冒出來，是因為按鈕都在卡片上緣，下方永遠有這張卡片
+   * 自己的高度當緩衝，不會遇到同樣的問題。
+   */
+  [data-tooltip] {
+    position: relative;
+  }
+  [data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 0.375rem);
+    left: 50%;
+    z-index: 20;
+    transform: translateX(-50%);
+    border-radius: var(--radius-sm);
+    background-color: var(--color-ink);
+    padding: 0.25rem 0.5rem;
+    color: var(--color-surface);
+    font-size: 0.75rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.1s ease 0.15s;
+  }
+  [data-tooltip]:hover::after,
+  [data-tooltip]:focus-visible::after {
+    opacity: 1;
+  }
+
   /* 尊重減少動態偏好——這是無障礙要求，不是可選項 */
   @media (prefers-reduced-motion: reduce) {
     *,

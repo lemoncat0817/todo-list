@@ -1,6 +1,6 @@
 <template>
   <div ref="rootEl" class="relative">
-    <button type="button" :aria-label="`排程「${taskName}」`" aria-haspopup="menu"
+    <button type="button" :aria-label="`排程「${taskName}」`" data-tooltip="排程" aria-haspopup="menu"
       :aria-expanded="open"
       class="grid size-7 place-items-center rounded text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
       @click="open = !open">
