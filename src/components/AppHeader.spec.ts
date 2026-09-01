@@ -7,7 +7,6 @@ import {
   freshPinia,
   mountWith,
   stubDialogs,
-  makeTask,
   at,
   asInput,
   testRouter,
@@ -183,59 +182,6 @@ describe('AppHeader.vue', () => {
       await textInput(w).setValue('明天 交報告')
       await addButton(w).trigger('click')
       expect(at(store.items, 1).dueDate, '打了明天就以明天為準').toBe(addDays(today(), 1))
-    })
-  })
-
-  describe('isAll 全選 computed（AppHeader.vue:53-58, 108-113）', () => {
-    const checkbox = (w: Wrapper) => w.find('input[type="checkbox"]')
-
-    it('全部完成時為已勾選', () => {
-      store.items = [makeTask('a', true), makeTask('b', true)]
-      const w = mountWith(AppHeader, pinia, { router })
-      expect(asInput(checkbox(w)).checked).toBe(true)
-    })
-
-    it('有任一未完成時為未勾選', () => {
-      store.items = [makeTask('a', true), makeTask('b', false)]
-      const w = mountWith(AppHeader, pinia, { router })
-      expect(asInput(checkbox(w)).checked).toBe(false)
-    })
-
-    it('勾選時將全部標記為完成', async () => {
-      store.items = [makeTask('a', false), makeTask('b', false)]
-      const w = mountWith(AppHeader, pinia, { router })
-      await checkbox(w).setValue(true)
-      expect(store.items.every((t) => t.isCompleted)).toBe(true)
-    })
-
-    it('取消勾選時將全部標記為未完成', async () => {
-      store.items = [makeTask('a', true), makeTask('b', true)]
-      const w = mountWith(AppHeader, pinia, { router })
-      await checkbox(w).setValue(false)
-      expect(store.items.every((t) => !t.isCompleted)).toBe(true)
-    })
-
-    it('清單為空時全選框不顯示為已勾選（稽核 P13 已修正）', () => {
-      const w = mountWith(AppHeader, pinia, { router })
-      expect(store.items).toHaveLength(0)
-      // [].every() 依規範回傳 true，所以要額外檢查長度，否則空清單會顯示為全部完成
-      expect(checkbox(w).exists(), '空清單時整個全選框不渲染').toBe(false)
-    })
-
-    it('有項目時才渲染全選框，不再用 invisible 留一個看不見的控制項', () => {
-      expect(mountWith(AppHeader, pinia, { router }).find('input[type="checkbox"]').exists()).toBe(false)
-      store.items = [makeTask('a', false)]
-      expect(mountWith(AppHeader, pinia, { router }).find('input[type="checkbox"]').exists()).toBe(true)
-    })
-
-    it('搜尋中隱藏全選框：它作用在全部任務，不是眼前的篩選結果，避免誤觸', async () => {
-      store.items = [makeTask('a', false)]
-      const w = mountWith(AppHeader, pinia, { router })
-      expect(w.find('input[type="checkbox"]').exists()).toBe(true)
-
-      ui.isSearch = true
-      await w.vm.$nextTick()
-      expect(w.find('input[type="checkbox"]').exists()).toBe(false)
     })
   })
 

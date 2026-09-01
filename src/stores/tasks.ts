@@ -388,22 +388,6 @@ export const useTasksStore = defineStore('tasks', () => {
     })
   }
 
-  function setAllCompleted(value: boolean): void {
-    const before = items.value.map((t) => ({ ...t }))
-    const now = Date.now()
-    for (const task of items.value) {
-      task.isCompleted = value
-      task.completedAt = value ? now : null
-      task.updatedAt = now
-    }
-    history.record({
-      label: value ? '全部標記為完成' : '全部取消完成',
-      undo: () => {
-        items.value = before
-      },
-    })
-  }
-
   /** 拖曳／鍵盤排序：把 id 移到 targetId 之前或之後。 */
   function move(id: string, targetId: string, position: 'before' | 'after'): void {
     const moving = items.value.find((t) => t.id === id)
@@ -512,6 +496,45 @@ export const useTasksStore = defineStore('tasks', () => {
       redo: drop,
     })
     return removed.length
+  }
+
+  /**
+   * 批次完成／取消完成。取代舊的「全部標記為完成」——那顆按鈕動的是
+   * 全部任務（不分專案、不分視圖），跟使用者當下看到的畫面對不上；
+   * 這裡改成跟其他批次操作一樣，只作用在使用者親自選取的幾筆。
+   *
+   * 完成邏輯與單筆 toggle() 一致：有重複規則且未完成的任務，完成時是推進到
+   * 下一次發生日、保持未完成，不是直接標記完成——重複任務的語意不能因為
+   * 走的是批次路徑就不一樣。取消完成則單純，不涉及推進日期。
+   * 跟 batchUpdate 一樣整批只推一個 undo command。
+   */
+  function batchComplete(ids: readonly string[], value: boolean): number {
+    const targets = new Set(ids)
+    const before = items.value.filter((t) => targets.has(t.id)).map((t) => ({ ...t }))
+    if (before.length === 0) return 0
+
+    const now = Date.now()
+    items.value = items.value.map((t) => {
+      if (!targets.has(t.id)) return t
+      if (value && !t.isCompleted && t.recurrence && t.dueDate) {
+        const next = nextOccurrence(t.recurrence, t.dueDate)
+        if (next !== null) return { ...t, dueDate: next, updatedAt: now }
+      }
+      return { ...t, isCompleted: value, completedAt: value ? now : null, updatedAt: now }
+    })
+    const after = items.value.filter((t) => targets.has(t.id)).map((t) => ({ ...t }))
+
+    const restore = (snapshot: StoredTask[]) => () => {
+      const byId = new Map(snapshot.map((t) => [t.id, t]))
+      items.value = items.value.map((t) => byId.get(t.id) ?? t)
+    }
+
+    history.record({
+      label: `${value ? '標記完成' : '取消完成'}（${before.length} 項）`,
+      undo: restore(before),
+      redo: restore(after),
+    })
+    return before.length
   }
 
   /** 批次改期。與單筆 reschedule 一致：清掉日期時一併清掉時間。 */
@@ -656,12 +679,12 @@ export const useTasksStore = defineStore('tasks', () => {
     remove,
     clearCompleted,
     toggle,
-    setAllCompleted,
     move,
     setPriority,
     reschedule,
     batchUpdate,
     batchRemove,
+    batchComplete,
     batchReschedule,
     importBackup,
     mergeRemote,

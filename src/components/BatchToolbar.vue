@@ -4,6 +4,9 @@
     <p class="text-sm font-medium text-accent-ink">已選 {{ count }} 項</p>
 
     <div class="flex flex-wrap items-center gap-1">
+      <button type="button" :class="chipClass" @click="complete(true)">完成</button>
+      <button type="button" :class="chipClass" @click="complete(false)">取消完成</button>
+
       <button v-for="option in dateOptions" :key="option.label" type="button" :class="chipClass"
         @click="reschedule(option.value)">
         {{ option.label }}
@@ -74,6 +77,11 @@ const dateOptions = computed(() => {
 
 function done(): void {
   ui.clearSelection()
+}
+
+function complete(value: boolean): void {
+  tasks.batchComplete(ui.selectedIds, value)
+  done()
 }
 
 function reschedule(value: string | null): void {

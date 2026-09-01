@@ -176,17 +176,64 @@ describe('todoTask store', () => {
 
       expect((await db.loadTasks()).map((t) => t.id)).toEqual(['keep'])
     })
+  })
 
-    it('全選 / 全取消一次改動所有項目', async () => {
+  describe('batchComplete', () => {
+    it('只改動被選中的項目，其餘不受影響', async () => {
       const store = setup()
       await store.init()
-      store.items = [makeTask('a', false, { order: 0 }), makeTask('b', false, { order: 1 })]
+      store.items = [
+        makeTask('a', false, { id: 'a', order: 0 }),
+        makeTask('b', false, { id: 'b', order: 1 }),
+      ]
 
-      store.setAllCompleted(true)
-      expect(store.items.every((t) => t.isCompleted)).toBe(true)
+      store.batchComplete(['a'], true)
+      expect(store.items.find((t) => t.id === 'a')?.isCompleted).toBe(true)
+      expect(store.items.find((t) => t.id === 'b')?.isCompleted).toBe(false)
 
-      store.setAllCompleted(false)
+      store.batchComplete(['a'], false)
+      expect(store.items.find((t) => t.id === 'a')?.isCompleted).toBe(false)
+    })
+
+    it('一次批次操作只推一筆復原紀錄', async () => {
+      const store = setup()
+      const history = useHistoryStore()
+      await store.init()
+      store.items = [
+        makeTask('a', false, { id: 'a', order: 0 }),
+        makeTask('b', false, { id: 'b', order: 1 }),
+      ]
+
+      store.batchComplete(['a', 'b'], true)
+      expect(history.depth).toBe(1)
+
+      await history.undo()
       expect(store.items.every((t) => !t.isCompleted)).toBe(true)
+    })
+
+    it('有重複規則的任務完成時推進到下一次，而不是直接標記完成', async () => {
+      const store = setup()
+      await store.init()
+      store.items = [
+        makeTask('每日任務', false, {
+          id: 'r',
+          order: 0,
+          dueDate: '2026-01-01',
+          recurrence: {
+            freq: 'daily',
+            interval: 1,
+            byDay: [],
+            byMonthDay: null,
+            until: null,
+            count: null,
+          },
+        }),
+      ]
+
+      store.batchComplete(['r'], true)
+      const task = store.items.find((t) => t.id === 'r')
+      expect(task?.isCompleted).toBe(false)
+      expect(task?.dueDate).toBe('2026-01-02')
     })
   })
 
