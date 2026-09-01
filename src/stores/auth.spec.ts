@@ -88,7 +88,10 @@ describe('requestMagicLink', () => {
 
     expect(ok).toBe(false)
     expect(auth.error).not.toContain('太頻繁')
-    expect(auth.error).toContain('額度')
+    expect(auth.error).toContain('一小時')
+    // 兩句錯誤訊息都不該提到背後接的是什麼服務——使用者不需要知道這個
+    expect(auth.error?.toLowerCase()).not.toContain('smtp')
+    expect(auth.error).not.toContain('Supabase')
   })
 
   it('寄出後就已經訂閱狀態變化，不用等使用者自己貼碼——Supabase 預設信件範本寄的是連結不是驗證碼，使用者常常是在另一個分頁點連結完成登入，這個分頁要能收到跨分頁廣播', async () => {
