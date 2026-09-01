@@ -22,7 +22,14 @@ const store = useTasksStore()
 void store.init()
 
 /**
- * 還原既有的登入狀態，還原成功才啟動同步。
+ * 還原既有的登入狀態；同步引擎什麼時候該啟動由 stores/sync.ts 自己
+ * watch auth.status 決定，這裡不需要、也不該手動呼叫 start()——手動呼叫
+ * 只涵蓋得到「這個分頁自己完成登入」的情況，涵蓋不到跨分頁的情況
+ * （例如使用者點的是信件裡的連結，登入在另一個分頁完成，透過
+ * stores/auth.ts 的跨分頁廣播反映回這個分頁）。
+ *
+ * 這裡先呼叫一次 useSyncStore()，只是要讓它的 watcher 在 restore() 的
+ * 非同步結果回來之前就已經掛上去，不需要在意呼叫順序。
  *
  * auth.restore() 內部會先檢查有沒有 `todoTask:auth` 這把 localStorage key，
  * 沒有登入過的使用者不會觸發任何 import()，也不會打任何 API——
@@ -30,11 +37,8 @@ void store.init()
  * 沒有接 Supabase 的人連 restore() 都不用呼叫。
  */
 if (isSyncConfigured) {
-  void useAuthStore()
-    .restore()
-    .then(() => {
-      if (useAuthStore().status === 'signed-in') void useSyncStore().start()
-    })
+  useSyncStore()
+  void useAuthStore().restore()
 }
 
 /**

@@ -147,6 +147,40 @@ describe('已登入時', () => {
   })
 })
 
+describe('auth.status 驅動 start／stop', () => {
+  /**
+   * start()／stop() 不再由呼叫端（main.ts、AccountDialog.vue）手動呼叫，
+   * 而是這個 store 自己 watch auth.status——這樣不管登入是在哪個分頁、
+   * 用哪種方式（信箱連結、跨分頁廣播、OAuth、開機還原）完成的都涵蓋得到，
+   * 不會漏掉「登入完成，但沒有任何程式碼記得呼叫 start()」的情況。
+   */
+  it('auth.status 變成 signed-in 時自動開始同步，不需要手動呼叫 start()', async () => {
+    const { sync, auth, tasks } = setup()
+    tasks.isLoading = false
+    mockFetch()
+
+    expect(sync.enabled, '一開始沒登入，不該自動啟動').toBe(false)
+
+    auth.session = fakeSession()
+    auth.status = 'signed-in'
+    await vi.waitFor(() => expect(sync.enabled).toBe(true))
+  })
+
+  it('auth.status 變回 signed-out 時自動停止，不需要手動呼叫 stop()', async () => {
+    const { sync, auth, tasks } = setup()
+    tasks.isLoading = false
+    mockFetch()
+
+    auth.session = fakeSession()
+    auth.status = 'signed-in'
+    await vi.waitFor(() => expect(sync.enabled).toBe(true))
+
+    auth.session = null
+    auth.status = 'signed-out'
+    await vi.waitFor(() => expect(sync.enabled).toBe(false))
+  })
+})
+
 describe('觸發時機', () => {
   /**
    * 只讓 setTimeout／setInterval 變成假的，不動到 Date 或微任務排程——

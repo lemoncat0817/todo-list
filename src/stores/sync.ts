@@ -90,6 +90,15 @@ const filterBinding: TableBinding<StoredFilter> = {
  * 跟 tasks.ts 自己 watch 本地狀態去寫 IndexedDB 是同一個模式，只是這裡
  * 寫的目的地是遠端。這樣沒有帳號的使用者，tasks.ts／collections.ts
  * 一行都不用因為同步而改變。
+ *
+ * start()／stop() 由這裡自己 watch auth.status 觸發，不是靠呼叫端
+ * （main.ts、AccountDialog.vue）各自記得在對的時機呼叫——那曾經是一個真實
+ * 的漏洞：登入如果不是在「按下驗證按鈕」這個分頁完成的（例如使用者點了
+ * 信件裡的連結，在另一個分頁登入，透過 stores/auth.ts 的跨分頁廣播反映
+ * 回這個分頁），auth.status 會正確變成 signed-in，但沒有任何程式碼記得
+ * 在這個分頁呼叫 sync.start()，同步引擎就永遠不會啟動。改成單一個 watch，
+ * 不管登入是在哪個分頁、用哪種方式（信箱驗證碼、magic link、OAuth、
+ * 開機還原）完成的，auth.status 一旦是 signed-in 就自動開始同步。
  */
 export const useSyncStore = defineStore('sync', () => {
   const enabled = ref(false)
@@ -212,7 +221,10 @@ export const useSyncStore = defineStore('sync', () => {
     void syncOnce()
   }
 
-  /** 呼叫端（AccountDialog）在登入成功後呼叫；main.ts 在還原既有 session 成功後也會呼叫。 */
+  /**
+   * 由下面的 auth.status watcher 自動呼叫，不需要（也不該）由元件手動呼叫——
+   * 手動呼叫還留著只是方便測試直接驗證 start() 本身的行為。
+   */
   async function start(): Promise<void> {
     if (enabled.value) return
     enabled.value = true
@@ -254,6 +266,20 @@ export const useSyncStore = defineStore('sync', () => {
     stopWatching?.()
     stopWatching = null
   }
+
+  // 單一個真相來源：不管登入是在哪個分頁、用哪種方式完成的，只要
+  // auth.status 變成 signed-in 就自動開始同步；變成 signed-out（不管是
+  // 使用者主動登出、或 session 過期）就自動停止。immediate: true 是為了
+  // 涵蓋「這個 store 是在已經登入之後才第一次被 useSyncStore() 建立」的
+  // 情況，不必依賴呼叫順序。
+  watch(
+    () => auth.status,
+    (status) => {
+      if (status === 'signed-in') void start()
+      else stop()
+    },
+    { immediate: true },
+  )
 
   return { enabled, syncError, lastPulledAt, start, stop }
 })

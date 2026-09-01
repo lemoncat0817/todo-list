@@ -175,7 +175,7 @@ test('資料與提醒對話框也維持零違規', async ({ page }) => {
   expect(found).toEqual([])
 })
 
-test('帳號與同步對話框（未登入、等待驗證碼兩個狀態）也維持零違規', async ({ page }) => {
+test('帳號與同步對話框（未登入、等待點連結兩個狀態）也維持零違規', async ({ page }) => {
   await seed(page)
   await page.route('**/auth/v1/otp', (route) => route.fulfill({ status: 200, json: {} }))
 
@@ -189,7 +189,7 @@ test('帳號與同步對話框（未登入、等待驗證碼兩個狀態）也�
 
   await dialog.getByLabel('電子郵件').fill('e2e@example.com')
   await dialog.getByRole('button', { name: '寄送驗證碼' }).click()
-  await expect(dialog.getByLabel('六碼驗證碼')).toBeVisible()
+  await expect(dialog).toContainText('去信箱點裡面的連結')
 
   const afterSubmit = await violationsOf(page)
   if (afterSubmit.length) for (const f of afterSubmit) console.log('    ' + f)
