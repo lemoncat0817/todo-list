@@ -58,6 +58,33 @@ describe('pushTable', () => {
     ])
     expect(next.has('a')).toBe(false)
   })
+
+  it('同一輪裡又有變動的列、又有被刪除的列時，兩者分開送出——不能合成一支請求', async () => {
+    // 這一條釘住真實發生過的 PGRST102「All object keys must match」：
+    // binding.toRemote() 回傳的列有完整欄位，makeTombstone() 只有三個
+    // 欄位，混進同一個 JSON 陣列送給 PostgREST 的批次 upsert 會被整批
+    // 拒絕——而且失敗發生在指紋更新之前，下一輪還是同一份 diff，永遠卡死。
+    const fingerprint = new Map([['gone', JSON.stringify({ id: 'gone', name: '舊', updatedAt: 1 })]])
+    const fetchMock = mockFetch([])
+    const row: Row = { id: 'b', name: '變動的', updatedAt: 10 }
+
+    const next = await pushTable(binding, [row], fingerprint, 'token')
+
+    expect(fetchMock, '一個 upsert、一個刪除，該打兩支請求').toHaveBeenCalledTimes(2)
+    const bodies = fetchMock.mock.calls.map(([, options]) => JSON.parse((options as RequestInit).body as string) as Record<string, unknown>[])
+    for (const body of bodies) {
+      const keySets = body.map((row) => Object.keys(row).sort().join(','))
+      expect(keySets.every((k) => k === keySets[0]), '同一支請求裡每個物件的 key 集合要一致').toBe(true)
+    }
+    expect(bodies.flat()).toEqual(
+      expect.arrayContaining([
+        binding.toRemote(row),
+        { id: 'gone', deleted_at: expect.any(Number) as unknown as number, updated_at: expect.any(Number) as unknown as number },
+      ]),
+    )
+    expect(next.get('b')).toBe(JSON.stringify(row))
+    expect(next.has('gone')).toBe(false)
+  })
 })
 
 describe('pullTable', () => {

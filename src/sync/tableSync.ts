@@ -26,6 +26,20 @@ export interface TableBinding<T extends { id: string; updatedAt: number }> {
  * 推送：把本地跟指紋的差異送出去。回傳這次算出的新指紋——
  * 呼叫端要在拉取合併完成後，把拉取贏的列也疊上去才是最終版本，
  * 這裡回傳的只是「推送這一步完成之後」的中繼狀態。
+ *
+ * upsert 的列跟刪除產生的墓碑分兩支請求送，不合成一支——這裡曾經是
+ * 真實的 bug：`binding.toRemote()` 回傳的是每筆任務的完整欄位（十幾個
+ * key），`makeTombstone()` 只回傳 `{ id, deleted_at, updated_at }`
+ * 三個 key。PostgREST 的批次 upsert 是把整個 JSON 陣列組成一支 SQL
+ * INSERT，要求陣列裡每個物件的 key 集合完全一致，兩種形狀混在同一個
+ * 陣列送出去，只要這一輪剛好「同時」有變動的列又有被刪除的列（例如
+ * 同一個防抖視窗內編輯了一筆、又刪除了另一筆——日常操作很容易發生），
+ * 就會被 PostgREST 整批拒絕（`PGRST102 All object keys must match`）。
+ * 更糟的是失敗發生在指紋更新之前，下一輪同步會用同一份指紋算出同一批
+ * 「衝突」的 diff，等於卡死、每輪都用一模一樣的方式失敗，直到使用者
+ * 剛好又做了某個改變 diff 形狀的操作為止。兩支請求各自的物件形狀單一，
+ * 不會有這個問題；兩者操作的 id 集合本來就不相交（`diffAgainstFingerprint`
+ * 裡 upserts 跟 deletes 是互斥的），順序無所謂。
  */
 export async function pushTable<T extends { id: string; updatedAt: number }>(
   binding: TableBinding<T>,
@@ -34,8 +48,8 @@ export async function pushTable<T extends { id: string; updatedAt: number }>(
   accessToken: string,
 ): Promise<Map<string, string>> {
   const diff = diffAgainstFingerprint(local, fingerprint)
-  const payload = [...diff.upserts.map(binding.toRemote), ...diff.deletes.map(makeTombstone)]
-  if (payload.length > 0) await upsertRows(binding.table, payload, accessToken)
+  if (diff.upserts.length > 0) await upsertRows(binding.table, diff.upserts.map(binding.toRemote), accessToken)
+  if (diff.deletes.length > 0) await upsertRows(binding.table, diff.deletes.map(makeTombstone), accessToken)
   return diff.nextFingerprint
 }
 
