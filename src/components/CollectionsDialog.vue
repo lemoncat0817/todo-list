@@ -129,30 +129,69 @@
         </ul>
 
         <div class="flex flex-col gap-2 rounded-lg border border-line p-3">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-xs text-ink-faint">快速填入：</span>
+            <button v-for="preset in FILTER_QUERY_PRESETS" :key="preset.query" type="button"
+              class="rounded-full border border-line px-2.5 py-1 text-xs text-ink-soft transition-colors hover:border-accent hover:text-accent-ink"
+              @click="applyFilterPreset(preset)">
+              {{ preset.label }}
+            </button>
+          </div>
+
           <div class="flex gap-2">
             <label class="sr-only" for="new-filter-name">篩選器名稱</label>
             <input id="new-filter-name" v-model.trim="newFilterName" placeholder="名稱，例如「今天的要事」"
               class="h-9 min-w-0 grow rounded-lg border border-line bg-surface px-2.5 text-[15px] text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none">
           </div>
-          <div class="flex gap-2">
+          <div class="relative flex gap-2">
             <label class="sr-only" for="new-filter-query">篩選條件</label>
-            <input id="new-filter-query" v-model.trim="newFilterQuery" placeholder="today &amp; p1"
+            <input id="new-filter-query" ref="queryInputEl" v-model.trim="newFilterQuery" type="text"
+              role="combobox" aria-autocomplete="list" :aria-expanded="showSuggestions"
+              aria-controls="filter-query-suggestions"
+              :aria-activedescendant="activeSuggestion >= 0 ? `filter-suggestion-${activeSuggestion}` : undefined"
+              placeholder="today &amp; p1" autocomplete="off"
               class="h-9 min-w-0 grow rounded-lg border bg-surface px-2.5 font-mono text-sm text-ink placeholder:text-ink-faint focus:outline-none"
-              :class="queryError === null ? 'border-line focus:border-accent' : 'border-danger'">
+              :class="queryError === null ? 'border-line focus:border-accent' : 'border-danger'"
+              @input="syncQueryCursor" @click="syncQueryCursor" @keyup="syncQueryCursor"
+              @focus="suggestionsOpen = true" @blur="suggestionsOpen = false" @keydown="onQueryKeydown">
             <button type="button"
               class="shrink-0 rounded-lg bg-accent px-3 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
               :disabled="!canCreateFilter" @click="createFilter">
               建立
             </button>
+
+            <!--
+              option 不能自己拿焦點——焦點全程留在輸入框，方向鍵移動、Enter 接受，
+              位置由 aria-activedescendant 告知，跟 CommandPalette 是同一套 combobox 分工。
+              @mousedown.prevent 是關鍵：沒有它，滑鼠按下去輸入框會先 blur、
+              清單在 click 事件觸發前就被 v-if 拿掉，等於點不到。
+            -->
+            <ul v-if="showSuggestions" id="filter-query-suggestions" role="listbox" aria-label="篩選語法建議"
+              class="absolute inset-x-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-lg border border-line bg-surface py-1 shadow-md">
+              <!-- eslint-disable-next-line vuejs-accessibility/click-events-have-key-events, vuejs-accessibility/interactive-supports-focus -->
+              <li v-for="(item, index) in suggestions" :id="`filter-suggestion-${index}`"
+                :key="`${item.kind}:${item.label}`" role="option" :aria-selected="index === activeSuggestion"
+                class="flex cursor-pointer items-center justify-between gap-3 px-3 py-1.5 text-sm"
+                :class="index === activeSuggestion ? 'bg-accent-soft text-accent-ink' : 'text-ink hover:bg-sunken'"
+                @mousedown.prevent="acceptSuggestion(index)" @mousemove="activeSuggestion = index">
+                <span class="truncate font-mono">{{ item.label }}</span>
+                <span v-if="item.hint" class="shrink-0 text-xs text-ink-soft">{{ item.hint }}</span>
+              </li>
+            </ul>
           </div>
 
           <!-- 先說結果再說語法：使用者要的是「這個條件對不對」，不是規格書 -->
           <p v-if="queryError !== null" role="alert" class="text-sm text-danger-ink">
             {{ queryError }}
           </p>
-          <p v-else-if="newFilterQuery !== ''" class="text-sm text-ink-soft">
-            目前符合 {{ matchCount }} 項
-          </p>
+          <template v-else>
+            <p v-if="newFilterQuery !== ''" class="text-sm text-ink-soft">
+              目前符合 {{ matchCount }} 項
+            </p>
+            <p v-if="unresolvedMessage !== null" class="text-sm text-warning-ink">
+              {{ unresolvedMessage }}
+            </p>
+          </template>
           <p class="text-xs text-ink-faint">
             可用：<span class="font-mono">today</span>、<span class="font-mono">overdue</span>、
             <span class="font-mono">upcoming</span>、<span class="font-mono">nodate</span>、
@@ -177,12 +216,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import { COLLECTION_COLORS } from '@/db/schema'
 import { useCollectionsStore } from '@/stores/collections'
 import { useTasksStore } from '@/stores/tasks'
 import { useRoute, useRouter } from 'vue-router'
-import { parseFilterQuery } from '@/domain/filterQuery'
+import {
+  FILTER_QUERY_PRESETS,
+  findUnresolvedNames,
+  parseFilterQuery,
+  suggestFilterTokens,
+} from '@/domain/filterQuery'
 import { findByNormalizedName } from '@/domain/filtering'
 
 /**
@@ -203,10 +247,14 @@ const route = useRoute()
 const router = useRouter()
 
 const dialogEl = useTemplateRef<HTMLDialogElement>('dialogEl')
+const queryInputEl = useTemplateRef<HTMLInputElement>('queryInputEl')
 const newProjectName = ref('')
 const newTagName = ref('')
 const newFilterName = ref('')
 const newFilterQuery = ref('')
+const queryCursor = ref(0)
+const activeSuggestion = ref(-1)
+const suggestionsOpen = ref(false)
 
 /**
  * 建立前先擋掉同名（忽略大小寫／全形半形）——store 的 addProject/addTag
@@ -225,10 +273,13 @@ const tagNameError = computed(() =>
     : null,
 )
 
+/** 只解析一次，錯誤訊息、符合筆數、未知名稱檢查都share這個結果。 */
+const parsedQuery = computed(() => parseFilterQuery(newFilterQuery.value))
+
 /** 建立前就先告訴使用者條件對不對、會match 幾項——存下一個永遠是空的篩選器沒有意義。 */
 const queryError = computed(() => {
   if (newFilterQuery.value === '') return null
-  const parsed = parseFilterQuery(newFilterQuery.value)
+  const parsed = parsedQuery.value
   return parsed.ok ? null : parsed.message
 })
 
@@ -238,9 +289,47 @@ const matchCount = computed(() =>
     : 0,
 )
 
+/**
+ * 語法沒錯，但 #專案／@標籤 指到目前不存在的名稱——這時「符合 0 項」
+ * 會讓人以為是自己沒有符合條件的任務，而不是打錯了名字，兩者要分開講。
+ * 不擋建立：也可能是提前為了一個還沒建的專案先寫好篩選器。
+ */
+const unresolvedNames = computed(() => {
+  const parsed = parsedQuery.value
+  if (!parsed.ok) return { projects: [], labels: [] }
+  return findUnresolvedNames(parsed.node, { projects: collections.projects, tags: collections.tags })
+})
+
+const unresolvedMessage = computed(() => {
+  const { projects, labels } = unresolvedNames.value
+  if (projects.length === 0 && labels.length === 0) return null
+  const parts = [
+    ...projects.map((name) => `專案「${name}」`),
+    ...labels.map((name) => `標籤「${name}」`),
+  ]
+  return `目前沒有${parts.join('、')}，這部分的條件不會比對到任何任務`
+})
+
 const canCreateFilter = computed(
   () => newFilterName.value !== '' && newFilterQuery.value !== '' && queryError.value === null,
 )
+
+/** 游標所在那個詞的自動完成建議；輸入框沒開啟建議清單時不用算。 */
+const suggestionResult = computed(() =>
+  suggestionsOpen.value
+    ? suggestFilterTokens(newFilterQuery.value, queryCursor.value, {
+        projects: collections.projects,
+        tags: collections.tags,
+      })
+    : { range: { start: 0, end: 0 }, suggestions: [] },
+)
+const suggestions = computed(() => suggestionResult.value.suggestions)
+const showSuggestions = computed(() => suggestionsOpen.value && suggestions.value.length > 0)
+
+/** 輸入內容一變，先前選到的建議項目大多已經不對應了。 */
+watch(newFilterQuery, () => {
+  activeSuggestion.value = -1
+})
 
 watch(
   () => props.open,
@@ -312,6 +401,84 @@ function createFilter(): void {
   collections.addFilter(newFilterName.value, newFilterQuery.value)
   newFilterName.value = ''
   newFilterQuery.value = ''
+  suggestionsOpen.value = false
+}
+
+/** 每次游標可能移動的事件都同步一次位置——建議清單是算給「這個詞」看的，不是算給整串字看的。 */
+function syncQueryCursor(event: Event): void {
+  queryCursor.value = (event.target as HTMLInputElement).selectionStart ?? newFilterQuery.value.length
+}
+
+function acceptSuggestion(index: number): void {
+  const suggestion = suggestions.value[index]
+  if (!suggestion) return
+  const { range } = suggestionResult.value
+  const before = newFilterQuery.value.slice(0, range.start)
+  const after = newFilterQuery.value.slice(range.end)
+  // 插入後補一個空白，游標落在空白後面才能直接接著打下一個詞或運算子
+  const insertion = suggestion.insertText + (/^\s/.test(after) ? '' : ' ')
+  newFilterQuery.value = before + insertion + after
+  const nextCursor = before.length + insertion.length
+  activeSuggestion.value = -1
+  void nextTick(() => {
+    const el = queryInputEl.value
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(nextCursor, nextCursor)
+    queryCursor.value = nextCursor
+  })
+}
+
+function applyFilterPreset(preset: { label: string; query: string }): void {
+  newFilterQuery.value = preset.query
+  if (newFilterName.value === '') newFilterName.value = preset.label
+  void nextTick(() => {
+    const el = queryInputEl.value
+    if (!el) return
+    // focus() 會同步觸發 @focus 把 suggestionsOpen 打開，所以要放在最後一行蓋回去——
+    // 剛套用範本不需要馬上跳出建議清單，游標落在句尾讓使用者可以直接接著打字。
+    el.focus()
+    el.setSelectionRange(preset.query.length, preset.query.length)
+    queryCursor.value = preset.query.length
+    suggestionsOpen.value = false
+  })
+}
+
+/**
+ * Enter／方向鍵在「操作建議清單」和「打字」之間是同一顆鍵的兩種意思，
+ * 用 showSuggestions 分流：清單開著時先服務清單，沒有選到建議才落回原本的
+ * 建立篩選器行為，跟名稱／標籤輸入框的 @keydown.enter.prevent 一致。
+ */
+function onQueryKeydown(event: KeyboardEvent): void {
+  if (showSuggestions.value) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      activeSuggestion.value = (activeSuggestion.value + 1 + suggestions.value.length) % suggestions.value.length
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      activeSuggestion.value =
+        (activeSuggestion.value - 1 + suggestions.value.length) % suggestions.value.length
+      return
+    }
+    if ((event.key === 'Enter' || event.key === 'Tab') && activeSuggestion.value >= 0) {
+      event.preventDefault()
+      acceptSuggestion(activeSuggestion.value)
+      return
+    }
+    if (event.key === 'Escape') {
+      // 只收合清單，不讓 Escape 繼續冒泡去關掉整個對話框
+      event.preventDefault()
+      event.stopPropagation()
+      suggestionsOpen.value = false
+      return
+    }
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    createFilter()
+  }
 }
 
 /** 刪掉正在看的那個篩選器時要離開它的檢視。 */
