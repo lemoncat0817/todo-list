@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { createApp, nextTick } from 'vue'
+import { createApp, nextTick, reactive } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useTasksStore } from '@/stores/tasks'
 import * as db from '@/db'
@@ -95,6 +95,43 @@ describe('todoTask store', () => {
       await nextTick()
       await store.flush()
       expect(store.writeError).toBeNull()
+    })
+
+    /**
+     * 實測回歸：TaskDetailForm 的 draft 是一個 ref，讀出來的巢狀物件
+     * （這裡是 recurrence）會是 Vue 的 reactive Proxy，不是純物件。
+     * 過去 snapshot() 只淺層 toRaw，Proxy 會一路帶到 IndexedDB 的
+     * put()，觸發瀏覽器真實丟出的 DataCloneError——不是配額問題，
+     * 是巢狀物件沒被拆成純資料。這裡直接用 reactive() 模擬那個 Proxy，
+     * 不 mock db 層，讓測試真的走到會失敗的那一段程式碼。
+     */
+    it('update() 傳入巢狀的 reactive proxy（例如 recurrence）也能正常寫入', async () => {
+      const store = setup()
+      await store.init()
+
+      const task = store.add('會重複的任務')
+      const proxiedRecurrence = reactive({
+        freq: 'daily' as const,
+        interval: 1,
+        byDay: [],
+        byMonthDay: null,
+        until: null,
+        count: null,
+      })
+      store.update(task.id, { dueDate: '2026-01-01', recurrence: proxiedRecurrence })
+      await nextTick()
+      await store.flush()
+
+      expect(store.writeError, 'recurrence 帶著 reactive proxy 也不該寫入失敗').toBeNull()
+      const persisted = (await db.loadTasks()).find((t) => t.id === task.id)
+      expect(persisted?.recurrence).toEqual({
+        freq: 'daily',
+        interval: 1,
+        byDay: [],
+        byMonthDay: null,
+        until: null,
+        count: null,
+      })
     })
   })
 
