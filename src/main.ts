@@ -32,3 +32,19 @@ window.addEventListener('pagehide', () => {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') void store.flush()
 })
+
+/**
+ * 註冊 service worker，讓工具可以離線使用、也可以安裝到桌面。
+ *
+ * 只在正式建置註冊：開發時 Vite 的模組是動態產生的，
+ * 一個會攔截請求的 worker 只會讓熱更新變得難以預測。
+ * 路徑用相對的 './sw.js'，GitHub Pages 的子路徑部署才找得到它。
+ */
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker
+      .register(new URL('sw.js', document.baseURI).href, { scope: './' })
+      // 註冊失敗不影響任何功能，不需要打擾使用者
+      .catch(() => {})
+  })
+}

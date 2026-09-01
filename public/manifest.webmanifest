@@ -1,0 +1,19 @@
+{
+  "name": "代辦事項",
+  "short_name": "代辦事項",
+  "description": "純前端的代辦事項工具，資料存在瀏覽器，不需要帳號。",
+  "lang": "zh-Hant",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f8fa",
+  "theme_color": "#f7f8fa",
+  "icons": [
+    {
+      "src": "./todo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

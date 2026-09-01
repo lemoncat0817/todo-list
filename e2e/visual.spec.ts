@@ -19,7 +19,7 @@ import { test, expect, type Page } from '@playwright/test'
  */
 async function seed(page: Page, names: string[] = ['買牛奶']): Promise<void> {
   page.on('dialog', (d) => d.accept())
-  await page.goto('/')
+  await page.goto('/#/all')
   await page.evaluate(
     () =>
       new Promise<void>((resolve) => {
@@ -68,8 +68,9 @@ test('Tailwind utility 真的生效，而不只是出現在 class 屬性裡', as
 test('邊框與間距 utility 生效', async ({ page }) => {
   await seed(page)
 
-  const row = await computed(page, 'li', ['border-top-width', 'padding-left', 'display'])
-  console.log('  li:', JSON.stringify(row))
+  // 側邊欄裡也有 li，這裡要量的是任務列，所以限定在 main 之內
+  const row = await computed(page, 'main li', ['border-top-width', 'padding-left', 'display'])
+  console.log('  main li:', JSON.stringify(row))
 
   expect(parseFloat(row!['border-top-width'] as string), '邊框不該被 reset 的 border:0 吃掉')
     .toBeGreaterThan(0)
@@ -77,7 +78,7 @@ test('邊框與間距 utility 生效', async ({ page }) => {
     .toBeGreaterThan(0)
 })
 
-test('分頁連結是有版面的區塊，不是裸露的行內文字', async ({ page }) => {
+test('側邊欄連結是有版面的區塊，不是裸露的行內文字', async ({ page }) => {
   await seed(page)
 
   const tab = await computed(page, 'nav a', ['display', 'width', 'border-radius', 'background-color'])
@@ -119,6 +120,8 @@ test('擷取各斷點與主題的畫面', async ({ page }, testInfo) => {
 })
 
 test('對話框置中，不會被 preflight 的 margin:0 打到左上角', async ({ page }) => {
+  // 1280px 以上詳情是常駐右欄而非對話框，這裡刻意用中等寬度取得對話框形態
+  await page.setViewportSize({ width: 1024, height: 800 })
   await seed(page)
   await page.getByRole('button', { name: /設定/ }).first().click()
 

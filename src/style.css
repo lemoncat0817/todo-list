@@ -54,10 +54,12 @@
   --color-warning-soft: oklch(0.96 0.04 80);
   --color-warning-ink: oklch(0.42 0.11 70);
 
-  /* --- 優先度：不用彩虹色，只用強度遞增 --- */
-  --color-p1: oklch(0.5 0.03 260);
-  --color-p2: oklch(0.5 0.13 250);
-  --color-p3: oklch(0.5 0.2 25);
+  /* --- 優先度：不用彩虹色，只用強度遞增 ---
+     命名跟著「強度」而不是 P 幾：對外標示是 P1 最高、內部值是 3 最高，
+     叫 --color-p1 只會讓人不確定指的是哪一邊。 */
+  --color-prio-low: oklch(0.5 0.03 260);
+  --color-prio-mid: oklch(0.5 0.13 250);
+  --color-prio-high: oklch(0.5 0.2 25);
 
   /* --- 間距：4px 基準 --- */
   --spacing: 0.25rem;
@@ -131,9 +133,9 @@
     --color-warning-soft: oklch(0.3 0.05 75);
     --color-warning-ink: oklch(0.87 0.1 80);
 
-    --color-p1: oklch(0.7 0.03 260);
-    --color-p2: oklch(0.74 0.12 250);
-    --color-p3: oklch(0.72 0.17 25);
+    --color-prio-low: oklch(0.7 0.03 260);
+    --color-prio-mid: oklch(0.74 0.12 250);
+    --color-prio-high: oklch(0.72 0.17 25);
 
     --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.3);
     --shadow-sm: 0 1px 3px oklch(0 0 0 / 0.36), 0 1px 2px oklch(0 0 0 / 0.24);

@@ -1,19 +1,9 @@
 <template>
-  <div class="flex min-h-0 grow flex-col">
-    <!-- 語意上是導覽，視覺上是分段控制項 -->
-    <nav aria-label="篩選" class="shrink-0 px-4 pt-3 sm:px-6">
-      <div class="inline-flex gap-0.5 rounded-lg bg-sunken p-0.5">
-        <RouterLink v-for="tab in FILTERS" :key="tab.filter" :to="tab.path"
-          :aria-current="tab.filter === props.filter ? 'page' : undefined"
-          class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
-          :class="tab.filter === props.filter
-            ? 'bg-surface text-ink shadow-xs'
-            : 'text-ink-soft hover:text-ink'">
-          {{ tab.label }}
-          <span class="ml-1 text-xs tabular-nums text-ink-faint">{{ tasks.counts[tab.filter] }}</span>
-        </RouterLink>
-      </div>
-    </nav>
+  <div ref="containerEl" class="flex min-h-0 grow flex-col">
+    <ListToolbar v-if="!tasks.isLoading && !tasks.loadError" :view-kind="props.viewKind"
+      :query="props.viewId" />
+
+    <BatchToolbar v-if="ui.selectedIds.length > 0" :count="ui.selectedIds.length" />
 
     <div class="min-h-0 grow overflow-y-auto overscroll-contain px-4 py-3 sm:px-6">
       <p v-if="tasks.isLoading" role="status" aria-live="polite"
@@ -33,46 +23,77 @@
           變更尚未存檔，請確認瀏覽器儲存空間是否已滿。
         </p>
 
-        <div v-if="list.length === 0" class="py-12 text-center">
-          <p class="text-sm text-ink-faint">{{ emptyMessage }}</p>
+        <!--
+          查詢寫錯時要說「查詢有問題」，不能顯示成「沒有符合的項目」——
+          後者會讓使用者以為自己的條件成立了，只是真的沒有東西。
+        -->
+        <p v-if="queryError !== null" role="alert"
+          class="rounded-lg border border-danger-soft bg-danger-soft px-4 py-3 text-sm text-danger-ink">
+          篩選條件無法解析：{{ queryError }}
+        </p>
+
+        <div v-else-if="groups.length === 0" class="py-12 text-center">
+          <p class="text-sm text-ink-faint">{{ emptyText }}</p>
         </div>
 
-        <ul v-else class="flex flex-col gap-1.5">
-          <TaskItem v-for="(item, index) in list" :key="item.id" :task="item"
-            :editing="editingId === item.id" :dragging="draggingId === item.id"
-            :is-first="index === 0" :is-last="index === list.length - 1"
-            @toggle="tasks.toggle(item.id)" @remove="remove(item.id)"
-            @start-edit="editingId = item.id" @cancel-edit="editingId = null"
-            @save="(name) => save(item.id, name)" @open-detail="detailTask = item"
-            @move-up="move(index, -1)" @move-down="move(index, 1)"
-            @dragstart="draggingId = item.id" @drop="drop(item.id)" @dragend="draggingId = null" />
-        </ul>
+        <div v-else class="flex flex-col gap-5">
+          <section v-for="group in groups" :key="group.key" class="flex flex-col gap-1.5">
+            <h2 v-if="group.label" class="text-sm font-semibold tracking-tight"
+              :class="group.key === 'overdue' ? 'text-danger-ink' : 'text-ink-soft'">
+              {{ group.label }}
+            </h2>
+
+            <ul class="flex flex-col gap-1.5">
+              <TaskItem v-for="(item, index) in group.tasks" :key="item.id" :task="item"
+                :editing="editingId === item.id" :dragging="draggingId === item.id"
+                :active="ui.detailTaskId === item.id" :checked="ui.selectedIds.includes(item.id)"
+                :selecting="ui.selectedIds.length > 0" :children="tasks.childrenOf(item.id)"
+                :expanded="expandedIds.has(item.id)"
+                :is-first="index === 0" :is-last="index === group.tasks.length - 1"
+                @toggle="tasks.toggle(item.id)" @remove="remove(item.id)"
+                @start-edit="editingId = item.id" @cancel-edit="editingId = null"
+                @save="(name) => save(item.id, name)" @open-detail="ui.openDetail(item.id)"
+                @move-up="move(group.tasks, index, -1)" @move-down="move(group.tasks, index, 1)"
+                @reschedule="(due) => tasks.reschedule(item.id, due)"
+                @toggle-expand="toggleExpand(item.id)"
+                @add-subtask="(name) => addSubtask(item.id, name)"
+                @toggle-child="(id) => tasks.toggle(id)" @remove-child="(id) => tasks.remove(id)"
+                @toggle-checked="ui.toggleSelected(item.id)"
+                @dragstart="draggingId = item.id" @drop="drop(item.id)"
+                @dragend="draggingId = null" />
+            </ul>
+          </section>
+        </div>
       </template>
     </div>
-
-    <TaskDetailDialog :task="detailTask" @close="detailTask = null" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, nextTick, ref, watch } from 'vue'
 import TaskItem from './TaskItem.vue'
-import TaskDetailDialog from './TaskDetailDialog.vue'
-import { FILTERS } from '@/router'
-import type { TaskFilter } from '@/domain/filtering'
+import BatchToolbar from './BatchToolbar.vue'
+import ListToolbar from './ListToolbar.vue'
+import { emptyMessage, type ViewKind, type ViewSpec } from '@/domain/views'
+import { parseFilterQuery } from '@/domain/filterQuery'
 import type { StoredTask } from '@/db/schema'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
+import { useListKeyboard } from '@/composables/useListKeyboard'
 
 /**
  * 任務清單。
  *
- * 這個元件只負責「呈現與互動編排」：篩選規則在 domain/filtering，
- * 狀態變更在 stores/tasks，單列的樣子在 TaskItem。
- * 先前它一個人做完這些事，有 250 行。
+ * 這個元件只負責「呈現與互動編排」：哪些任務屬於這個檢視、怎麼分組，
+ * 全在 domain/views；狀態變更在 stores/tasks；單列的樣子在 TaskItem。
+ *
+ * 分頁列已經移除——檢視的切換是側邊欄的事。清單只需要知道「現在是哪個檢視」，
+ * 而那從網址來（由 router 以 props 傳入），不是自己的狀態。
  */
-const props = withDefaults(defineProps<{ filter?: TaskFilter }>(), { filter: 'all' })
+const props = withDefaults(defineProps<{ viewKind?: ViewKind; viewId?: string | null }>(), {
+  viewKind: 'all',
+  viewId: null,
+})
 
 const tasks = useTasksStore()
 const ui = useUiStore()
@@ -81,21 +102,58 @@ const ui = useUiStore()
 // 它不需要被持久化，也不需要跨元件共享（稽核 P1 的根因）。
 const editingId = ref<string | null>(null)
 const draggingId = ref<string | null>(null)
-const detailTask = ref<StoredTask | null>(null)
+// 展開的父項。同樣是元件暫態：它描述的是「我現在想看什麼」，不是任務的屬性。
+const expandedIds = ref<Set<string>>(new Set())
+const containerEl = ref<HTMLElement | null>(null)
 
-const list = computed(() => tasks.visible(props.filter))
+const spec = computed<ViewSpec>(() => ({ kind: props.viewKind, id: props.viewId }))
+const groups = computed(() => tasks.groupsOf(spec.value))
+const emptyText = computed(() => emptyMessage(spec.value, ui.keyword))
 
-const emptyMessage = computed(() => {
-  if (ui.keyword !== '') return `找不到符合「${ui.keyword}」的代辦事項`
-  switch (props.filter) {
-    case 'active':
-      return '沒有未完成的代辦事項'
-    case 'completed':
-      return '還沒有已完成的代辦事項'
-    default:
-      return '目前沒有代辦事項，從上方新增一筆吧'
-  }
+/** 只有 filter 檢視才有查詢，其餘一律沒有錯誤可報。 */
+const queryError = computed(() => {
+  if (props.viewKind !== 'filter') return null
+  const parsed = parseFilterQuery(props.viewId ?? '')
+  return parsed.ok ? null : parsed.message
 })
+
+// 換檢視時結束編輯與選取：留著的話，切回來會看到一列莫名開著輸入框，
+// 而看不見的選取更危險——批次刪除會刪到使用者早就看不到的東西。
+watch(spec, () => {
+  editingId.value = null
+  ui.clearSelection()
+})
+
+useListKeyboard(containerEl, {
+  toggleChecked: (id) => ui.toggleSelected(id),
+  edit: (id) => {
+    editingId.value = id
+  },
+  schedule: (id) => {
+    // 排程選單住在 TaskItem 裡，這裡按它的可及名稱找到那顆按鈕再觸發。
+    // 讓 store 多一個「哪個選單開著」的狀態只為了鍵盤，代價比這高。
+    containerEl.value
+      ?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(id)}"] button[aria-label^="排程"]`)
+      ?.click()
+  },
+  openDetail: (id) => ui.openDetail(id),
+  toggleComplete: (id) => tasks.toggle(id),
+})
+
+function toggleExpand(id: string): void {
+  // 換成新的 Set 而不是原地 add/delete：Vue 追蹤的是 ref 的值，
+  // 原地改動 Set 內容不會觸發重新渲染。
+  const next = new Set(expandedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expandedIds.value = next
+}
+
+/** 新增子任務後自動展開，否則加完看不到東西，像是沒有反應。 */
+function addSubtask(parentId: string, name: string): void {
+  tasks.addSubtask(parentId, name)
+  expandedIds.value = new Set(expandedIds.value).add(parentId)
+}
 
 function save(id: string, name: string): void {
   tasks.update(id, { taskName: name })
@@ -106,14 +164,22 @@ function remove(id: string): void {
   // 刪掉的正好是編輯中的那筆時一併結束編輯，
   // 否則殘留的 editingId 會讓那一列的編輯框永遠開著
   if (editingId.value === id) editingId.value = null
+  if (ui.detailTaskId === id) ui.closeDetail()
   tasks.remove(id)
 }
 
-function move(index: number, delta: -1 | 1): void {
-  const current = list.value[index]
-  const neighbour = list.value[index + delta]
+/** 上移／下移只在同一個分組內移動——跨分組的「上一列」在視覺上並不相鄰。 */
+function move(list: readonly StoredTask[], index: number, delta: -1 | 1): void {
+  const current = list[index]
+  const neighbour = list[index + delta]
   if (current && neighbour) {
     tasks.move(current.id, neighbour.id, delta === -1 ? 'before' : 'after')
+    // 移動後 DOM 會重排，把焦點放回同一筆任務上，鍵盤操作才不會斷掉
+    void nextTick(() => {
+      containerEl.value
+        ?.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(current.id)}"]`)
+        ?.focus()
+    })
   }
 }
 

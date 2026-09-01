@@ -1,11 +1,16 @@
 export const DB_NAME = 'todolist'
-/** v1: tasks + meta。v2: 擴充任務欄位，新增 projects 與 tags。 */
-export const DB_VERSION = 2
+/**
+ * v1: tasks + meta。
+ * v2: 擴充任務欄位，新增 projects 與 tags。
+ * v3: 新增 filters（儲存的篩選器查詢）。
+ */
+export const DB_VERSION = 3
 
 export const STORE_TASKS = 'tasks'
 export const STORE_META = 'meta'
 export const STORE_PROJECTS = 'projects'
 export const STORE_TAGS = 'tags'
+export const STORE_FILTERS = 'filters'
 
 /** meta 用來記錄一次性遷移是否已完成，避免重複執行。 */
 export const META_MIGRATED_FROM_LOCALSTORAGE = 'migratedFromLocalStorage'
@@ -14,11 +19,27 @@ export const META_MIGRATED_FROM_LOCALSTORAGE = 'migratedFromLocalStorage'
 export const UNCATEGORIZED = null
 
 export type Priority = 0 | 1 | 2 | 3
+
+/**
+ * 選單與快捷鍵一律走這個順序：最重要的排最前面。
+ * 內部值維持 0–3（3 最高）以免資料遷移，但對外一律用主流待辦工具常見的 P1–P4
+ * ——P1 是最高，這是許多使用者已經帶著的直覺，改內部值不值得。
+ */
+export const PRIORITY_ORDER: readonly Priority[] = [3, 2, 1, 0]
+
 export const PRIORITY_LABELS: Record<Priority, string> = {
-  0: '無',
-  1: '低',
-  2: '中',
-  3: '高',
+  0: 'P4',
+  1: 'P3',
+  2: 'P2',
+  3: 'P1',
+}
+
+/** 選單用：光看 P1 分不出高低，補上中文說明。 */
+export const PRIORITY_DESCRIPTIONS: Record<Priority, string> = {
+  0: 'P4（無）',
+  1: 'P3（低）',
+  2: 'P2（中）',
+  3: 'P1（高）',
 }
 
 /** RFC 5545 的星期代碼，方便日後匯出 .ics 時直接對應。 */
@@ -93,6 +114,20 @@ export interface StoredTag {
   color: string
 }
 
+/**
+ * 儲存的篩選器。
+ *
+ * query 存的是原始查詢字串而不是解析後的 AST：AST 的形狀會隨語言演進而改變，
+ * 存字串則永遠可以用新的解析器重新讀一次，不需要資料遷移。
+ */
+export interface StoredFilter {
+  id: string
+  name: string
+  query: string
+  color: string
+  order: number
+}
+
 /** v1 的任務形狀，遷移時用來辨識舊資料。 */
 export interface LegacyTaskV1 {
   id: string
@@ -115,3 +150,34 @@ export const DEFAULT_TASK_FIELDS: Omit<
   recurrence: null,
   completedAt: null,
 }
+
+/**
+ * 專案與標籤的可選顏色。
+ *
+ * 用固定調色盤而非自由選色器有兩個理由：自由選色讓使用者能選出在深色模式下
+ * 讀不到的顏色，而這裡的顏色只出現在小圓點上，色相太接近反而分不出來。
+ * 十二色已經超過大多數人實際會建立的專案數。
+ */
+export interface CollectionColor {
+  name: string
+  value: string
+}
+
+export const COLLECTION_COLORS: readonly CollectionColor[] = [
+  { name: '靛藍', value: '#1d4ed8' },
+  { name: '天藍', value: '#0284c7' },
+  { name: '青綠', value: '#0d9488' },
+  { name: '森綠', value: '#15803d' },
+  { name: '萊姆', value: '#65a30d' },
+  { name: '琥珀', value: '#d97706' },
+  { name: '橘', value: '#ea580c' },
+  { name: '紅', value: '#dc2626' },
+  { name: '玫瑰', value: '#e11d48' },
+  { name: '紫', value: '#7c3aed' },
+  { name: '洋紅', value: '#c026d3' },
+  { name: '石墨', value: '#64748b' },
+]
+
+export const DEFAULT_PROJECT_COLOR = '#1d4ed8'
+export const DEFAULT_TAG_COLOR = '#15803d'
+export const DEFAULT_FILTER_COLOR = '#7c3aed'

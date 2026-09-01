@@ -54,9 +54,25 @@ components/  →  stores/  →  domain/
   where business rules live: `dates.ts` (local-date-string arithmetic),
   `recurrence.ts` (RFC 5545-flavored recurrence expansion), `ordering.ts`
   (fractional sort-key math), `filtering.ts` (search/filter/count — one code
-  path so the list and the tab counts can never disagree), `undo.ts` (a bounded
+  path so the list and the counts can never disagree), `views.ts` (which tasks
+  belong to a named view — today/upcoming/inbox/project/label — plus their
+  grouping, titles and empty-state copy), `undo.ts` (a bounded
   command-pattern undo/redo stack), `task.ts` (normalization/validation of
   anything crossing a trust boundary, plus parent/child helpers).
+
+  `filtering.ts` answers "does this task match?"; `views.ts` answers "what
+  should the user see at this entry point, and how is it grouped?". They are
+  separate because the predicates are stable while views are a product
+  decision that keeps growing.
+
+  `quickAdd.ts` parses one line of natural language ("明天下午3點 交報告 p1
+  #工作 @公司") into task fields plus the tokens it consumed. Projects, tags
+  and `now` are all parameters — that is what makes year/month/weekend
+  boundaries testable instead of "correct on my machine today". Two invariants
+  it must keep: **the user's text is the floor for the task name** (if parsing
+  would leave the name empty, return the raw input and apply nothing), and
+  **it reports what it consumed** so the UI can show the interpretation
+  before submit rather than after.
 - **`src/db/`** — the only place that talks to IndexedDB (via `idb`, chosen over
   Dexie to save ~30 kB gzip). `schema.ts` has the stored shapes and constants,
   `repositories.ts` does IO, `migrate.ts` is the one-time legacy-localStorage
@@ -78,24 +94,90 @@ components/  →  stores/  →  domain/
   (replaces `pinia-plugin-persistedstate`: that package's Pinia 2 peer-dep
   pin blocked upgrading, and it silently swallowed write failures). Only
   used by `stores/ui.ts`; task/project/tag data goes through `db/` instead.
-- **`src/router/`** — filter state (`all`/`active`/`completed`) lives in the
-  URL (`/`, `/active`, `/completed`) rather than store state, for
-  deep-linking and to avoid persisting an out-of-range value. Hash history
-  (`createWebHashHistory`) is required because GitHub Pages has no SPA
-  fallback for subpath deployments.
+- **`src/router/`** — view state lives in the URL (`/today`, `/upcoming`,
+  `/inbox`, `/all`, `/active`, `/completed`, `/project/:id`, `/label/:id`)
+  rather than store state, for deep-linking and to avoid persisting an
+  out-of-range value. `/` redirects to `/today`: the question to answer on
+  open is "what now", not "how much do I owe". Route names are deliberately
+  identical to `ViewKind` so there is only one mapping table.
+  Hash history (`createWebHashHistory`) is required because GitHub Pages has
+  no SPA fallback for subpath deployments.
 - **`src/components/`** — presentation only; business logic is expected to
-  already live in `domain/`/`stores/` before it reaches a component.
+  already live in `domain/`/`stores/` before it reaches a component. The shell
+  is three panes (`AppSidebar` / `RouterView` / `TaskDetailPanel`); below
+  1280px the detail pane becomes `TaskDetailDialog` and below 1024px the
+  sidebar becomes a `<dialog>` drawer. Both wrap the same `TaskDetailForm` —
+  the container decides *how it appears*, the form decides *what fields exist*.
+  `useMediaQuery` picks one or the other with `v-if` rather than rendering both
+  and hiding one with CSS: two copies would mean duplicate landmarks and
+  duplicate focusable elements.
+
+### Backup, PWA and reminders
+
+`db/backup.ts` serializes/parses a versioned JSON file. Import runs through the
+same `normalize*` functions as IndexedDB and legacy localStorage — a backup
+file is user-editable, so it gets no more trust than any other external input.
+It distinguishes "this file is not a backup" (reject the whole thing) from
+"these rows are unrecoverable" (drop and report the count); conflating them
+either loses data silently or refuses a mostly-good file. The whole import is
+one undo command, which is what makes the destructive "replace" mode safe.
+
+`public/sw.js` is hand-written and **network-first**, not cache-first: assets
+are content-hashed but `index.html` is not, so cache-first would keep serving
+an old `index.html` pointing at assets that no longer exist. It is registered
+only in `import.meta.env.PROD`. Playwright blocks service workers
+(`serviceWorkers: 'block'`) so cached responses can't leak between tests;
+`deploy.spec.ts` verifies the *artifacts* instead.
+
+Reminders (`composables/useDueReminders.ts`) poll once a minute rather than
+scheduling a timer per task — tasks get rescheduled, completed and deleted, and
+a pile of timers needing cancellation is where the bugs live. Without a server
+there is no Web Push, so they only fire while the tab is open; the UI says so
+explicitly rather than letting people believe they have a reliable alarm.
 
 ### Data flow
 
 `main.ts` mounts the app immediately, then calls `store.init()` asynchronously
 (loading state is a component concern, not a boot blocker). `init()` runs the
-legacy-localStorage migration once, loads tasks/projects/tags from IndexedDB,
-then a `watch` on task/project/tag state persists on every change — no
+legacy-localStorage migration once, loads tasks/projects/tags/filters from
+IndexedDB, then a `watch` on that state persists on every change — no
 debounce, because debouncing creates a window where "act then immediately
-reload" loses data. `flush()` is re-entrant-safe (concurrent calls coalesce)
+reload" loses data. Writes are **per-record**: the store keeps a
+`Map<id, JSON signature>` of what was last written and sends only changed rows
+plus explicit deletes (`applyTaskChanges`). The signature is the full
+serialized row rather than `updatedAt`, because undo puts an *older* object
+back — a timestamp comparison would miss it. `flush()` is re-entrant-safe (concurrent calls coalesce)
 and is also fired from `pagehide`/`visibilitychange` in `main.ts` to minimize
 the async write window before a tab closes.
+
+### Filters
+
+`domain/filterQuery.ts` is a small recursive-descent parser producing an AST,
+plus an evaluator. Parse errors are **returned**, never swallowed: a query with
+a typo that silently matches everything makes the user believe their condition
+held. Saved filters store the raw query string, not the AST — the AST's shape
+will change as the language grows, a string can always be re-parsed.
+
+The query lives in the URL (`/filter?q=...`), in `query` rather than a path
+param because `&`, `|` and `#` would otherwise need layered escaping.
+
+### Sorting, grouping and preferences
+
+Sort/group choices live in `stores/prefs` (persisted), *not* in the URL: they
+are "how I like to look at things", not "what I am looking at". Sharing a link
+should hand someone the same list, not impose your sort order. `prefs` is a
+separate store from `ui` because the persistence plugin writes the whole state
+— mixing them is what previously persisted "search is open" and stranded users
+on the search screen.
+
+### Priority
+
+Stored as `0`–`3` with `3` highest; displayed as `P1`–`P4` with `P1` highest
+(a common convention many users already arrive with). The mapping lives in
+`PRIORITY_LABELS`/`PRIORITY_ORDER` — don't renumber the stored values, that
+would be a data migration for a labelling problem. CSS tokens are named by
+strength (`--color-prio-high/mid/low`) rather than by P-number, precisely
+because the two numbering schemes run in opposite directions.
 
 ### Recurrence
 

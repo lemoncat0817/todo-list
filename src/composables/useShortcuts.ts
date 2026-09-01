@@ -15,6 +15,10 @@ export interface ShortcutHandlers {
   focusSearch?: () => void
   /** 「n」新增 */
   focusNew?: () => void
+  /** Ctrl/Cmd + K 命令面板 */
+  palette?: () => void
+  /** 「?」快捷鍵說明 */
+  help?: () => void
   /** Escape */
   escape?: () => void
 }
@@ -41,7 +45,20 @@ export function useShortcuts(handlers: ShortcutHandlers): void {
       return
     }
 
+    // 命令面板在輸入中也要能開：它常常就是「打到一半想跳去別的地方」的出口
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault()
+      handlers.palette?.()
+      return
+    }
+
     if (typing) return
+
+    if (event.key === '?') {
+      event.preventDefault()
+      handlers.help?.()
+      return
+    }
 
     if (event.key === '/') {
       event.preventDefault()

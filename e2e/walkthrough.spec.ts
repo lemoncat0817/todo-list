@@ -38,7 +38,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('U3: 增刪改查完整走查', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/all')
 
   // 新增
   await page.getByLabel('新增代辦事項').fill('買牛奶')
@@ -59,10 +59,10 @@ test('U3: 增刪改查完整走查', async ({ page }) => {
   await page.locator('main li').nth(1).getByRole('button', { name: '保存' }).click()
   await expect(page.locator('main li p', { hasText: '寫稽核報告' })).toBeVisible()
 
-  // 分頁
+  // 檢視切換
   await page.getByRole('link', { name: /^未完成/ }).click()
   await expect(page.locator('main li')).toHaveCount(1)
-  await page.getByRole('link', { name: /^完成/ }).click()
+  await page.getByRole('link', { name: /^已完成/ }).click()
   await expect(page.locator('main li')).toHaveCount(1)
   await page.getByRole('link', { name: /^全部/ }).click()
   await expect(page.locator('main li')).toHaveCount(2)
@@ -84,16 +84,22 @@ test('U3: 增刪改查完整走查', async ({ page }) => {
 })
 
 test('U3b: 重新整理後資料仍在（持久化生效）', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/all')
   await page.getByLabel('新增代辦事項').fill('持久化測試')
   await page.getByRole('button', { name: '新增' }).click()
+
+  // 同步點必須是「寫入已落地」，不能只是「畫面已更新」。
+  // 兩者之間有一段真實的空窗：watcher 觸發的 IndexedDB 交易是非同步的，
+  // 而 main.ts 已載明「操作後立刻重新整理」只能盡力而為。等 DOM 出現就重新整理
+  // 等於在跟那段空窗賽跑，測到的會是時序而不是持久化。
+  await expect.poll(async () => (await readTasksFromIDB(page)).length).toBe(1)
 
   await page.reload()
   await expect(page.locator('main li p', { hasText: '持久化測試' })).toBeVisible()
 })
 
 test('P1 已修正：編輯中重新整理會回到閱讀狀態，原文字完好', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/all')
   for (const t of ['原本的內容', '另一筆']) {
     await page.getByLabel('新增代辦事項').fill(t)
     await page.getByRole('button', { name: '新增' }).click()
@@ -132,7 +138,7 @@ test('升級路徑：既有使用者的舊格式資料（含 isEdit）仍可正�
       }),
     )
   })
-  await page.goto('/')
+  await page.goto('/#/all')
 
   // 兩筆都在，且都以閱讀狀態呈現 —— 卡住的編輯狀態被自動解除
   await expect(page.locator('main li p', { hasText: '舊資料一' })).toBeVisible()
@@ -157,7 +163,7 @@ test('升級路徑：既有使用者的舊格式資料（含 isEdit）仍可正�
 })
 
 test('P1 已修正：編輯狀態不落地，儲存形狀乾淨', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/all')
   await page.getByLabel('新增代辦事項').fill('檢查持久化形狀')
   await page.getByRole('button', { name: '新增' }).click()
   await expect(page.getByText('全部: 1 項')).toBeVisible()
@@ -175,7 +181,7 @@ test('P1 已修正：編輯狀態不落地，儲存形狀乾淨', async ({ page 
 })
 
 test('P17 已修正：id 為 UUID，不再是可能碰撞的時間戳', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#/all')
   for (const name of ['一', '二', '三']) {
     await page.getByLabel('新增代辦事項').fill(name)
     await page.getByRole('button', { name: '新增' }).click()
@@ -223,20 +229,20 @@ for (const [label, payload, expectedRows] of BAD_PAYLOADS) {
     await page.addInitScript((p) => {
       window.localStorage.setItem('todoTask', p)
     }, payload)
-    await page.goto('/')
+    await page.goto('/#/all')
     await page.waitForTimeout(300)
 
     const state = await page.evaluate(() => ({
       appLen: (document.querySelector('#app') as HTMLElement).innerHTML.length,
       hasHeader: !!document.querySelector('h1'),
-      hasTabs: document.querySelectorAll('nav a').length,
+      navLinks: document.querySelectorAll('nav a').length,
       hasFooter: !!document.querySelector('button[data-test=clear-completed]'),
       rows: document.querySelectorAll('main li').length,
     }))
 
     const parts = [
       state.hasHeader ? 'Header✓' : 'Header✗',
-      state.hasTabs === 3 ? 'Tabs✓' : `Tabs✗(${state.hasTabs})`,
+      state.navLinks >= 7 ? '導覽✓' : `導覽✗(${state.navLinks})`,
       state.hasFooter ? 'Footer✓' : 'Footer✗',
       `列數=${state.rows}`,
     ].join(' ')
@@ -251,7 +257,8 @@ for (const [label, payload, expectedRows] of BAD_PAYLOADS) {
     expect(uncaught, `${label}：無未捕捉例外`).toEqual([])
     expect(consoleErrors, `${label}：無 console 錯誤`).toEqual([])
     expect(state.hasHeader, `${label}：header 正常渲染`).toBe(true)
-    expect(state.hasTabs, `${label}：分頁列正常渲染`).toBe(3)
+    // 側邊欄的固定入口：今天／即將到來／收件匣／全部／未完成／已完成／統計
+    expect(state.navLinks, `${label}：導覽正常渲染`).toBe(7)
     expect(state.hasFooter, `${label}：footer 正常渲染`).toBe(true)
     expect(state.rows, `${label}：顯示列數`).toBe(expectedRows)
   })
