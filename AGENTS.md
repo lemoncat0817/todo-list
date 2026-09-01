@@ -171,7 +171,7 @@ postgrest + realtime + storage + functions — is disproportionate to the five
 or six fixed operations sync actually needs. Split instead:
 - **`sync/authClient.ts`** wraps `@supabase/auth-js` (GoTrue's real client, not
   the umbrella package) — token refresh/expiry/storage are security-sensitive
-  enough to not reinvent. Measured: 23.07 kB gzip as its own chunk.
+  enough to not reinvent. Measured: 23.16 kB gzip as its own chunk.
 - **`sync/restClient.ts`** hand-rolls `fetch` calls against PostgREST — the
   query shapes are fixed (`fetchRowsSince`/`upsertRows`), so a general query
   builder buys nothing.
@@ -179,9 +179,30 @@ or six fixed operations sync actually needs. Split instead:
   (`stores/auth.ts`, `stores/sync.ts`) — a user who never signs in never
   downloads either, and the base bundle is unaffected.
 
-**Sign-in is email OTP, not a password.** One less flow (no reset/strength
-UI), no password to leak, and it matches the app's existing low-friction ethos
-(no confirm dialogs anywhere, do-then-undo instead).
+**Sign-in is email OTP or OAuth (Google/GitHub), never a password.** No
+reset/strength UI to build, no password to leak, and it matches the app's
+existing low-friction ethos (no confirm dialogs anywhere, do-then-undo
+instead). OAuth is scoped to providers with free, self-serve developer
+consoles — Google Cloud Console and GitHub OAuth Apps both need no paid
+account or app review for personal-scale use; Apple (`Sign in with Apple`
+needs a paid $99/yr Apple Developer Program membership) and Facebook (now
+needs Business verification for public use) were evaluated and skipped for
+that reason, not forgotten.
+
+OAuth forced a real architectural decision: `sync/authClient.ts` sets
+`flowType: 'pkce'` (auth-js defaults to `'implicit'`) and
+`detectSessionInUrl: true`. Implicit flow returns the session in the URL
+*hash* (`#access_token=...`) and clears `location.hash` after reading it —
+a direct collision with this app's hash-based routing (`#/today`). PKCE
+returns a `?code=` *query* parameter instead; Vue Router's hash history never
+reads `location.search`, so the two coexist by construction — confirmed by
+reading `_getSessionFromURL` in `@supabase/auth-js` itself, not assumed.
+`stores/auth.ts`'s `restore()` is the one place that has to know about this:
+it now triggers the authClient `import()` not just when a previous session
+was stored, but also when `?code=` (mid-login) or `?error=`/`error_description=`
+(user cancelled at the provider, or the provider isn't configured yet) is
+present in the URL — otherwise a fresh OAuth callback would silently do
+nothing on a first-time sign-in.
 
 **Pull is polling, not Realtime.** `stores/sync.ts` pulls on `start()`, every
 30s, on `online`, and on `visibilitychange`, mirroring the polling pattern
@@ -336,13 +357,22 @@ dialog. `Ctrl`/`Cmd`+`Z` and the toast's "復原" button both call
   fake host until the test times out) — `playwright.config.ts`'s `webServer.env`
   sets fake-but-well-formed Supabase values so the gated UI has something to
   test at all, never a real project.
-- **Two gotchas hit while writing these tests, worth not re-discovering:**
+- **Three gotchas hit while writing these tests, worth not re-discovering:**
   happy-dom does not dispatch a native `submit` event when a
   `<button type="submit">` inside a `<form>` is clicked (real browsers do) —
   component tests must `find('form').trigger('submit')` directly, then
   `await flushPromises()` from `@vue/test-utils` since Vue doesn't await a
-  `@submit.prevent` handler's returned promise. And `vi.useFakeTimers()`
+  `@submit.prevent` handler's returned promise. `vi.useFakeTimers()`
   combined with `fake-indexeddb` hangs indefinitely if IndexedDB calls happen
   while fake timers are active — `stores/sync.spec.ts` only switches to
   `vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })`
   *after* an IndexedDB-touching `start()` has fully settled under real timers.
+  And Vitest (via Vite's `loadEnv`) reads a developer's real `.env.local` by
+  default — once anyone configures a real Supabase project for `pnpm dev`,
+  every unit test would see `isSyncConfigured: true` unless overridden,
+  making "not configured" tests pass or fail based on whose machine runs them
+  rather than what the code does. `vitest.config.ts` pins
+  `test.env.VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` to `''` explicitly so
+  the unit test baseline is always "not configured" regardless of local
+  `.env.local`; tests that need the configured branch still opt in via
+  `vi.mock('@/sync/config', ...)`.

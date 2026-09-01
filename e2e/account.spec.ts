@@ -91,6 +91,34 @@ test.describe('帳號與同步', () => {
     await expect(dialog).not.toContainText('已登入')
   })
 
+  test('Google 一鍵登入的完整往返：授權導向 → 帶碼回來 → 換成 session', async ({ page }) => {
+    await mockSupabase(page)
+
+    // 攔截 GoTrue 的 /authorize：真正的流程是瀏覽器被導去 Google 的同意畫面，
+    // 這裡直接模擬「使用者按下允許」，302 導回我們自己的網址、帶著假的
+    // PKCE code——驗證的重點正是這個往返：sync/authClient.ts 設定的
+    // flowType: 'pkce' 讓這個 code 走查詢參數（?code=）而不是 hash 片段，
+    // 才不會被這個工具的 hash 路由（#/all 這種網址）打架或洗掉。
+    const origin = new URL(page.url()).origin
+    await page.route('**/auth/v1/authorize*', async (route) => {
+      await route.fulfill({ status: 302, headers: { location: `${origin}/?code=e2e-fake-pkce-code` } })
+    })
+    // PKCE 換 session 打的是這支端點，不是 /verify（那是 OTP 專用的）。
+    await page.route('**/auth/v1/token?grant_type=pkce', async (route) => {
+      await route.fulfill({ status: 200, json: FAKE_SESSION })
+    })
+
+    await page.getByRole('button', { name: '登入以同步' }).click()
+    const dialog = page.getByRole('dialog').filter({ hasText: '帳號與同步' })
+    await dialog.getByRole('button', { name: '以 Google 繼續' }).click()
+
+    // 點下去之後瀏覽器離開了原本的頁面（真的整頁導航，對話框自然消失），
+    // 落地在帶著 code 的網址、觸發 main.ts 的 auth.restore()，
+    // 換完 session 後網址上的 code 會被清掉，落回 hash 路由的 #/today。
+    await expect(page.getByRole('button', { name: '帳號與同步' })).toBeVisible()
+    expect(new URL(page.url()).search, 'code 應該已經被清掉').toBe('')
+  })
+
   test('登出後回到未登入畫面，本地任務仍在', async ({ page }) => {
     await mockSupabase(page)
     await page.getByLabel('新增代辦事項').fill('登出前就有的任務')
