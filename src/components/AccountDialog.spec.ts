@@ -30,6 +30,7 @@ vi.mock('@/sync/config', () => ({ isSyncConfigured: true }))
 const authClientMock = {
   requestOtp: vi.fn<(email: string) => Promise<AuthError | null>>(),
   verifyOtp: vi.fn<(email: string, code: string) => Promise<{ session: Session | null; error: AuthError | null }>>(),
+  signInWithOAuth: vi.fn<(provider: string) => Promise<AuthError | null>>(),
   signOut: vi.fn<() => Promise<void>>(),
   getSession: vi.fn<() => Promise<Session | null>>(),
   onAuthStateChange: vi.fn<(cb: (s: Session | null) => void) => () => void>(() => () => {}),
@@ -67,6 +68,50 @@ describe('AccountDialog.vue', () => {
     const w = mountDialog()
     expect(emailInput(w).exists()).toBe(true)
     expect(authClientMock.requestOtp).not.toHaveBeenCalled()
+  })
+
+  it('未登入時同時顯示 Google／GitHub 一鍵登入按鈕', () => {
+    const w = mountDialog()
+    expect(w.text()).toContain('以 Google 繼續')
+    expect(w.text()).toContain('以 GitHub 繼續')
+  })
+
+  it('點 Google 按鈕會呼叫對應的 provider，不會誤觸別的供應商', async () => {
+    authClientMock.signInWithOAuth.mockResolvedValue(null)
+    const w = mountDialog()
+
+    const googleButton = w.findAll('button').find((b) => b.text() === '以 Google 繼續')
+    await googleButton?.trigger('click')
+    await flushPromises()
+
+    expect(authClientMock.signInWithOAuth).toHaveBeenCalledWith('google')
+    expect(authClientMock.signInWithOAuth).not.toHaveBeenCalledWith('github')
+  })
+
+  it('點 GitHub 按鈕會呼叫對應的 provider', async () => {
+    authClientMock.signInWithOAuth.mockResolvedValue(null)
+    const w = mountDialog()
+
+    const githubButton = w.findAll('button').find((b) => b.text() === '以 GitHub 繼續')
+    await githubButton?.trigger('click')
+    await flushPromises()
+
+    expect(authClientMock.signInWithOAuth).toHaveBeenCalledWith('github')
+  })
+
+  it('OAuth 前置失敗時顯示錯誤，這則錯誤跟信箱表單共用同一個提示區', async () => {
+    authClientMock.signInWithOAuth.mockResolvedValue({
+      name: 'AuthApiError',
+      message: 'provider not enabled',
+      status: 400,
+    } as AuthError)
+    const w = mountDialog()
+
+    const googleButton = w.findAll('button').find((b) => b.text() === '以 Google 繼續')
+    await googleButton?.trigger('click')
+    await flushPromises()
+
+    expect(w.find('[role=alert]').text()).toContain('provider not enabled')
   })
 
   it('送出信箱後進入等待驗證碼的狀態，顯示寄到哪個信箱', async () => {

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { AuthError, Session } from '@supabase/auth-js'
+import type { AuthError, Provider, Session } from '@supabase/auth-js'
 import { isSyncConfigured } from '@/sync/config'
 
 export type AuthStatus = 'signed-out' | 'sending' | 'verifying' | 'signed-in'
@@ -26,25 +26,57 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * 開機時嘗試還原 session。
+   * 開機時嘗試還原 session，也是 OAuth（Google／GitHub）重導向回來後
+   * 真正完成登入的地方。
    *
-   * 只有先前真的登入過（`todoTask:auth` 這把 localStorage key 存在）才值得
-   * 付這次動態載入的成本——大多數使用者從沒登入過，這個檢查讓他們完全
-   * 不觸發 import()。呼叫端（main.ts）在背景呼叫，不擋首次繪製。
+   * 只有三種情況才值得付動態載入的成本——大多數人兩者都不是，這個檢查
+   * 讓他們完全不觸發 import()：
+   * 1. 先前真的登入過（`todoTask:auth` 這把 localStorage key 存在）
+   * 2. 網址上有 OAuth 供應商導回來的 `?code=`（sync/authClient.ts 的
+   *    detectSessionInUrl 會在載入時自動把它換成 session）
+   * 3. 網址上有供應商回報的錯誤（使用者在同意畫面按了取消，或設定有誤）——
+   *    這裡不觸發完整登入流程，只是要把錯誤訊息撈出來給使用者看，
+   *    不然畫面會安靜地退回未登入、看起來像什麼都沒發生
+   *
+   * 呼叫端（main.ts）在背景呼叫，不擋首次繪製。
    */
   async function restore(): Promise<void> {
     if (!isSyncConfigured) return
+
+    const params = new URLSearchParams(location.search)
+    const oauthErrorDescription = params.get('error_description') ?? params.get('error')
+    if (oauthErrorDescription) {
+      error.value = oauthErrorDescription
+      // 清掉網址上的錯誤參數，否則重新整理會一直卡著同一個舊錯誤
+      const url = new URL(location.href)
+      for (const key of ['error', 'error_description', 'error_code']) url.searchParams.delete(key)
+      window.history.replaceState(window.history.state, '', url.toString())
+    }
+
+    const hasOAuthCallback = params.has('code')
     let hasStoredSession = false
     try {
       hasStoredSession = localStorage.getItem('todoTask:auth') !== null
     } catch {
       // 存取被擋時視為沒有——跟 infra/persist.ts 的降級方式一致
     }
-    if (!hasStoredSession) return
+    if (!hasStoredSession && !hasOAuthCallback) return
 
     const auth = await import('@/sync/authClient')
     applySession(await auth.getSession())
     auth.onAuthStateChange((next) => applySession(next))
+  }
+
+  /**
+   * 觸發 OAuth 登入。函式回傳時瀏覽器通常已經在離開這個頁面的路上——
+   * 這裡不需要、也沒辦法更新登入狀態，那是回程時 restore() 的事。
+   * 回傳的錯誤只涵蓋極少數的前置失敗（例如設定不完整）。
+   */
+  async function signInWithOAuthProvider(provider: Provider): Promise<void> {
+    error.value = null
+    const auth = await import('@/sync/authClient')
+    const authError = await auth.signInWithOAuth(provider)
+    if (authError) error.value = describeError(authError)
   }
 
   async function requestMagicLink(value: string): Promise<boolean> {
@@ -103,6 +135,7 @@ export const useAuthStore = defineStore('auth', () => {
     requestMagicLink,
     verifyCode,
     cancelVerification,
+    signInWithOAuthProvider,
     signOut,
   }
 })

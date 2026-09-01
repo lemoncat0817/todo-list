@@ -15,6 +15,7 @@ vi.mock('@/sync/config', () => ({ isSyncConfigured: true }))
 const authClientMock = {
   requestOtp: vi.fn<(email: string) => Promise<AuthError | null>>(),
   verifyOtp: vi.fn<(email: string, code: string) => Promise<{ session: Session | null; error: AuthError | null }>>(),
+  signInWithOAuth: vi.fn<(provider: string) => Promise<AuthError | null>>(),
   signOut: vi.fn<() => Promise<void>>(),
   getSession: vi.fn<() => Promise<Session | null>>(),
   onAuthStateChange: vi.fn<(cb: (s: Session | null) => void) => () => void>(() => () => {}),
@@ -49,6 +50,7 @@ function fakeAuthError(message: string): AuthError {
 beforeEach(() => {
   vi.clearAllMocks()
   authClientMock.onAuthStateChange.mockReturnValue(() => {})
+  window.history.pushState({}, '', '/')
 })
 
 describe('requestMagicLink', () => {
@@ -131,8 +133,30 @@ describe('signOut', () => {
   })
 })
 
+describe('signInWithOAuthProvider', () => {
+  it('成功時不改變 status——瀏覽器已經在離開頁面的路上，狀態更新是回程 restore() 的事', async () => {
+    authClientMock.signInWithOAuth.mockResolvedValue(null)
+    const auth = setup()
+
+    await auth.signInWithOAuthProvider('google')
+
+    expect(authClientMock.signInWithOAuth).toHaveBeenCalledWith('google')
+    expect(auth.status).toBe('signed-out')
+    expect(auth.error).toBeNull()
+  })
+
+  it('前置失敗（例如設定不完整）時顯示錯誤', async () => {
+    authClientMock.signInWithOAuth.mockResolvedValue(fakeAuthError('provider not enabled'))
+    const auth = setup()
+
+    await auth.signInWithOAuthProvider('github')
+
+    expect(auth.error).toContain('provider not enabled')
+  })
+})
+
 describe('restore', () => {
-  it('沒有登入過（沒有 todoTask:auth 這把 key）時不觸發任何動態載入', async () => {
+  it('沒有登入過、網址也乾淨時不觸發任何動態載入', async () => {
     localStorage.clear()
     const auth = setup()
 
@@ -151,5 +175,31 @@ describe('restore', () => {
 
     expect(auth.status).toBe('signed-in')
     expect(authClientMock.onAuthStateChange).toHaveBeenCalled()
+  })
+
+  it('網址上有 OAuth 供應商導回來的 code 時，即使先前沒登入過也會觸發還原', async () => {
+    localStorage.clear()
+    window.history.pushState({}, '', '/?code=fake-pkce-code')
+    authClientMock.getSession.mockResolvedValue(fakeSession())
+    const auth = setup()
+
+    await auth.restore()
+
+    // sync/authClient.ts 的 detectSessionInUrl 負責真正把 code 換成 session，
+    // 這裡只驗證 restore() 有沒有正確判斷「這個時機值得載入認證模組」
+    expect(authClientMock.getSession).toHaveBeenCalled()
+    expect(auth.status).toBe('signed-in')
+  })
+
+  it('網址上有供應商回報的錯誤時，顯示錯誤並清掉網址上的參數，不觸發完整登入流程', async () => {
+    localStorage.clear()
+    window.history.pushState({}, '', '/?error=access_denied&error_description=User+cancelled')
+    const auth = setup()
+
+    await auth.restore()
+
+    expect(auth.error).toBe('User cancelled')
+    expect(authClientMock.getSession, '單純的錯誤不需要載入認證模組').not.toHaveBeenCalled()
+    expect(location.search).toBe('')
   })
 })

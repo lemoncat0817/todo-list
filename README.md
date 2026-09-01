@@ -106,11 +106,14 @@ today & p1 & #工作
 
 **帳號與跨裝置同步（選配）**
 - 預設仍是純本地：不設定 Supabase 環境變數，「帳號與同步」入口整個不顯示，行為與純前端版本完全一樣
-- 設定後可用信箱寄送的一次性驗證碼登入，登入的裝置之間會互相同步任務／專案／標籤／篩選器
+- 登入方式：Google／GitHub 一鍵登入，或信箱寄送的一次性驗證碼——沒有密碼
+- 登入的裝置之間會互相同步任務／專案／標籤／篩選器
 - 同步是背景輪詢（開分頁、每 30 秒、恢復網路、本地編輯後三秒），**不是即時協作**——目前只支援單人跨裝置，還沒有共享專案或指派任務給別人
 - 衝突以逐列「最後寫入者為準」（比較 `updatedAt`），不是欄位級合併；同一筆在兩台裝置「幾乎同時」修改不同欄位時，較晚寫入的那次會整列覆蓋
 - 登出只斷開同步，不會刪除本地資料
-- 部署與本機開發設定見 [`.env.local.example`](.env.local.example) 與 [`supabase/migrations/`](supabase/migrations)
+- 部署與本機開發設定見 [`.env.local.example`](.env.local.example) 與 [`supabase/migrations/`](supabase/migrations)；
+  要開啟 Google／GitHub 登入，另外要在 Supabase Dashboard 的 Authentication → Providers 設定，
+  步驟見下方「啟用 Google／GitHub 登入」
 
 ## 版面
 
@@ -162,3 +165,30 @@ pnpm lint         # ESLint
 pnpm test         # Vitest 單元測試
 pnpm test:e2e     # Playwright E2E（含無障礙檢測）
 ```
+
+### 選配：接上跨裝置同步
+
+不做這一段，`pnpm dev` 就是完整可用的純本地版本。
+
+1. 到 https://supabase.com/dashboard 建一個免費專案
+2. SQL Editor 貼上 [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) 執行一次
+3. Project Settings → API，把 `Project URL` 和 `anon public` key 填進複製自
+   [`.env.local.example`](.env.local.example) 的 `.env.local`
+4. `pnpm dev`，側邊欄會出現「登入以同步」；信箱驗證碼登入到這裡就完成了
+
+**要再加 Google／GitHub 一鍵登入**，兩個都是免費、自助式設定，不需要付費開發者帳號：
+
+| 供應商 | 去哪裡建立 OAuth App | Authorized redirect URI |
+| --- | --- | --- |
+| Google | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → 建立 OAuth 用戶端 ID（應用程式類型選「網頁應用程式」） | `https://<your-project-ref>.supabase.co/auth/v1/callback` |
+| GitHub | GitHub → Settings → Developer settings → OAuth Apps → New OAuth App | 同上 |
+
+拿到兩邊各自的 Client ID／Client Secret 後，貼進 Supabase Dashboard 的
+**Authentication → Providers**，把 Google／GitHub 打開。同時到
+**Authentication → URL Configuration**，把你本機（例如
+`http://localhost:5173`）與正式站網址都加進 **Redirect URLs** 允許清單——
+Supabase 只會導回清單裡的網址，沒加的話登入完會卡在 Supabase 自己的頁面。
+
+Apple（`Sign in with Apple` 需要付費的 Apple Developer Program，$99/年）與
+Facebook（現在公開使用需要商業驗證）評估過後跳過，不是漏掉——之後真的需要
+再依同樣的模式（`sync/authClient.ts` 的 `signInWithOAuth`）加。
