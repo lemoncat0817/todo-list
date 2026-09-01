@@ -145,10 +145,10 @@ today & p1 & #工作
 | Vue Router | 5.2.0 | hash 模式 |
 | Vite | 8.2.1 | |
 | TypeScript | ~6.0.3 | |
-| Tailwind CSS | 3.4.4 | |
+| Tailwind CSS | 4.3.3 | |
 | idb | 8.0.3 | IndexedDB 封裝 |
-| Vitest | 4.1.10 | 479 條單元測試（3 條因信箱登入暫時隱藏而 skip） |
-| Playwright | 1.62.1 | 98 條 E2E（2 條同上原因 skip） |
+| Vitest | 4.1.10 | 504 條單元測試（3 條因信箱登入暫時隱藏而 skip） |
+| Playwright | 1.62.1 | 125 條 E2E（2 條同上原因 skip） |
 | ESLint | 10.8.1 | 含 vuejs-accessibility |
 
 ## 開發
