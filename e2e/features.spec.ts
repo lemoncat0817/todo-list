@@ -259,6 +259,23 @@ test.describe('批次操作', () => {
     await page.keyboard.press('Escape')
     await expect(page.getByRole('region', { name: '批次操作' })).toBeHidden()
   })
+
+  test('多選後一次標記完成／取消完成，只影響選到的項目', async ({ page }) => {
+    for (const name of ['甲', '乙', '丙']) await addTask(page, name)
+
+    await rows(page).nth(0).click({ modifiers: ['ControlOrMeta'] })
+    await rows(page).nth(1).click({ modifiers: ['ControlOrMeta'] })
+    await page.getByRole('region', { name: '批次操作' }).getByRole('button', { name: '完成', exact: true }).click()
+
+    await expect(rows(page).nth(0).locator('input[type=checkbox]').first()).toBeChecked()
+    await expect(rows(page).nth(1).locator('input[type=checkbox]').first()).toBeChecked()
+    await expect(rows(page).nth(2).locator('input[type=checkbox]').first(), '沒選到的丙不受影響').not.toBeChecked()
+
+    await rows(page).nth(0).click({ modifiers: ['ControlOrMeta'] })
+    await rows(page).nth(1).click({ modifiers: ['ControlOrMeta'] })
+    await page.getByRole('region', { name: '批次操作' }).getByRole('button', { name: '取消完成' }).click()
+    await expect(rows(page).nth(0).locator('input[type=checkbox]').first()).not.toBeChecked()
+  })
 })
 
 test.describe('鍵盤操作', () => {
