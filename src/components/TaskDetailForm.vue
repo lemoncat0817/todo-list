@@ -117,6 +117,13 @@
       </template>
     </fieldset>
 
+    <!--
+      只有已設定同步且已登入時才顯示：留言是「跟別人對話」，純本機模式
+      下沒有別人可以對話，不顯示一個永遠空著的留言區（跟「帳號與同步」
+      入口在 AppSidebar.vue 的顯示條件比照）。
+    -->
+    <TaskComments v-if="isSyncConfigured && auth.status === 'signed-in'" :task-id="draft.id" />
+
     <div class="flex justify-end gap-2 border-t border-line pt-4">
       <button type="button"
         class="rounded-lg px-3 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:bg-sunken"
@@ -131,6 +138,7 @@
 import { computed, ref, watch } from 'vue'
 import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
+import { useAuthStore } from '@/stores/auth'
 import {
   PRIORITY_DESCRIPTIONS,
   PRIORITY_ORDER,
@@ -142,6 +150,8 @@ import {
 import { DEFAULT_RECURRENCE, describeRecurrence } from '@/domain/recurrence'
 import { isValidISODate, isValidTime } from '@/domain/dates'
 import { findByNormalizedName } from '@/domain/filtering'
+import { isSyncConfigured } from '@/sync/config'
+import TaskComments from './TaskComments.vue'
 
 /**
  * 任務詳情的表單本體。
@@ -158,6 +168,7 @@ const emit = defineEmits<{ close: [] }>()
 
 const tasks = useTasksStore()
 const collections = useCollectionsStore()
+const auth = useAuthStore()
 
 const draft = ref<StoredTask | null>(null)
 const dueDateInput = ref('')

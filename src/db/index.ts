@@ -21,6 +21,8 @@ export {
   saveTags,
   loadFilters,
   saveFilters,
+  loadComments,
+  saveComments,
   getMeta,
   setMeta,
   loadOutbox,

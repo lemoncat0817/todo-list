@@ -3,6 +3,7 @@ import {
   type Op,
   type OpKind,
   type Priority,
+  type StoredComment,
   type StoredFilter,
   type StoredProject,
   type StoredTag,
@@ -156,6 +157,29 @@ export function normalizeFilter(raw: unknown, fallbackRank = ''): StoredFilter |
   }
 }
 
+/**
+ * 空白留言（純空白字元）視為無效——跟任務名稱一樣，使用者不小心送出
+ * 一個空字串沒有意義；跟任務名稱不一樣的是留言沒有「用原始輸入頂替」
+ * 這條退路，直接判定整筆無效即可。
+ */
+export function normalizeComment(raw: unknown): StoredComment | null {
+  if (!isRecord(raw)) return null
+  const id = nullableId(raw.id)
+  const taskId = nullableId(raw.taskId)
+  const authorId = nullableId(raw.authorId)
+  const body = typeof raw.body === 'string' && raw.body.trim().length > 0 ? raw.body : null
+  if (id === null || taskId === null || authorId === null || body === null) return null
+  const now = Date.now()
+  return {
+    id,
+    taskId,
+    authorId,
+    body,
+    createdAt: finiteNumber(raw.createdAt, now),
+    updatedAt: finiteNumber(raw.updatedAt, now),
+  }
+}
+
 const OP_KINDS: readonly OpKind[] = [
   'task.create',
   'task.patch',
@@ -169,6 +193,9 @@ const OP_KINDS: readonly OpKind[] = [
   'filter.create',
   'filter.patch',
   'filter.delete',
+  'comment.create',
+  'comment.patch',
+  'comment.delete',
 ]
 
 function isOpKind(v: unknown): v is OpKind {

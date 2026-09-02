@@ -11,6 +11,7 @@ export const DB_NAME = 'todolist'
  *     既有列的 order 數值要換算成 rank 字串，不是留著讓正規化補預設值
  *     就能矇混過去——沒有 upgrade() 搬資料的話，既有使用者的排序會
  *     整個垮掉。
+ * v6: 新增 comments（任務留言，M3）——又是真的新 store，不是補欄位。
  *
  * projects／tags／filters 後來補上的 updatedAt（跨裝置同步要用它判斷哪一邊
  * 較新，見 sync/merge.ts）不需要新的版號：IndexedDB 的 object store 本來就
@@ -19,7 +20,7 @@ export const DB_NAME = 'todolist'
  * 視為現在）即可，跟其他任何邊界正規化走同一條路。只有新增／變動 store
  * 或 index 結構、或既有資料需要真的換算才需要動版號。
  */
-export const DB_VERSION = 5
+export const DB_VERSION = 6
 
 export const STORE_TASKS = 'tasks'
 export const STORE_META = 'meta'
@@ -27,6 +28,7 @@ export const STORE_PROJECTS = 'projects'
 export const STORE_TAGS = 'tags'
 export const STORE_FILTERS = 'filters'
 export const STORE_OUTBOX = 'outbox'
+export const STORE_COMMENTS = 'comments'
 
 /** meta 用來記錄一次性遷移是否已完成，避免重複執行。 */
 export const META_MIGRATED_FROM_LOCALSTORAGE = 'migratedFromLocalStorage'
@@ -90,6 +92,9 @@ export type OpKind =
   | 'filter.create'
   | 'filter.patch'
   | 'filter.delete'
+  | 'comment.create'
+  | 'comment.patch'
+  | 'comment.delete'
 
 export interface Op {
   id: string
@@ -257,6 +262,24 @@ export interface StoredFilter {
   updatedAt: number
   /** 所屬工作區，語意與 StoredProject.workspaceId 相同——建立時可明確指定。 */
   workspaceId: string | null
+}
+
+/**
+ * 任務底下的留言（M3）。
+ *
+ * 沒有 workspaceId 欄位：留言的可見性／寫入權限完全依附於它所屬的任務
+ * （伺服器端透過 join tasks 判斷，見 supabase/migrations/0011_comments.sql），
+ * 不像 tasks/projects/tags/filters 需要自己快取一份 workspaceId 讓同步
+ * 輪詢／依工作區篩選畫面用得到。
+ */
+export interface StoredComment {
+  id: string
+  taskId: string
+  /** 留言作者的 user id——本地端唯讀，永遠由伺服器的 auth.uid() 決定。 */
+  authorId: string
+  body: string
+  createdAt: number
+  updatedAt: number
 }
 
 /** v1 的任務形狀，遷移時用來辨識舊資料。 */

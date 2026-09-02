@@ -1,82 +1,22 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { enqueueOp, loadFilters, loadProjects, loadTags, saveFilters, saveProjects, saveTags } from '@/db'
+import { loadFilters, loadProjects, loadTags, saveFilters, saveProjects, saveTags } from '@/db'
 import {
   DEFAULT_FILTER_COLOR,
   DEFAULT_PROJECT_COLOR,
   DEFAULT_TAG_COLOR,
-  type Op,
-  type OpKind,
   type StoredFilter,
   type StoredProject,
   type StoredTag,
 } from '@/db/schema'
-import { diffAgainstFingerprint, diffFields } from '@/domain/diff'
 import { findByNormalizedName } from '@/domain/filtering'
 import { compareRankValues, nextRank } from '@/domain/rank'
-import { monotonicNow } from '@/domain/task'
 import { inCurrentWorkspace } from '@/domain/workspaceScope'
 import { isSyncConfigured } from '@/sync/config'
 import { toRemoteFilter, toRemoteProject, toRemoteTag } from '@/sync/rowMapping'
 import { useHistoryStore } from './history'
 import { useWorkspaceStore } from './workspace'
-
-/**
- * 跟 stores/tasks.ts 的 enqueueSyncOps 同一套邏輯，套用在
- * projects/tags/filters 上——三者形狀不同但規則相同，寫一支泛型函式
- * 而不是各寫一份。`kind` 決定 op 的種類前綴（project／tag／filter），
- * `toRemote` 是各自的欄位對應（sync/rowMapping.ts）。
- *
- * 這裡只算「要排哪些 op」，不動本地寫入——collections.ts 的本地寫入
- * （saveProjects 等）維持整份覆寫，量小到不值得為此另外做逐列指紋；
- * `previousIndex` 純粹是為了推導遠端補丁而存在的另一份帳，跟本地
- * IndexedDB 寫不寫得有效率無關。
- */
-async function enqueueCollectionOps<T extends { id: string; updatedAt: number }>(
-  kind: 'project' | 'tag' | 'filter',
-  current: readonly T[],
-  previousIndex: ReadonlyMap<string, string>,
-  toRemote: (row: T) => Record<string, unknown>,
-  excludeIds: ReadonlySet<string>,
-): Promise<Map<string, string>> {
-  const { upserts, deletes, nextFingerprint } = diffAgainstFingerprint(current, previousIndex)
-  // 單調時鐘，理由跟 stores/tasks.ts 的 enqueueSyncOps 一致：避免同一
-  // 毫秒內排出的兩筆 op 因為 createdAt 相同，讓 outbox 的排序落在
-  // 隨機的 id tie-break 上。
-  const now = monotonicNow()
-  const ops: Op[] = []
-
-  for (const row of upserts) {
-    if (excludeIds.has(row.id)) continue
-    const previousJson = previousIndex.get(row.id)
-    const before = previousJson ? toRemote(JSON.parse(previousJson) as T) : null
-    const patch = diffFields(before, toRemote(row))
-    if (Object.keys(patch).length === 0) continue
-    ops.push({
-      id: crypto.randomUUID(),
-      kind: `${kind}.${before === null ? 'create' : 'patch'}` as OpKind,
-      targetId: row.id,
-      payload: patch,
-      createdAt: now,
-      attempts: 0,
-    })
-  }
-
-  for (const id of deletes) {
-    if (excludeIds.has(id)) continue
-    ops.push({
-      id: crypto.randomUUID(),
-      kind: `${kind}.delete` as OpKind,
-      targetId: id,
-      payload: { deleted_at: now },
-      createdAt: now,
-      attempts: 0,
-    })
-  }
-
-  for (const op of ops) await enqueueOp(op)
-  return nextFingerprint
-}
+import { enqueueCollectionOps } from './outboxSync'
 
 /**
  * 專案與標籤。

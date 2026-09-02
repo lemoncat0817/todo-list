@@ -6,6 +6,7 @@ import { useSyncStore } from '@/stores/sync'
 import { useAuthStore } from '@/stores/auth'
 import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
+import { useCommentsStore } from '@/stores/comments'
 import { makeTask } from '@/test/helpers'
 import { getMeta, setMeta } from '@/db'
 import { META_SYNC_ACCOUNT_ID, META_SYNC_LAST_PULLED_AT } from '@/db/schema'
@@ -22,7 +23,13 @@ function setup() {
   const pinia = createPinia()
   createApp({}).use(pinia)
   setActivePinia(pinia)
-  const app = { sync: useSyncStore(), auth: useAuthStore(), tasks: useTasksStore(), collections: useCollectionsStore() }
+  const app = {
+    sync: useSyncStore(),
+    auth: useAuthStore(),
+    tasks: useTasksStore(),
+    collections: useCollectionsStore(),
+    comments: useCommentsStore(),
+  }
   activeSync = app.sync
   return app
 }
@@ -237,7 +244,7 @@ describe('觸發時機', () => {
 
     await app.sync.start()
     // syncError 預設就是 null，不能拿來確認「第一輪同步真的跑完了」；
-    // lastPulledAt 只在整輪（四張表都推送＋拉取完成）結束時才會被寫入，
+    // lastPulledAt 只在整輪（五張表都推送＋拉取完成）結束時才會被寫入，
     // 才是可靠的完成訊號。
     await vi.waitFor(async () => {
       expect(await getMeta<number>(META_SYNC_LAST_PULLED_AT)).toEqual(expect.any(Number))
@@ -325,7 +332,7 @@ describe('帳號隔離：換了不同的人登入時，本地快取不能繼續�
    * B 一旦編輯任何一筆還會用自己的 token 把「A 的資料」upsert 到遠端。
    */
   it('本地記錄的 owner 跟這次登入的 user id 不同時，清空本地任務／專案／標籤／篩選器並把游標歸零', async () => {
-    const { sync, auth, tasks, collections } = setup()
+    const { sync, auth, tasks, collections, comments } = setup()
     await setMeta(META_SYNC_ACCOUNT_ID, 'userA')
     tasks.isLoading = false
     tasks.items = [makeTask('A 的任務', false, { id: 'a-task' })]
@@ -345,6 +352,7 @@ describe('帳號隔離：換了不同的人登入時，本地快取不能繼續�
     expect(collections.projects).toEqual([])
     expect(collections.tags).toEqual([])
     expect(collections.filters).toEqual([])
+    expect(comments.items).toEqual([])
     await vi.waitFor(async () => {
       expect(await getMeta<string>(META_SYNC_ACCOUNT_ID)).toBe('userB')
     })
@@ -357,7 +365,7 @@ describe('帳號隔離：換了不同的人登入時，本地快取不能繼續�
     // 換人登入後的第一輪拉取要用游標 0（不是 A 留下的舊游標），
     // 才會完整拉一次 B 在伺服器上真正的資料，不會漏掉比 A 的舊游標更早的列。
     const getCalls = fetchMock.mock.calls.filter(([, options]) => (options as RequestInit).method === 'GET')
-    expect(getCalls.length, '四張表都要重新拉一次').toBe(4)
+    expect(getCalls.length, '五張表都要重新拉一次').toBe(5)
     for (const [url] of getCalls) {
       expect(String(url)).toContain('updated_at=gt.0')
     }
