@@ -5,15 +5,17 @@ import {
   DEFAULT_TASK_FIELDS,
   STORE_FILTERS,
   STORE_META,
+  STORE_OUTBOX,
   STORE_PROJECTS,
   STORE_TAGS,
   STORE_TASKS,
+  type Op,
   type StoredFilter,
   type StoredProject,
   type StoredTag,
   type StoredTask,
 } from './schema'
-import { normalizeFilter, normalizeProject, normalizeTag, normalizeTask } from '@/domain/task'
+import { normalizeFilter, normalizeOp, normalizeProject, normalizeTag, normalizeTask } from '@/domain/task'
 
 /**
  * IndexedDB 的存取層。
@@ -67,6 +69,14 @@ export function getDB(): Promise<IDBPDatabase> {
           if (!db.objectStoreNames.contains(STORE_FILTERS)) {
             const filters = db.createObjectStore(STORE_FILTERS, { keyPath: 'id' })
             filters.createIndex('by-order', 'order')
+          }
+        }
+
+        if (oldVersion < 4) {
+          // 同上，全新的 store，沒有既有資料要搬。
+          if (!db.objectStoreNames.contains(STORE_OUTBOX)) {
+            const outbox = db.createObjectStore(STORE_OUTBOX, { keyPath: 'id' })
+            outbox.createIndex('by-createdAt', 'createdAt')
           }
         }
       },
@@ -175,4 +185,34 @@ export async function getMeta<T>(key: string): Promise<T | undefined> {
 export async function setMeta(key: string, value: unknown): Promise<void> {
   const db = await getDB()
   await db.put(STORE_META, value, key)
+}
+
+// ---------------------------------------------------------------- outbox
+
+/** 依 createdAt 讀出全部待送操作；壞掉的列被正規化或略過，不讓上傳器整批卡住。 */
+export async function loadOutbox(): Promise<Op[]> {
+  const db = await getDB()
+  const rows = await db.getAllFromIndex(STORE_OUTBOX, 'by-createdAt')
+  return rows.map(normalizeOp).filter((op): op is Op => op !== null)
+}
+
+/** 使用者做了一個動作就呼叫一次，把操作記進佇列。 */
+export async function enqueueOp(op: Op): Promise<void> {
+  const db = await getDB()
+  await db.put(STORE_OUTBOX, op)
+}
+
+/** 操作送達伺服器後從佇列移除。 */
+export async function removeOp(id: string): Promise<void> {
+  const db = await getDB()
+  await db.delete(STORE_OUTBOX, id)
+}
+
+/** 送出失敗時記一次重試，供上傳器算退避間隔。 */
+export async function markOpAttempt(id: string): Promise<void> {
+  const db = await getDB()
+  const tx = db.transaction(STORE_OUTBOX, 'readwrite')
+  const row = await tx.store.get(id)
+  if (row) await tx.store.put({ ...row, attempts: (row as Op).attempts + 1 })
+  await tx.done
 }

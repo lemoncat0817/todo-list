@@ -1,5 +1,7 @@
 import {
   DEFAULT_TASK_FIELDS,
+  type Op,
+  type OpKind,
   type Priority,
   type StoredFilter,
   type StoredProject,
@@ -139,6 +141,42 @@ export function normalizeFilter(raw: unknown, fallbackOrder = 0): StoredFilter |
     color: str(raw.color, '#7c3aed'),
     order: finiteNumber(raw.order, fallbackOrder),
     updatedAt: finiteNumber(raw.updatedAt, Date.now()),
+  }
+}
+
+const OP_KINDS: readonly OpKind[] = [
+  'task.create',
+  'task.patch',
+  'task.delete',
+  'project.create',
+  'project.patch',
+  'project.delete',
+  'tag.create',
+  'tag.patch',
+  'tag.delete',
+  'filter.create',
+  'filter.patch',
+  'filter.delete',
+]
+
+function isOpKind(v: unknown): v is OpKind {
+  return typeof v === 'string' && (OP_KINDS as readonly string[]).includes(v)
+}
+
+/** 佇列裡的操作是這個版本的 app 自己寫進去的，仍然正規化——
+ * 未來欄位演進時，舊版本留下的列不該讓上傳器整批掛掉。 */
+export function normalizeOp(raw: unknown): Op | null {
+  if (!isRecord(raw)) return null
+  const id = nullableId(raw.id)
+  const targetId = nullableId(raw.targetId)
+  if (id === null || targetId === null || !isOpKind(raw.kind)) return null
+  return {
+    id,
+    kind: raw.kind,
+    targetId,
+    payload: isRecord(raw.payload) ? raw.payload : {},
+    createdAt: finiteNumber(raw.createdAt, Date.now()),
+    attempts: finiteNumber(raw.attempts, 0),
   }
 }
 

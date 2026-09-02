@@ -3,6 +3,8 @@ export const DB_NAME = 'todolist'
  * v1: tasks + meta。
  * v2: 擴充任務欄位，新增 projects 與 tags。
  * v3: 新增 filters（儲存的篩選器查詢）。
+ * v4: 新增 outbox（離線操作佇列，見下方 Op）——這是真的新 store，
+ *     不是像 updatedAt 那樣補個欄位就好，所以要動版號。
  *
  * projects／tags／filters 後來補上的 updatedAt（跨裝置同步要用它判斷哪一邊
  * 較新，見 sync/merge.ts）不需要新的版號：IndexedDB 的 object store 本來就
@@ -11,13 +13,14 @@ export const DB_NAME = 'todolist'
  * 視為現在）即可，跟其他任何邊界正規化走同一條路。只有新增／變動 store
  * 或 index 結構才需要真的動版號。
  */
-export const DB_VERSION = 3
+export const DB_VERSION = 4
 
 export const STORE_TASKS = 'tasks'
 export const STORE_META = 'meta'
 export const STORE_PROJECTS = 'projects'
 export const STORE_TAGS = 'tags'
 export const STORE_FILTERS = 'filters'
+export const STORE_OUTBOX = 'outbox'
 
 /** meta 用來記錄一次性遷移是否已完成，避免重複執行。 */
 export const META_MIGRATED_FROM_LOCALSTORAGE = 'migratedFromLocalStorage'
@@ -56,6 +59,40 @@ export const META_SYNC_FINGERPRINT_FILTERS = 'syncFingerprintFilters'
  * 別人登入，都要靠這把 key 還在，才分得出兩者的差異。
  */
 export const META_SYNC_ACCOUNT_ID = 'syncAccountId'
+
+/**
+ * 離線操作佇列。取代舊版「比對本地內容指紋算差異」的推送方式——那套
+ * 在多人情境下會把別人剛下推的變更誤判成本地變更再推回去（見計畫書
+ * 第 6 節）。改成使用者一做動作就在本地記一筆操作，上傳器照 createdAt
+ * 依序送出、成功即刪，離線時只是持續累積、不會卡住。
+ *
+ * id 是操作本身的 id（重送時不變，伺服器用它去重），不是被操作的那一列
+ * 的 id——那個放在 targetId。
+ */
+export type OpKind =
+  | 'task.create'
+  | 'task.patch'
+  | 'task.delete'
+  | 'project.create'
+  | 'project.patch'
+  | 'project.delete'
+  | 'tag.create'
+  | 'tag.patch'
+  | 'tag.delete'
+  | 'filter.create'
+  | 'filter.patch'
+  | 'filter.delete'
+
+export interface Op {
+  id: string
+  kind: OpKind
+  targetId: string
+  /** create 是完整列；patch 只放有變動的欄位；delete 通常是空物件。 */
+  payload: Record<string, unknown>
+  createdAt: number
+  /** 失敗重試次數，上傳器用來算退避間隔。 */
+  attempts: number
+}
 
 /** 未分類：刪除專案時任務的去處，不是一筆真的 project 紀錄。 */
 export const UNCATEGORIZED = null
