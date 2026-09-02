@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   fromRemoteActivity,
+  fromRemoteAttachment,
   fromRemoteComment,
   fromRemoteFilter,
   fromRemoteProject,
@@ -8,6 +9,7 @@ import {
   fromRemoteTask,
   isTombstone,
   makeTombstone,
+  toRemoteAttachment,
   toRemoteComment,
   toRemoteFilter,
   toRemoteProject,
@@ -16,6 +18,7 @@ import {
 } from './rowMapping'
 import {
   normalizeActivity,
+  normalizeAttachment,
   normalizeComment,
   normalizeFilter,
   normalizeProject,
@@ -166,5 +169,33 @@ describe('rowMapping — activity（只拉不推）', () => {
   it('actor_id 是 null 時（系統／非請求路徑寫入）正確帶過來', () => {
     const remoteRow = { id: 'a1', task_id: 't1', actor_id: null, kind: 'created', detail: {}, created_at: 1, updated_at: 1 }
     expect(normalizeActivity(fromRemoteActivity(remoteRow))?.actorId).toBeNull()
+  })
+})
+
+describe('rowMapping — attachments', () => {
+  it('其餘欄位往返等價（uploader_id 只拉不推，見下一案）', () => {
+    const attachment = {
+      id: 'a1', taskId: 't1', uploaderId: 'u1', fileName: 'x.pdf',
+      fileSize: 100, contentType: 'application/pdf', storagePath: 't1/a1-x.pdf', createdAt: 1000, updatedAt: 1000,
+    }
+    const remoteRow = toRemoteAttachment(attachment)
+    // uploader_id 由資料庫的 default auth.uid() 決定，模擬伺服器補上這個欄位再拉回來。
+    const roundTripped = normalizeAttachment(fromRemoteAttachment({ ...remoteRow, uploader_id: 'u1' }))
+    expect(roundTripped).toEqual(attachment)
+  })
+
+  it('uploader_id 只拉不推：toRemoteAttachment 不會送出這個欄位，由伺服器的 auth.uid() 決定', () => {
+    expect(
+      toRemoteAttachment({
+        id: 'a1', taskId: 't1', uploaderId: 'u1', fileName: 'x.pdf',
+        fileSize: 100, contentType: 'application/pdf', storagePath: 't1/a1-x.pdf', createdAt: 1, updatedAt: 1,
+      }),
+    ).not.toHaveProperty('uploader_id')
+
+    const remoteRow = {
+      id: 'a1', task_id: 't1', uploader_id: 'u1', file_name: 'x.pdf',
+      file_size: 100, content_type: 'application/pdf', storage_path: 't1/a1-x.pdf', created_at: 1, updated_at: 1,
+    }
+    expect(normalizeAttachment(fromRemoteAttachment(remoteRow))?.uploaderId).toBe('u1')
   })
 })

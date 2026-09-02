@@ -123,6 +123,7 @@
     -->
     <template v-if="isSyncConfigured && auth.status === 'signed-in'">
       <TaskActivity :task-id="draft.id" />
+      <TaskAttachments :task-id="draft.id" />
       <TaskComments :task-id="draft.id" />
     </template>
 
@@ -155,6 +156,7 @@ import { findByNormalizedName } from '@/domain/filtering'
 import { isSyncConfigured } from '@/sync/config'
 import TaskComments from './TaskComments.vue'
 import TaskActivity from './TaskActivity.vue'
+import TaskAttachments from './TaskAttachments.vue'
 
 /**
  * 任務詳情的表單本體。

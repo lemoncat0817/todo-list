@@ -10,9 +10,11 @@ import {
   loadFilters,
   loadComments,
   loadActivity,
+  loadAttachments,
   saveTasks,
   saveComments,
   saveActivity,
+  saveAttachments,
   getMeta,
   setMeta,
   migrateFromLocalStorage,
@@ -49,10 +51,11 @@ const task = (id: string, name: string, done = false, order = 0): StoredTask =>
   makeTask(name, done, { id, order })
 
 describe('IndexedDB 資料層', () => {
-  it('建立時就備妥八個 object store 與排序索引', async () => {
+  it('建立時就備妥九個 object store 與排序索引', async () => {
     const db = await getDB()
     expect([...db.objectStoreNames].sort()).toEqual([
       'activity',
+      'attachments',
       'comments',
       'filters',
       'meta',
@@ -88,6 +91,15 @@ describe('IndexedDB 資料層', () => {
     ]
     await saveActivity(rows)
     expect((await loadActivity()).map((a) => a.id)).toEqual(['a1', 'a2'])
+  })
+
+  it('附件 metadata 存進去再讀出來，依 createdAt 排序', async () => {
+    const rows = [
+      { id: 'x2', taskId: 't1', uploaderId: 'u1', fileName: 'b.pdf', fileSize: 2, contentType: 'application/pdf', storagePath: 't1/x2-b.pdf', createdAt: 200, updatedAt: 200 },
+      { id: 'x1', taskId: 't1', uploaderId: 'u1', fileName: 'a.pdf', fileSize: 1, contentType: 'application/pdf', storagePath: 't1/x1-a.pdf', createdAt: 100, updatedAt: 100 },
+    ]
+    await saveAttachments(rows)
+    expect((await loadAttachments()).map((a) => a.id)).toEqual(['x1', 'x2'])
   })
 
   it('讀出時依 order 排序，而非插入順序', async () => {
