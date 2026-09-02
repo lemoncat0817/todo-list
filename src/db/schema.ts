@@ -191,6 +191,14 @@ export interface StoredTask {
   completedAt: number | null
   createdAt: number
   updatedAt: number
+  /**
+   * 這筆任務所屬的工作區——由伺服器的 derive_task_workspace() trigger
+   * 依 project_id 反推決定，client 端唯讀（toRemoteTask 不送出這個欄位，
+   * 送了也會被忽略）。本地只在拉取回來時記錄，用途是日後依工作區篩選
+   * 可見任務；null 代表這筆還沒跟伺服器同步過、或本來就在未設定同步的
+   * 純本機模式下建立。
+   */
+  workspaceId: string | null
 }
 
 export interface StoredProject {
@@ -200,6 +208,15 @@ export interface StoredProject {
   rank: string
   /** v4 新增，供跨裝置同步判斷衝突時哪一邊較新（見 sync/merge.ts）。 */
   updatedAt: number
+  /**
+   * 這個專案所屬的工作區。跟 StoredTask.workspaceId 不同：這裡不是唯讀——
+   * 建立新專案時 client 會明確指定（見 stores/collections.ts 的
+   * addProject()），因為 create_project RPC 是「client 沒送這個欄位才落
+   * 個人工作區，送了就尊重送的值」（supabase/migrations/0004 的
+   * derive_workspace_id() trigger），這是在共享工作區底下新建專案唯一
+   * 的路徑。null 代表尚未同步過、或純本機模式。
+   */
+  workspaceId: string | null
   /**
    * 這個工作區的收件匣專案——伺服器端建立（handle_new_user()／既有帳號的
    * 補建遷移），client 端唯讀，永遠不會自己建立或改動這個欄位。
@@ -221,6 +238,8 @@ export interface StoredTag {
   name: string
   color: string
   updatedAt: number
+  /** 所屬工作區，語意與 StoredProject.workspaceId 相同——建立時可明確指定。 */
+  workspaceId: string | null
 }
 
 /**
@@ -236,6 +255,8 @@ export interface StoredFilter {
   color: string
   rank: string
   updatedAt: number
+  /** 所屬工作區，語意與 StoredProject.workspaceId 相同——建立時可明確指定。 */
+  workspaceId: string | null
 }
 
 /** v1 的任務形狀，遷移時用來辨識舊資料。 */
@@ -259,6 +280,7 @@ export const DEFAULT_TASK_FIELDS: Omit<
   parentId: null,
   recurrence: null,
   completedAt: null,
+  workspaceId: null,
 }
 
 /**

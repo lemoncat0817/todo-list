@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { createApp } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useCollectionsStore } from '@/stores/collections'
+import { useWorkspaceStore } from '@/stores/workspace'
 
 /**
  * 專案／標籤的重名防呆。
@@ -69,8 +70,8 @@ describe('visibleProjects／inboxProjectIds', () => {
     const collections = setup()
     collections.mergeRemote({
       projects: [
-        { id: 'inbox-1', name: '收件匣', color: '#6b7280', rank: 'A', updatedAt: 1, isInbox: true },
-        { id: 'p1', name: '工作', color: '#1d4ed8', rank: 'B', updatedAt: 1, isInbox: false },
+        { id: 'inbox-1', name: '收件匣', color: '#6b7280', rank: 'A', updatedAt: 1, isInbox: true, workspaceId: 'w1' },
+        { id: 'p1', name: '工作', color: '#1d4ed8', rank: 'B', updatedAt: 1, isInbox: false, workspaceId: 'w1' },
       ],
       tags: [],
       filters: [],
@@ -78,5 +79,22 @@ describe('visibleProjects／inboxProjectIds', () => {
     expect(collections.projects.map((p) => p.id).sort()).toEqual(['inbox-1', 'p1'])
     expect(collections.visibleProjects.map((p) => p.id)).toEqual(['p1'])
     expect(collections.inboxProjectIds).toEqual(new Set(['inbox-1']))
+  })
+})
+
+describe('建立時落在目前所在的工作區', () => {
+  it('addProject／addTag／addFilter 都用 workspace.currentWorkspaceId', () => {
+    const collections = setup()
+    const workspace = useWorkspaceStore()
+    workspace.currentWorkspaceId = 'shared-ws'
+
+    expect(collections.addProject('工作').workspaceId).toBe('shared-ws')
+    expect(collections.addTag('緊急').workspaceId).toBe('shared-ws')
+    expect(collections.addFilter('本週', 'due:week').workspaceId).toBe('shared-ws')
+  })
+
+  it('沒有工作區脈絡（純本機模式／尚未登入）時是 null', () => {
+    const collections = setup()
+    expect(collections.addProject('工作').workspaceId).toBeNull()
   })
 })
