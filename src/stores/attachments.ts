@@ -3,7 +3,7 @@ import { computed, ref, toRaw } from 'vue'
 import { loadAttachments, saveAttachments } from '@/db'
 import type { StoredAttachment } from '@/db/schema'
 import { TABLE_ATTACHMENTS, toRemoteAttachment } from '@/sync/rowMapping'
-import { SyncHttpError, upsertRows } from '@/sync/restClient'
+import { callRpc, SyncHttpError, upsertRows } from '@/sync/restClient'
 import {
   attachmentStoragePath,
   deleteAttachmentFile,
@@ -11,6 +11,15 @@ import {
   uploadAttachmentFile,
 } from '@/sync/storageClient'
 import { useAuthStore } from './auth'
+import { useWorkspaceStore } from './workspace'
+
+/**
+ * 跟 supabase/migrations/0019_maintenance.sql 的 v_quota 常數同一個值
+ * ——這裡只是「上傳前先問一次，省得白白傳完整個檔案才被拒絕」的提前
+ * 檢查，真正擋得住的是資料庫那邊的 trigger（enforce_attachment_quota），
+ * 兩邊數字要保持一致，但這裡改壞了也不會讓配額失效，只是提示會慢一拍。
+ */
+const WORKSPACE_STORAGE_QUOTA_BYTES = 500 * 1024 * 1024
 
 /**
  * 附件（M3）。跟 comments.ts／activity.ts 最大的不同：upload()／remove()
@@ -25,6 +34,7 @@ import { useAuthStore } from './auth'
 export const useAttachmentsStore = defineStore('attachments', () => {
   const items = ref<StoredAttachment[]>([])
   const auth = useAuthStore()
+  const workspace = useWorkspaceStore()
 
   const uploading = ref(false)
   const error = ref<string | null>(null)
@@ -66,8 +76,33 @@ export const useAttachmentsStore = defineStore('attachments', () => {
    */
   function describeAttachmentError(e: unknown): string {
     if (e instanceof TypeError) return '目前連不上網路，請檢查連線後重試'
+    // 前端已經先問過一次用量（見 upload() 的預先檢查），這裡是防線
+    // ——搶在同一瞬間、或跳過前端直接呼叫 API 的情況才會真的走到資料庫
+    // 那道 trigger。錯誤內容裡的中文訊息就是給使用者看的，直接拿來用，
+    // 不必再翻譯一次成通用的「伺服器暫時無法處理」。
+    if (e instanceof SyncHttpError && e.message.includes('容量已滿')) {
+      return '這個工作區的附件容量已滿（上限 500MB），請先刪除不需要的附件'
+    }
     if (e instanceof SyncHttpError) return '伺服器暫時無法處理，請稍後再試一次'
     return '發生未預期的問題，請再試一次'
+  }
+
+  /**
+   * 上傳前先問一次目前用量——省得使用者等完整個檔案傳完才被拒絕。
+   * 沒有目前工作區（純本機模式，或還沒切到任何工作區）時跳過檢查，
+   * 讓真正的錯誤處理（若有）留給伺服器那道 trigger。查詢本身失敗
+   * （例如網路不穩）也不擋上傳——這只是提前檢查，不是唯一防線。
+   */
+  async function checkQuota(file: File, token: string): Promise<boolean> {
+    const workspaceId = workspace.currentWorkspaceId
+    if (!workspaceId) return true
+    try {
+      const used = await callRpc<number>('workspace_storage_used', { p_workspace: workspaceId }, token)
+      return used + file.size <= WORKSPACE_STORAGE_QUOTA_BYTES
+    } catch (e) {
+      console.error('[attachments] 查詢工作區用量失敗，略過預先檢查', e)
+      return true
+    }
   }
 
   async function upload(taskId: string, file: File): Promise<void> {
@@ -76,6 +111,11 @@ export const useAttachmentsStore = defineStore('attachments', () => {
     uploading.value = true
     error.value = null
     try {
+      if (!(await checkQuota(file, token))) {
+        error.value = '這個工作區的附件容量已滿（上限 500MB），請先刪除不需要的附件'
+        return
+      }
+
       const id = crypto.randomUUID()
       const path = attachmentStoragePath(taskId, id, file.name)
       await uploadAttachmentFile(path, file, token)

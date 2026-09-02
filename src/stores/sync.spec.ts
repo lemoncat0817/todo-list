@@ -152,6 +152,49 @@ describe('已登入時', () => {
     expect(sync.syncError).toBe('目前連不上網路，恢復連線後會自動重試')
   })
 
+  /**
+   * M6：清理墓碑要等所有裝置都同步過某個時間點，前提是裝置真的有回報
+   * 游標——這裡驗證「同步成功之後」真的會打這一支 upsert。
+   */
+  it('同步成功後回報這台裝置的同步游標（device_cursors，M6）', async () => {
+    const { sync, auth, tasks } = setup()
+    auth.session = fakeSession()
+    tasks.isLoading = false
+    const fetchMock = mockFetch()
+
+    await sync.start()
+    await vi.waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url]) => String(url).includes('device_cursors'))
+      expect(call).toBeDefined()
+    })
+
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes('device_cursors'))!
+    const [url, options] = call as [string, RequestInit]
+    expect(url).toContain('on_conflict=device_id')
+    expect(options.method).toBe('POST')
+    const body = JSON.parse(options.body as string) as Array<Record<string, unknown>>
+    expect(body[0]).toHaveProperty('device_id')
+    expect(body[0]).toHaveProperty('last_synced_at')
+    expect(body[0]).not.toHaveProperty('user_id')
+  })
+
+  it('回報裝置游標失敗不影響同步本身的成功狀態', async () => {
+    const { sync, auth, tasks } = setup()
+    auth.session = fakeSession()
+    tasks.isLoading = false
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockFetch((url) => {
+      if (String(url).includes('device_cursors')) throw new Error('device_cursors 端點壞了')
+      return []
+    })
+
+    await sync.start()
+    await vi.waitFor(async () => {
+      expect(await getMeta<number>(META_SYNC_LAST_PULLED_AT)).toEqual(expect.any(Number))
+    })
+    expect(sync.syncError).toBeNull()
+  })
+
   it('合併讀的是「現在」的本地狀態，不是呼叫當下的舊快照', async () => {
     // 這一條釘住 sync.ts 修過的一個真實問題：push 送出後、pull 回來前有一段
     // 網路等待，如果合併用的是進函式時就讀好的舊陣列，這段等待期間使用者

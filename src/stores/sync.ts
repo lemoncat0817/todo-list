@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
-import { clearOutbox, getMeta, loadOutbox, markOpAttempt, removeOp, setMeta } from '@/db'
+import { clearOutbox, getMeta, getOrCreateDeviceId, loadOutbox, markOpAttempt, removeOp, setMeta } from '@/db'
 import {
   META_SYNC_ACCOUNT_ID,
   META_SYNC_LAST_PULLED_AT,
@@ -28,7 +28,7 @@ import {
 import { mergeByUpdatedAt } from '@/sync/merge'
 import { DEFAULT_NOTIFICATION_PREFS } from '@/sync/notificationsClient'
 import { sendOp } from '@/sync/rpc'
-import { SyncHttpError } from '@/sync/restClient'
+import { SyncHttpError, upsertRows } from '@/sync/restClient'
 import { pullTable, type TableBinding } from '@/sync/tableSync'
 import type { WorkspaceSubscription } from '@/sync/realtime'
 import {
@@ -240,6 +240,25 @@ export const useSyncStore = defineStore('sync', () => {
   }
 
   /**
+   * 回報這台裝置同步到哪個時間點（M6）——伺服器端的墓碑清理
+   * （supabase/migrations/0019_maintenance.sql）要等所有裝置的游標都
+   * 超過某個時間點才敢刪掉那之前的墓碑，這支就是「回報」那一步。
+   *
+   * 刻意 best-effort：失敗只印主控台，不設定 syncError、不影響這一輪
+   * 同步本身算不算成功——這是清理工作的輸入之一，不是使用者資料同步
+   * 的一部分，沒必要為了這個讓整輪同步顯示失敗。
+   */
+  async function reportDeviceCursor(token: string, syncedAt: number): Promise<void> {
+    try {
+      const deviceId = await getOrCreateDeviceId()
+      // user_id 刻意不送：資料庫的 default auth.uid() 決定這筆屬於誰。
+      await upsertRows('device_cursors', [{ device_id: deviceId, last_synced_at: syncedAt }], token, 'device_id')
+    } catch (error) {
+      console.error('[sync] 回報裝置同步游標失敗', error)
+    }
+  }
+
+  /**
    * Realtime 把輪詢間隔壓到即時，但只是把 PULL_INTERVAL_MS 的等待戳早一點
    * 觸發——套用資料仍然走同一條 pullAndMerge，不是另外解析即時事件，
    * 見 sync/realtime.ts 開頭的說明。
@@ -372,6 +391,7 @@ export const useSyncStore = defineStore('sync', () => {
 
           lastPulledAt.value = startedAt
           await persist()
+          void reportDeviceCursor(token, startedAt)
           syncError.value = null
         } while (dirty)
       } catch (error) {

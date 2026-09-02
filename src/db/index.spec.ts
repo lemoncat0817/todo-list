@@ -17,6 +17,7 @@ import {
   saveAttachments,
   getMeta,
   setMeta,
+  getOrCreateDeviceId,
   migrateFromLocalStorage,
   loadOutbox,
   enqueueOp,
@@ -359,5 +360,14 @@ describe('從 localStorage 遷移', () => {
     await migrateFromLocalStorage()
 
     expect(localStorage.getItem('todoTask')).toBe(original)
+  })
+})
+
+describe('getOrCreateDeviceId（M6）', () => {
+  it('第一次呼叫時產生一個 id 並存起來，之後每次都回傳同一個', async () => {
+    const first = await getOrCreateDeviceId()
+    const second = await getOrCreateDeviceId()
+    expect(first).toBe(second)
+    expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
   })
 })

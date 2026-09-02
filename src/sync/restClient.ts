@@ -61,21 +61,41 @@ export async function fetchRowsSince(
 }
 
 /**
- * 批次 upsert。用 `on_conflict=id` + `Prefer: resolution=merge-duplicates`——
- * 已存在的列走 UPDATE（只更新這次帶的欄位，`user_id` 沒帶到就不會被動到），
- * 不存在的列走 INSERT（`user_id` 用資料表的 `default auth.uid()`）。
+ * 批次 upsert。預設用 `on_conflict=id` + `Prefer: resolution=merge-duplicates`
+ * ——已存在的列走 UPDATE（只更新這次帶的欄位，`user_id` 沒帶到就不會被
+ * 動到），不存在的列走 INSERT（`user_id` 用資料表的 `default auth.uid()`）。
+ *
+ * `conflictColumn` 可覆寫：多數表的主鍵是 `id`，但 device_cursors（M6）
+ * 的主鍵是 `device_id`——與其為了這一張表另開一支函式，加一個參數
+ * 就夠，其餘呼叫端不用改。
  */
 export async function upsertRows(
   table: string,
   rows: readonly Record<string, unknown>[],
   accessToken: string,
+  conflictColumn = 'id',
 ): Promise<void> {
   if (rows.length === 0) return
-  const url = `${SUPABASE_URL}/rest/v1/${table}?on_conflict=id`
+  const url = `${SUPABASE_URL}/rest/v1/${table}?on_conflict=${conflictColumn}`
   const res = await fetch(url, {
     method: 'POST',
     headers: headers(accessToken, { Prefer: 'resolution=merge-duplicates,return=minimal' }),
     body: JSON.stringify(rows),
   })
   if (!res.ok) throw new SyncHttpError(table, 'upsert', res.status, await safeText(res))
+}
+
+/**
+ * 呼叫一支不屬於 outbox 派送表（sync/rpc.ts）的一次性 RPC——那支表是
+ * 專門給「op kind → 固定函式」這種對照關係用的，`workspace_storage_used`
+ * 這類單純的唯讀查詢硬塞進去反而要多繞一層 Op 物件，不如直接呼叫。
+ */
+export async function callRpc<T>(fn: string, params: Record<string, unknown>, accessToken: string): Promise<T> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: headers(accessToken),
+    body: JSON.stringify(params),
+  })
+  if (!res.ok) throw new SyncHttpError(fn, 'rpc', res.status, await safeText(res))
+  return (await res.json()) as T
 }
