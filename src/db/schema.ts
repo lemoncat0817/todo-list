@@ -278,6 +278,14 @@ export interface StoredComment {
   /** 留言作者的 user id——本地端唯讀，永遠由伺服器的 auth.uid() 決定。 */
   authorId: string
   body: string
+  /**
+   * 留言裡 @提及的成員 user id——建立／編輯留言時由 client 端解析
+   * body 裡的 `@顯示名稱` 比對目前工作區成員名單算出來，資料庫端
+   * 不重新解析文字（見 supabase/migrations/0012_comment_mentions.sql）。
+   * 只負責存「提到了誰」這個結構化事實，被提及不會觸發任何通知——
+   * 那是 M4（推播通知）的範圍。
+   */
+  mentionedUserIds: string[]
   createdAt: number
   updatedAt: number
 }

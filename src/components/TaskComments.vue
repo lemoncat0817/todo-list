@@ -12,9 +12,7 @@
         </div>
 
         <template v-if="editingId === comment.id">
-          <label class="sr-only" :for="`edit-comment-${comment.id}`">編輯留言</label>
-          <textarea :id="`edit-comment-${comment.id}`" v-model="editingBody" rows="2"
-            class="min-h-14 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[15px] text-ink focus:border-accent focus:outline-none" />
+          <MentionTextarea :id="`edit-comment-${comment.id}`" v-model="editingBody" label="編輯留言" :members="members" />
           <div class="flex gap-2">
             <button type="button"
               class="rounded-md bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
@@ -25,7 +23,12 @@
           </div>
         </template>
         <template v-else>
-          <p class="whitespace-pre-wrap text-[15px] text-ink">{{ comment.body }}</p>
+          <p class="whitespace-pre-wrap text-[15px] text-ink">
+            <template v-for="(segment, i) in bodySegments(comment.body)" :key="i">
+              <span v-if="segment.member" class="rounded bg-accent-soft px-1 font-medium text-accent-ink">{{ segment.text }}</span>
+              <template v-else>{{ segment.text }}</template>
+            </template>
+          </p>
           <div v-if="comment.authorId === myUserId" class="flex gap-3">
             <button type="button" class="text-xs text-ink-faint transition-colors hover:text-ink"
               @click="startEdit(comment)">編輯</button>
@@ -37,9 +40,7 @@
     </ul>
 
     <div class="flex flex-col gap-1.5 pt-1">
-      <label class="sr-only" :for="`new-comment-${taskId}`">新增留言</label>
-      <textarea :id="`new-comment-${taskId}`" v-model="draft" rows="2" placeholder="留個話…"
-        class="min-h-14 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[15px] text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none" />
+      <MentionTextarea :id="`new-comment-${taskId}`" v-model="draft" label="新增留言" placeholder="留個話…（打 @ 可以提及成員）" :members="members" />
       <button type="button"
         class="self-end rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
         :disabled="draft.trim() === ''" @click="submit">留言</button>
@@ -52,7 +53,9 @@ import { computed, ref } from 'vue'
 import { useCommentsStore } from '@/stores/comments'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { splitMentionSegments } from '@/domain/mentions'
 import type { StoredComment } from '@/db/schema'
+import MentionTextarea from './MentionTextarea.vue'
 
 /**
  * 任務留言區——只有在已設定同步且已登入時，容器（TaskDetailForm.vue）
@@ -67,6 +70,15 @@ const workspace = useWorkspaceStore()
 
 const list = computed(() => comments.forTask(props.taskId))
 const myUserId = computed(() => auth.session?.user.id ?? null)
+
+/** @提及要比對／建議的成員名單，跟 authorName() 用的是同一份 workspace.members。 */
+const members = computed(() =>
+  workspace.members.map((m) => ({ userId: m.user_id, displayName: m.profiles?.display_name ?? '' })),
+)
+
+function bodySegments(body: string) {
+  return splitMentionSegments(body, members.value)
+}
 
 /**
  * 作者名稱靠 workspace.members 解析——跟 MembersDialog.vue 同一份資料，

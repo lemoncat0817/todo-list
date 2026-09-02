@@ -5,6 +5,7 @@ import type { Session } from '@supabase/auth-js'
 import { useCommentsStore } from '@/stores/comments'
 import { useAuthStore } from '@/stores/auth'
 import { useHistoryStore } from '@/stores/history'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { loadOutbox } from '@/db'
 
 vi.mock('@/sync/config', () => ({ isSyncConfigured: true }))
@@ -39,6 +40,31 @@ describe('comments store — CRUD', () => {
     expect(comment.authorId).toBe('alice')
     expect(comment.body).toBe('這個要優先處理')
     expect(store.forTask('task-1')).toEqual([comment])
+  })
+
+  it('body 裡的 @提及比對 workspace.members，解析出 mentionedUserIds', () => {
+    const store = setup()
+    useAuthStore().session = fakeSession('alice')
+    useWorkspaceStore().members = [
+      { user_id: 'bob-id', role: 'member', joined_at: '2030-01-01', profiles: { display_name: 'Bob', avatar_url: null } },
+    ]
+
+    const comment = store.add('task-1', '@Bob 麻煩看一下')
+    expect(comment.mentionedUserIds).toEqual(['bob-id'])
+  })
+
+  it('編輯留言時重新解析 @提及', () => {
+    const store = setup()
+    useAuthStore().session = fakeSession('alice')
+    useWorkspaceStore().members = [
+      { user_id: 'bob-id', role: 'member', joined_at: '2030-01-01', profiles: { display_name: 'Bob', avatar_url: null } },
+    ]
+
+    const comment = store.add('task-1', '沒有提到任何人')
+    expect(comment.mentionedUserIds).toEqual([])
+
+    store.update(comment.id, '@Bob 現在提到你了')
+    expect(store.forTask('task-1')[0]?.mentionedUserIds).toEqual(['bob-id'])
   })
 
   it('forTask 依 createdAt 排序，只回傳這筆任務的留言', () => {
@@ -147,7 +173,7 @@ describe('comments store — flush() 排入離線操作佇列（已設定 Supaba
     await store.load()
 
     store.mergeRemote([
-      { id: 'remote-c1', taskId: 'task-1', authorId: 'bob', body: '遠端留言', createdAt: 1, updatedAt: 1 },
+      { id: 'remote-c1', taskId: 'task-1', authorId: 'bob', body: '遠端留言', mentionedUserIds: [], createdAt: 1, updatedAt: 1 },
     ])
     await store.flush()
 

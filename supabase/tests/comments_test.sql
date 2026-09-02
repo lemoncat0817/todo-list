@@ -1,7 +1,7 @@
 -- M3：任務留言的權限矩陣。can_comment() 這道門檻（commenter 角色以上）
 -- 從 0004 就定義好了，這是第一支真正用到它的測試。
 begin;
-select plan(8);
+select plan(11);
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password,
   email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
@@ -96,6 +96,31 @@ select is(
      '40000000-0000-0000-0000-000000000004', jsonb_build_object('deleted_at', 12345))),
   true,
   '作者可以軟刪除自己的留言');
+reset role;
+
+-- 8) create_comment 帶 mentioned_user_ids：陣列原封不動存進去。
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000c0c0","role":"authenticated"}';
+select results_eq(
+  $$ select mentioned_user_ids from public.create_comment('40000000-0000-0000-0000-00000000000b',
+       jsonb_build_object('id', '40000000-0000-0000-0000-00000000000c', 'task_id', '40000000-0000-0000-0000-000000000002',
+         'body', '@Alice 麻煩看一下', 'mentioned_user_ids', jsonb_build_array('00000000-0000-0000-0000-00000000a11c'))) $$,
+  $$ values (array['00000000-0000-0000-0000-00000000a11c']::uuid[]) $$,
+  'create_comment() 帶 mentioned_user_ids 時，陣列正確存入');
+
+-- 9) 沒帶 mentioned_user_ids：預設空陣列，不是 null。
+select is(
+  (select mentioned_user_ids from public.create_comment('40000000-0000-0000-0000-00000000000d',
+     jsonb_build_object('id', '40000000-0000-0000-0000-00000000000e', 'task_id', '40000000-0000-0000-0000-000000000002', 'body', '沒有提及任何人'))),
+  '{}'::uuid[],
+  'create_comment() 沒帶 mentioned_user_ids 時預設空陣列');
+
+-- 10) apply_comment_patch 可以更新 mentioned_user_ids（編輯留言時改了提及對象）。
+select is(
+  (select mentioned_user_ids from public.apply_comment_patch('40000000-0000-0000-0000-00000000000f',
+     '40000000-0000-0000-0000-00000000000c', jsonb_build_object('mentioned_user_ids', jsonb_build_array()))),
+  '{}'::uuid[],
+  'apply_comment_patch() 可以把 mentioned_user_ids 改成空陣列');
 reset role;
 
 select * from finish();

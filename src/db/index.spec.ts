@@ -71,8 +71,8 @@ describe('IndexedDB 資料層', () => {
 
   it('留言存進去再讀出來，依 createdAt 排序', async () => {
     const rows = [
-      { id: 'c2', taskId: 't1', authorId: 'u1', body: '第二則', createdAt: 200, updatedAt: 200 },
-      { id: 'c1', taskId: 't1', authorId: 'u1', body: '第一則', createdAt: 100, updatedAt: 100 },
+      { id: 'c2', taskId: 't1', authorId: 'u1', body: '第二則', mentionedUserIds: [], createdAt: 200, updatedAt: 200 },
+      { id: 'c1', taskId: 't1', authorId: 'u1', body: '第一則', mentionedUserIds: [], createdAt: 100, updatedAt: 100 },
     ]
     await saveComments(rows)
     expect((await loadComments()).map((c) => c.id)).toEqual(['c1', 'c2'])
