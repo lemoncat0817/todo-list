@@ -51,7 +51,7 @@ const task = (id: string, name: string, done = false, order = 0): StoredTask =>
   makeTask(name, done, { id, order })
 
 describe('IndexedDB 資料層', () => {
-  it('建立時就備妥十個 object store 與排序索引', async () => {
+  it('建立時就備妥十一個 object store 與排序索引', async () => {
     const db = await getDB()
     expect([...db.objectStoreNames].sort()).toEqual([
       'activity',
@@ -62,6 +62,7 @@ describe('IndexedDB 資料層', () => {
       'notifications',
       'outbox',
       'projects',
+      'sections',
       'tags',
       'tasks',
     ])

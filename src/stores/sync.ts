@@ -10,6 +10,7 @@ import {
   type StoredFilter,
   type StoredNotification,
   type StoredProject,
+  type StoredSection,
   type StoredTag,
   type StoredTask,
 } from '@/db/schema'
@@ -20,6 +21,7 @@ import {
   normalizeFilter,
   normalizeNotification,
   normalizeProject,
+  normalizeSection,
   normalizeTag,
   normalizeTask,
 } from '@/domain/task'
@@ -36,6 +38,7 @@ import {
   TABLE_FILTERS,
   TABLE_NOTIFICATIONS,
   TABLE_PROJECTS,
+  TABLE_SECTIONS,
   TABLE_TAGS,
   TABLE_TASKS,
   fromRemoteActivity,
@@ -44,6 +47,7 @@ import {
   fromRemoteFilter,
   fromRemoteNotification,
   fromRemoteProject,
+  fromRemoteSection,
   fromRemoteTag,
   fromRemoteTask,
 } from '@/sync/rowMapping'
@@ -54,6 +58,7 @@ import { useAttachmentsStore } from './attachments'
 import { useCollectionsStore } from './collections'
 import { useCommentsStore } from './comments'
 import { useNotificationsStore } from './notifications'
+import { useSectionsStore } from './sections'
 import { useWorkspaceStore } from './workspace'
 
 /**
@@ -103,6 +108,11 @@ const notificationBinding: TableBinding<StoredNotification> = {
   table: TABLE_NOTIFICATIONS,
   fromRemote: fromRemoteNotification,
   normalize: (raw) => normalizeNotification(raw),
+}
+const sectionBinding: TableBinding<StoredSection> = {
+  table: TABLE_SECTIONS,
+  fromRemote: fromRemoteSection,
+  normalize: (raw) => normalizeSection(raw),
 }
 
 /**
@@ -160,6 +170,7 @@ export const useSyncStore = defineStore('sync', () => {
   const activity = useActivityStore()
   const attachments = useAttachmentsStore()
   const notifications = useNotificationsStore()
+  const sections = useSectionsStore()
   const workspace = useWorkspaceStore()
 
   let inFlight: Promise<void> | null = null
@@ -336,6 +347,9 @@ export const useSyncStore = defineStore('sync', () => {
             (rows) => collections.mergeRemote({ projects: collections.projects, tags: collections.tags, filters: rows }),
           )
           await pullAndMerge(commentBinding, () => comments.items, cursor, token, comments.mergeRemote)
+          // sections 跟 comments 同一種形狀：有本地編輯、有 outbox，
+          // mergeRemote 之後交給 tasks.ts 的持久化 watcher 間接寫回本地。
+          await pullAndMerge(sectionBinding, () => sections.items, cursor, token, sections.mergeRemote)
           // activity 沒有本地編輯、沒有 outbox，applyMerge 直接把
           // mergeRemote 跟本地快取寫入接在一起做，不像其餘幾張表要靠
           // tasks.ts 的持久化 watcher 間接觸發。
@@ -439,6 +453,7 @@ export const useSyncStore = defineStore('sync', () => {
       tasks.mergeRemote([])
       collections.mergeRemote({ projects: [], tags: [], filters: [] })
       comments.mergeRemote([])
+      sections.mergeRemote([])
       activity.mergeRemote([])
       attachments.mergeRemote([])
       notifications.mergeRemote([])

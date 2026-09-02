@@ -5,7 +5,15 @@
 
     <BatchToolbar v-if="ui.selectedIds.length > 0" :count="ui.selectedIds.length" />
 
-    <div class="min-h-0 grow overflow-y-auto overscroll-contain px-4 py-3 sm:px-6">
+    <!--
+      看板是專案檢視底下的另一種呈現方式（prefs.projectViewMode，見
+      ListToolbar.vue 的切換鈕），不是另一個路由——跟排序/分組一樣是
+      「這次打開還想維持的樣子」，不是「我現在在看什麼」，所以不放網址。
+      看板欄橫向排列，需要自己的版面，不共用底下這個垂直捲動容器。
+    -->
+    <BoardView v-if="isBoardView" :project-id="(props.viewId as string)" />
+
+    <div v-else class="min-h-0 grow overflow-y-auto overscroll-contain px-4 py-3 sm:px-6">
       <p v-if="tasks.isLoading" role="status" aria-live="polite"
         class="py-10 text-center text-sm text-ink-faint">
         載入中…
@@ -74,11 +82,13 @@ import { computed, nextTick, ref, watch } from 'vue'
 import TaskItem from './TaskItem.vue'
 import BatchToolbar from './BatchToolbar.vue'
 import ListToolbar from './ListToolbar.vue'
+import BoardView from './BoardView.vue'
 import { emptyMessage, type ViewKind, type ViewSpec } from '@/domain/views'
 import { parseFilterQuery } from '@/domain/filterQuery'
 import type { StoredTask } from '@/db/schema'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
+import { usePrefsStore } from '@/stores/prefs'
 import { useListKeyboard } from '@/composables/useListKeyboard'
 
 /**
@@ -97,6 +107,7 @@ const props = withDefaults(defineProps<{ viewKind?: ViewKind; viewId?: string | 
 
 const tasks = useTasksStore()
 const ui = useUiStore()
+const prefs = usePrefsStore()
 
 // 編輯狀態是 UI 暫態，留在元件裡而非 store——
 // 它不需要被持久化，也不需要跨元件共享（稽核 P1 的根因）。
@@ -109,6 +120,11 @@ const containerEl = ref<HTMLElement | null>(null)
 const spec = computed<ViewSpec>(() => ({ kind: props.viewKind, id: props.viewId }))
 const groups = computed(() => tasks.groupsOf(spec.value))
 const emptyText = computed(() => emptyMessage(spec.value, ui.keyword))
+
+/** 只有專案檢視才有看板可以切換——其餘檢視（今天／標籤／篩選器……）沒有區段的概念。 */
+const isBoardView = computed(
+  () => props.viewKind === 'project' && props.viewId !== null && prefs.projectViewMode === 'board',
+)
 
 /** 只有 filter 檢視才有查詢，其餘一律沒有錯誤可報。 */
 const queryError = computed(() => {

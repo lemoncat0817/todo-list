@@ -11,6 +11,7 @@ import {
   type StoredFilter,
   type StoredNotification,
   type StoredProject,
+  type StoredSection,
   type StoredTag,
   type StoredTask,
 } from '@/db/schema'
@@ -93,6 +94,7 @@ export function normalizeTask(raw: unknown, fallbackRank = ''): StoredTask | nul
     updatedAt: finiteNumber(raw.updatedAt, now),
     workspaceId: nullableId(raw.workspaceId),
     assigneeId: nullableId(raw.assigneeId),
+    sectionId: nullableId(raw.sectionId),
   }
 }
 
@@ -160,6 +162,21 @@ export function normalizeFilter(raw: unknown, fallbackRank = ''): StoredFilter |
     rank: str(raw.rank, fallbackRank),
     updatedAt: finiteNumber(raw.updatedAt, Date.now()),
     workspaceId: nullableId(raw.workspaceId),
+  }
+}
+
+export function normalizeSection(raw: unknown, fallbackRank = ''): StoredSection | null {
+  if (!isRecord(raw)) return null
+  const id = nullableId(raw.id)
+  const projectId = nullableId(raw.projectId)
+  const name = typeof raw.name === 'string' && raw.name.length > 0 ? raw.name : null
+  if (id === null || projectId === null || name === null) return null
+  return {
+    id,
+    projectId,
+    name,
+    rank: str(raw.rank, fallbackRank),
+    updatedAt: finiteNumber(raw.updatedAt, Date.now()),
   }
 }
 

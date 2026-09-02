@@ -1,4 +1,12 @@
-import type { StoredAttachment, StoredComment, StoredFilter, StoredProject, StoredTag, StoredTask } from '@/db/schema'
+import type {
+  StoredAttachment,
+  StoredComment,
+  StoredFilter,
+  StoredProject,
+  StoredSection,
+  StoredTag,
+  StoredTask,
+} from '@/db/schema'
 
 /**
  * 本地形狀（camelCase）與遠端資料表（snake_case）之間的轉換。
@@ -20,6 +28,7 @@ export const TABLE_COMMENTS = 'comments'
 export const TABLE_ACTIVITY = 'activity_log'
 export const TABLE_ATTACHMENTS = 'attachments'
 export const TABLE_NOTIFICATIONS = 'notifications'
+export const TABLE_SECTIONS = 'sections'
 
 /** 墓碑：REST 輪詢沒有天生的刪除事件，用這個欄位標記「這筆已經不存在了」。 */
 export interface Tombstone {
@@ -63,6 +72,7 @@ export function toRemoteTask(task: StoredTask): Record<string, unknown> {
     recurrence: task.recurrence,
     completed_at: task.completedAt,
     assignee_id: task.assigneeId,
+    section_id: task.sectionId,
     created_at: task.createdAt,
     updated_at: task.updatedAt,
     deleted_at: null,
@@ -89,6 +99,7 @@ export function fromRemoteTask(row: Record<string, unknown>): unknown {
     recurrence: row.recurrence,
     completedAt: row.completed_at,
     assigneeId: row.assignee_id,
+    sectionId: row.section_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     workspaceId: row.workspace_id,
@@ -281,6 +292,31 @@ export function fromRemoteNotification(row: Record<string, unknown>): unknown {
     body,
     readAt: row.read_at,
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+// ---------------------------------------------------------------- sections
+
+export function toRemoteSection(section: StoredSection): Record<string, unknown> {
+  return {
+    id: section.id,
+    project_id: section.projectId,
+    name: section.name,
+    rank: section.rank,
+    updated_at: section.updatedAt,
+    deleted_at: null,
+    // 沒有 created_at：這張表不像 tasks 需要保留原始建立時間排優先度，
+    // 補丁／建立都只在意 updated_at，資料庫端自己補 created_at。
+  }
+}
+
+export function fromRemoteSection(row: Record<string, unknown>): unknown {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    name: row.name,
+    rank: row.rank,
     updatedAt: row.updated_at,
   }
 }

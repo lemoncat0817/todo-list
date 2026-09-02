@@ -5,7 +5,7 @@ import { monotonicNow } from '@/domain/task'
 
 /**
  * 跟 stores/tasks.ts 的 enqueueSyncOps 同一套邏輯，套用在 projects/tags/
- * filters/comments 上——形狀不同但規則相同，寫一支泛型函式而不是各寫
+ * filters/comments/sections 上——形狀不同但規則相同，寫一支泛型函式而不是各寫
  * 一份。`kind` 決定 op 的種類前綴，`toRemote` 是各自的欄位對應
  * （sync/rowMapping.ts）。原本內嵌在 stores/collections.ts 裡，
  * stores/comments.ts 加入後才抽成獨立檔案給兩邊共用。
@@ -15,7 +15,7 @@ import { monotonicNow } from '@/domain/task'
  * 存在的另一份帳，跟本地 IndexedDB 寫不寫得有效率無關。
  */
 export async function enqueueCollectionOps<T extends { id: string; updatedAt: number }>(
-  kind: 'project' | 'tag' | 'filter' | 'comment',
+  kind: 'project' | 'tag' | 'filter' | 'comment' | 'section',
   current: readonly T[],
   previousIndex: ReadonlyMap<string, string>,
   toRemote: (row: T) => Record<string, unknown>,

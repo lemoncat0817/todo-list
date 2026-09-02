@@ -4,6 +4,9 @@ import type { StateTree } from 'pinia'
 import { createPersistOptions } from '@/infra/persist'
 import { GROUP_LABELS, SORT_LABELS, type GroupKey, type SortKey } from '@/domain/views'
 
+/** 專案檢視要用清單還是看板——跟排序/分組同一類「下次打開還想維持」的偏好，不放網址（M5）。 */
+export type ProjectViewMode = 'list' | 'board'
+
 /**
  * 會被記住的顯示偏好。
  *
@@ -18,6 +21,7 @@ export const usePrefsStore = defineStore(
   () => {
     const sortBy = ref<SortKey>('manual')
     const groupBy = ref<GroupKey>('none')
+    const projectViewMode = ref<ProjectViewMode>('list')
     /** 到期提醒。只在分頁開著時有效，這一點由畫面說明。 */
     const remindersEnabled = ref(false)
     /**
@@ -34,6 +38,10 @@ export const usePrefsStore = defineStore(
       groupBy.value = value
     }
 
+    function setProjectViewMode(value: ProjectViewMode): void {
+      projectViewMode.value = value
+    }
+
     function setReminders(value: boolean): void {
       remindersEnabled.value = value
     }
@@ -45,10 +53,12 @@ export const usePrefsStore = defineStore(
     return {
       sortBy,
       groupBy,
+      projectViewMode,
       remindersEnabled,
       sidebarCollapsed,
       setSort,
       setGroupBy,
+      setProjectViewMode,
       setReminders,
       toggleSidebarCollapsed,
     }
@@ -69,9 +79,11 @@ export const usePrefsStore = defineStore(
         typeof record.groupBy === 'string' && record.groupBy in GROUP_LABELS
           ? (record.groupBy as GroupKey)
           : 'none'
+      const projectViewMode = record.projectViewMode === 'board' ? 'board' : 'list'
       return {
         sortBy,
         groupBy,
+        projectViewMode,
         remindersEnabled: record.remindersEnabled === true,
         sidebarCollapsed: record.sidebarCollapsed === true,
       }
