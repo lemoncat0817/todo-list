@@ -37,3 +37,12 @@ describe('TaskDetailForm.vue — 指派給（isSyncConfigured 為 false）', () 
     expect(updated?.assigneeId).toBe('bob')
   })
 })
+
+describe('TaskDetailForm.vue — 任務層級線上狀態（isSyncConfigured 為 false）', () => {
+  it('沒有設定同步時不顯示「同時檢視」，也不會因為嘗試建立 presence 訂閱而壞掉', () => {
+    const pinia = freshPinia()
+    const task = makeTask('任務', false, {})
+    const w = mountWith(TaskDetailForm, pinia, { props: { task } })
+    expect(w.text()).not.toContain('同時檢視')
+  })
+})
