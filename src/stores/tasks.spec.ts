@@ -5,6 +5,7 @@ import { useTasksStore } from '@/stores/tasks'
 import * as db from '@/db'
 import { at, freshPinia, makeTask } from '@/test/helpers'
 import { useHistoryStore } from '@/stores/history'
+import { useWorkspaceStore } from '@/stores/workspace'
 
 function setup() {
   const pinia = createPinia()
@@ -398,5 +399,41 @@ describe('逐列寫入', () => {
     const spy = vi.spyOn(db, 'applyTaskChanges')
     await store.flush()
     expect(spy.mock.calls[0]?.[0]).toMatchObject({ upserts: [], deletes: [] })
+  })
+})
+
+describe('依工作區篩選看得到的任務', () => {
+  it('沒有工作區脈絡（尚未登入／純本機）時看得到全部', () => {
+    const store = setup()
+    store.items = [
+      makeTask('本機任務 A', false, { id: '1', workspaceId: null }),
+      makeTask('本機任務 B', false, { id: '2', workspaceId: 'w1' }),
+    ]
+    expect(store.visibleItems.map((t) => t.id).sort()).toEqual(['1', '2'])
+  })
+
+  it('切到某個工作區後，只看得到那個工作區、以及還沒同步過（workspaceId 為 null）的任務', () => {
+    const store = setup()
+    const workspace = useWorkspaceStore()
+    workspace.currentWorkspaceId = 'w1'
+    store.items = [
+      makeTask('工作區 1 的任務', false, { id: '1', workspaceId: 'w1' }),
+      makeTask('工作區 2 的任務', false, { id: '2', workspaceId: 'w2' }),
+      makeTask('剛建立還沒同步的任務', false, { id: '3', workspaceId: null }),
+    ]
+    expect(store.visibleItems.map((t) => t.id).sort()).toEqual(['1', '3'])
+  })
+
+  it('countOf／groupsOf／remaining／overdue 都只算看得到的任務', () => {
+    const store = setup()
+    const workspace = useWorkspaceStore()
+    workspace.currentWorkspaceId = 'w1'
+    store.items = [
+      makeTask('工作區 1', false, { id: '1', workspaceId: 'w1' }),
+      makeTask('工作區 2', false, { id: '2', workspaceId: 'w2' }),
+    ]
+    expect(store.countOf({ kind: 'all', id: null })).toBe(1)
+    expect(store.groupsOf({ kind: 'all', id: null }).flatMap((g) => g.tasks).map((t) => t.id)).toEqual(['1'])
+    expect(store.remaining).toBe(1)
   })
 })

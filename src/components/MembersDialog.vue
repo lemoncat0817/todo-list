@@ -8,14 +8,14 @@
       </h2>
 
       <!--
-        只有在使用者不只一個工作區時才顯示切換器——這裡切的只是「這個
-        對話框在管理哪個工作區的成員」，跟目前看到的任務清單無關：
-        任務／專案的拉取還沒依 workspace_id 篩選（見計畫書 M2 之後的
-        範圍），所以刻意不把這個下拉放進主側邊欄，那會讓人誤以為切換
-        後任務清單也會跟著換，目前並不會。
+        只有在使用者不只一個工作區時才顯示切換器。跟 AppSidebar.vue
+        頂端那顆是同一顆 workspace.currentWorkspaceId——切了會連帶換掉
+        主畫面看到的任務／專案／標籤／篩選器，不只是換這個對話框在管理
+        誰的成員名單。這裡另外放一顆純粹是方便：不用關掉對話框、去側邊欄
+        切完再重新打開，就能直接管理另一個工作區的成員。
       -->
       <label v-if="workspace.workspaces.length > 1" class="flex flex-col gap-1 text-xs font-medium text-ink-faint">
-        管理哪個工作區
+        切換工作區
         <select :value="workspace.currentWorkspaceId"
           class="h-9 rounded-lg border border-line bg-surface px-2 text-sm text-ink focus:border-accent focus:outline-none"
           @change="switchWorkspace">

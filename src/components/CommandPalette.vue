@@ -104,7 +104,7 @@ const commands = computed<Command[]>(() => {
     })
   }
 
-  for (const tag of collections.tags) {
+  for (const tag of collections.visibleTags) {
     list.push({
       key: `tag:${tag.id}`,
       group: '標籤',
@@ -113,7 +113,7 @@ const commands = computed<Command[]>(() => {
     })
   }
 
-  for (const filter of collections.filters) {
+  for (const filter of collections.visibleFilters) {
     list.push({
       key: `filter:${filter.id}`,
       group: '篩選器',
@@ -143,7 +143,7 @@ const commands = computed<Command[]>(() => {
   )
 
   // 任務排在最後：打字時多半是想跳到某個檢視，任務通常用搜尋找
-  for (const task of tasks.items) {
+  for (const task of tasks.visibleItems) {
     list.push({
       key: `task:${task.id}`,
       group: '任務',

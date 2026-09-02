@@ -57,8 +57,8 @@
 
     <fieldset class="rounded-lg border border-line p-3">
       <legend class="px-1 text-sm font-medium text-ink-soft">標籤</legend>
-      <p v-if="collections.tags.length === 0" class="mb-2 text-sm text-ink-faint">尚未建立任何標籤</p>
-      <label v-for="tag in collections.tags" :key="tag.id"
+      <p v-if="collections.visibleTags.length === 0" class="mb-2 text-sm text-ink-faint">尚未建立任何標籤</p>
+      <label v-for="tag in collections.visibleTags" :key="tag.id"
         class="mr-3 inline-flex items-center gap-1.5 text-[15px] text-ink">
         <input type="checkbox" :value="tag.id" :checked="draft.tagIds.includes(tag.id)"
           class="size-4 accent-accent" @change="toggleTag(tag.id)">
@@ -191,15 +191,16 @@ watch(
  * 讓「建立」按鈕對一個已存在的名字生效只會讓人以為自己多建了一個。
  */
 const projectNameError = computed(() =>
-  // 用未過濾的 projects：跟收件匣同名也要擋，理由同 CollectionsDialog.vue
-  // 的 projectNameError——store 的重名防線比對全量，這裡要一致。
-  newProjectName.value !== '' && findByNormalizedName(collections.projects, newProjectName.value)
+  // 用 projectsInCurrentWorkspace：理由同 CollectionsDialog.vue 的
+  // projectNameError——跟收件匣同名要擋，但別的工作區同名不算。
+  newProjectName.value !== '' &&
+  findByNormalizedName(collections.projectsInCurrentWorkspace, newProjectName.value)
     ? '已有相同名稱的專案，請從上方選單選取'
     : null,
 )
 
 const tagNameError = computed(() =>
-  newTagName.value !== '' && findByNormalizedName(collections.tags, newTagName.value)
+  newTagName.value !== '' && findByNormalizedName(collections.visibleTags, newTagName.value)
     ? '已有相同名稱的標籤，請從上方勾選'
     : null,
 )

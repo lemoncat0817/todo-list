@@ -48,8 +48,8 @@
       </li>
     </ul>
 
-    <ul v-if="collections.tags.length > 0" class="flex flex-col gap-1 border-t border-line pt-3">
-      <li v-for="tag in collections.tags" :key="tag.id">
+    <ul v-if="collections.visibleTags.length > 0" class="flex flex-col gap-1 border-t border-line pt-3">
+      <li v-for="tag in collections.visibleTags" :key="tag.id">
         <RouterLink :to="`/label/${tag.id}`" :class="collapsedLinkClass" :title="`#${tag.name}`"
           @click="emit('navigate')">
           <span class="size-2.5 shrink-0 rounded-full" :style="{ backgroundColor: tag.color }"
@@ -60,6 +60,20 @@
   </nav>
 
   <nav v-else aria-label="檢視" class="flex h-full min-h-0 flex-col gap-4 overflow-y-auto px-3 py-4">
+    <!--
+      只有不只一個工作區時才顯示——多數人只有自己的個人工作區，切換器對
+      他們是永遠用不到的雜訊。切這個下拉會真的換掉下面看到的任務／專案／
+      標籤／篩選器，不只是換 MembersDialog 在管理誰的成員名單。
+    -->
+    <label v-if="workspace.workspaces.length > 1" class="flex flex-col gap-1 px-0.5 text-xs font-medium text-ink-faint">
+      工作區
+      <select :value="workspace.currentWorkspaceId"
+        class="h-9 rounded-lg border border-line bg-surface px-2 text-sm text-ink focus:border-accent focus:outline-none"
+        @change="switchWorkspace">
+        <option v-for="w in workspace.workspaces" :key="w.id" :value="w.id">{{ w.name }}</option>
+      </select>
+    </label>
+
     <ul class="flex flex-col gap-0.5">
       <li v-for="entry in PRIMARY_VIEWS" :key="entry.kind">
         <RouterLink :to="entry.path" :class="linkClass" @click="emit('navigate')">
@@ -120,9 +134,9 @@
 
     <section class="flex flex-col gap-1">
       <h2 class="px-2.5 text-xs font-semibold uppercase tracking-wide text-ink-faint">標籤</h2>
-      <p v-if="collections.tags.length === 0" class="px-2.5 text-sm text-ink-faint">還沒有標籤</p>
+      <p v-if="collections.visibleTags.length === 0" class="px-2.5 text-sm text-ink-faint">還沒有標籤</p>
       <ul v-else class="flex flex-col gap-0.5">
-        <li v-for="tag in collections.tags" :key="tag.id">
+        <li v-for="tag in collections.visibleTags" :key="tag.id">
           <RouterLink :to="`/label/${tag.id}`" :class="linkClass" @click="emit('navigate')">
             <span class="size-2.5 shrink-0 rounded-full" :style="{ backgroundColor: tag.color }"
               aria-hidden="true" />
@@ -133,10 +147,10 @@
       </ul>
     </section>
 
-    <section v-if="collections.filters.length > 0" class="flex flex-col gap-1">
+    <section v-if="collections.visibleFilters.length > 0" class="flex flex-col gap-1">
       <h2 class="px-2.5 text-xs font-semibold uppercase tracking-wide text-ink-faint">篩選器</h2>
       <ul class="flex flex-col gap-0.5">
-        <li v-for="filter in collections.filters" :key="filter.id">
+        <li v-for="filter in collections.visibleFilters" :key="filter.id">
           <RouterLink :to="{ path: '/filter', query: { q: filter.query } }" :class="linkClass"
             @click="emit('navigate')">
             <span class="size-2.5 shrink-0 rounded-full" :style="{ backgroundColor: filter.color }"
@@ -206,6 +220,7 @@ import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
 import { useAuthStore } from '@/stores/auth'
 import { useSyncStore } from '@/stores/sync'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { isSyncConfigured } from '@/sync/config'
 
 /**
@@ -238,6 +253,7 @@ const tasks = useTasksStore()
 const collections = useCollectionsStore()
 const auth = useAuthStore()
 const sync = useSyncStore()
+const workspace = useWorkspaceStore()
 
 const linkClass =
   'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[15px] text-ink-soft transition-colors ' +
@@ -254,4 +270,16 @@ const countFor = (kind: ViewKind): number => tasks.countOf({ kind, id: null })
 const projectCount = (id: string): number => tasks.countOf({ kind: 'project', id })
 const tagCount = (id: string): number => tasks.countOf({ kind: 'label', id })
 const filterCount = (query: string): number => tasks.countOf({ kind: 'filter', id: query })
+
+/**
+ * 切換目前所在的工作區——同一顆 currentWorkspaceId，MembersDialog.vue
+ * 拿去決定「管理哪個工作區的成員」，這裡拿去決定「看哪個工作區的任務／
+ * 專案／標籤／篩選器」，是同一件事的兩個面向，不是兩個獨立的狀態。
+ * 若目前正看著一個不屬於新工作區的專案／標籤／篩選器，畫面會照
+ * viewTitle()／resolveView() 既有的「找不到」邏輯優雅降級，不特別導頁。
+ */
+function switchWorkspace(event: Event): void {
+  const id = (event.target as HTMLSelectElement).value
+  void workspace.selectWorkspace(id)
+}
 </script>
