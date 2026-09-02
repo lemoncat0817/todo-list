@@ -14,6 +14,7 @@ import { mergeByUpdatedAt } from '@/sync/merge'
 import { sendOp } from '@/sync/rpc'
 import { SyncHttpError } from '@/sync/restClient'
 import { pullTable, type TableBinding } from '@/sync/tableSync'
+import type { WorkspaceSubscription } from '@/sync/realtime'
 import {
   TABLE_FILTERS,
   TABLE_PROJECTS,
@@ -27,6 +28,7 @@ import {
 import { useAuthStore } from './auth'
 import { useTasksStore } from './tasks'
 import { useCollectionsStore } from './collections'
+import { useWorkspaceStore } from './workspace'
 
 /**
  * 同步是背景輪詢，不是即時協作——所以用固定間隔加幾個「現在很可能有變化」
@@ -108,12 +110,14 @@ export const useSyncStore = defineStore('sync', () => {
   const auth = useAuthStore()
   const tasks = useTasksStore()
   const collections = useCollectionsStore()
+  const workspace = useWorkspaceStore()
 
   let inFlight: Promise<void> | null = null
   let dirty = false
   let interval: ReturnType<typeof setInterval> | null = null
   let pushTimer: ReturnType<typeof setTimeout> | null = null
   let stopWatching: (() => void) | null = null
+  let stopWorkspaceWatching: (() => void) | null = null
 
   /**
    * outbox 依序送出，中途失敗就整批停下——不能跳過失敗的那筆繼續送
@@ -172,6 +176,71 @@ export const useSyncStore = defineStore('sync', () => {
 
   async function persist(): Promise<void> {
     await setMeta(META_SYNC_LAST_PULLED_AT, lastPulledAt.value)
+  }
+
+  /**
+   * Realtime 把輪詢間隔壓到即時，但只是把 PULL_INTERVAL_MS 的等待戳早一點
+   * 觸發——套用資料仍然走同一條 pullAndMerge，不是另外解析即時事件，
+   * 見 sync/realtime.ts 開頭的說明。
+   *
+   * 訂閱使用者所屬的「每一個」工作區，不是只訂閱目前選在 MembersDialog
+   * 裡的那一個：拉取本身還沒依 workspace_id 篩選（見 stores/tasks.ts／
+   * collections.ts 目前的已知範圍界定），任一個工作區的即時事件都觸發
+   * 同一次全量 syncOnce()。只訂閱「目前選中」的那個會造成不一致——
+   * 其他工作區的變更仍然要等到下一次輪詢，體感時快時慢。
+   */
+  let realtimeSubscriptions = new Map<string, WorkspaceSubscription>()
+  let realtimeModulePromise: Promise<typeof import('@/sync/realtime')> | null = null
+  function ensureRealtimeModule(): Promise<typeof import('@/sync/realtime')> {
+    realtimeModulePromise ??= import('@/sync/realtime')
+    return realtimeModulePromise
+  }
+
+  /** 實際做訂閱差異比對的部分，呼叫端負責序列化呼叫，避免併發呼叫時重複訂閱同一個工作區。 */
+  async function reconcileRealtimeSubscriptions(): Promise<void> {
+    const realtime = await ensureRealtimeModule()
+    const currentIds = new Set(workspace.workspaces.map((w) => w.id))
+
+    for (const [id, subscription] of realtimeSubscriptions) {
+      if (!currentIds.has(id)) {
+        subscription.stop()
+        realtimeSubscriptions.delete(id)
+      }
+    }
+
+    for (const id of currentIds) {
+      if (realtimeSubscriptions.has(id)) continue
+      realtimeSubscriptions.set(
+        id,
+        realtime.subscribeToWorkspace({
+          workspaceId: id,
+          getAccessToken: async () => auth.session?.access_token ?? null,
+          onChange: () => void syncOnce(),
+          onSubscribed: () => void syncOnce(),
+        }),
+      )
+    }
+  }
+
+  /**
+   * 序列化呼叫：workspace.workspaces 短時間內可能連續變動好幾次（例如
+   * load() 剛把清單填進去、緊接著又因為別的原因重新賦值），如果讓
+   * reconcileRealtimeSubscriptions() 的呼叫直接併發跑，兩次呼叫都可能
+   * 在對方寫進 Map 之前就判斷「這個工作區還沒訂閱」，各自訂閱一次，
+   * 變成同一個工作區訂閱了兩個重複的頻道。串成一條 promise 鏈，
+   * 確保上一次的診斷（含它對 Map 的寫入）完全結束才開始下一次。
+   */
+  let realtimeSyncChain: Promise<void> = Promise.resolve()
+  function scheduleRealtimeSync(): void {
+    realtimeSyncChain = realtimeSyncChain
+      .then(() => reconcileRealtimeSubscriptions())
+      .catch((error: unknown) => console.error('[sync] realtime 訂閱失敗', error))
+  }
+
+  function stopRealtimeSubscriptions(): void {
+    for (const subscription of realtimeSubscriptions.values()) subscription.stop()
+    realtimeSubscriptions = new Map()
+    realtimeSyncChain = Promise.resolve()
   }
 
   /** 跟 stores/tasks.ts 的 flush() 同一套 inFlight／dirty 寫法：呼叫中再被呼叫就排隊重跑一次。 */
@@ -338,6 +407,12 @@ export const useSyncStore = defineStore('sync', () => {
       },
       { deep: true },
     )
+
+    // immediate: true——workspace.workspaces 這時多半已經有內容（也可能
+    // 還是空的，load() 還沒回來），兩種情況都正確：空的話 diff 出來就是
+    // 沒有訂閱，等 workspace.ts 的 load() 填進資料時這個 watcher 自然
+    // 會再跑一次。
+    stopWorkspaceWatching = watch(() => workspace.workspaces, scheduleRealtimeSync, { deep: true, immediate: true })
   }
 
   /** 只斷開同步，不動本地資料——離線優先，清空本地是另一個明確動作。 */
@@ -352,6 +427,9 @@ export const useSyncStore = defineStore('sync', () => {
     document.removeEventListener('visibilitychange', onReconnectOrFocus)
     stopWatching?.()
     stopWatching = null
+    stopWorkspaceWatching?.()
+    stopWorkspaceWatching = null
+    stopRealtimeSubscriptions()
   }
 
   // 單一個真相來源：不管登入是在哪個分頁、用哪種方式完成的，只要
