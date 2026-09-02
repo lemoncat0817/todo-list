@@ -28,3 +28,28 @@ export function diffAgainstFingerprint<T extends { id: string }>(
   const deletes = [...fingerprint.keys()].filter((id) => !nextFingerprint.has(id))
   return { upserts, deletes, nextFingerprint }
 }
+
+/**
+ * 比較同一列的新舊兩個版本，只回傳真的變了的欄位（新版本的值）。
+ *
+ * 這是 outbox 欄位補丁的推導來源：`diffAgainstFingerprint` 已經知道
+ * 「這一列變了」，但推去伺服器的補丁不能是整列——那正是這次同步引擎
+ * 重寫要解決的問題（兩人各改一個欄位會互蓋）。`before` 是 null 代表
+ * 這一列以前沒有指紋、是全新的列，這時整包 `after` 都算數。
+ *
+ * 泛型而不是專門對 StoredTask：呼叫端傳「遠端形狀」的物件進來
+ * （toRemoteTask 之類轉換過的結果），這裡不需要知道本地／遠端的欄位
+ * 對應規則，只單純逐欄位比較 JSON 字串是否相同——用字串比較而不是
+ * `!==`是因為 tagIds／recurrence 這類巢狀欄位不能用參照相等判斷。
+ */
+export function diffFields<T extends Record<string, unknown>>(
+  before: T | null,
+  after: T,
+): Partial<T> {
+  if (before === null) return after
+  const patch: Partial<T> = {}
+  for (const key of Object.keys(after) as (keyof T)[]) {
+    if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) patch[key] = after[key]
+  }
+  return patch
+}

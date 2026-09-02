@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { computed, nextTick, ref, toRaw, watch } from 'vue'
-import { applyTaskChanges, loadTasks, migrateFromLocalStorage } from '@/db'
+import { applyTaskChanges, enqueueOp, loadTasks, migrateFromLocalStorage } from '@/db'
 import type {
+  Op,
   Priority,
   Recurrence,
   StoredFilter,
@@ -10,7 +11,7 @@ import type {
   StoredTask,
 } from '@/db/schema'
 import { createTask, groupByParent } from '@/domain/task'
-import { diffAgainstFingerprint } from '@/domain/diff'
+import { diffAgainstFingerprint, diffFields } from '@/domain/diff'
 import { mergeById } from '@/db/backup'
 import { nextOccurrence } from '@/domain/recurrence'
 import { nextOrder, orderBetween, sortByOrder } from '@/domain/ordering'
@@ -24,10 +25,73 @@ import {
   type ViewSpec,
 } from '@/domain/views'
 import { compileFilter } from '@/domain/filterQuery'
+import { isSyncConfigured } from '@/sync/config'
+import { toRemoteTask } from '@/sync/rowMapping'
 import { usePrefsStore } from './prefs'
 import { useHistoryStore } from './history'
 import { useCollectionsStore } from './collections'
 import { useUiStore } from './ui'
+
+/**
+ * 本地寫入成功後，把這次真的變了的欄位排進離線操作佇列，供
+ * stores/sync.ts 之後送給 apply_task_patch／create_task RPC。
+ *
+ * 不是在 add()／update()／toggle()／batchUpdate()……每個變更方法各自
+ * 插入——那需要在十幾個呼叫點各自組出正確的補丁內容，任何一處漏掉或
+ * 組錯都不會被既有測試發現。這裡改成集中在 flush() 已經在算的
+ * diffAgainstFingerprint 結果上再算一次「哪些欄位真的變了」：
+ * upserts 是「這一列的內容跟上次存的不一樣」，`persistedIndex` 記著
+ * 上次存的完整內容，兩者一比就能拿到欄位級的差異，且不管變更是來自
+ * 使用者操作、undo/redo、匯入、還是批次操作都一體適用——它們最終
+ * 都只是把 items.value 改成某個新狀態，watcher 本來就會觸發 flush()。
+ *
+ * 只處理 tasks；projects/tags/filters 目前仍走 stores/sync.ts 舊版的
+ * 指紋比對＋整列 upsert（collections.ts 的 flush() 是整份覆寫，沒有
+ * 這裡用得到的逐列本地指紋）。等 collections 也搬到 outbox 才會統一。
+ *
+ * `excludeIds` 是 mergeRemote() 記下的「這次是遠端合併動到的」id——見
+ * mergeRemote() 與 remoteMergedIds 的說明，這裡收到就直接跳過，不然
+ * 剛拉回來的資料會被當成本地變更又推一次回去，形成自我循環。
+ */
+async function enqueueSyncOps(
+  upserts: readonly StoredTask[],
+  deletes: readonly string[],
+  previousIndex: ReadonlyMap<string, string>,
+  excludeIds: ReadonlySet<string>,
+): Promise<void> {
+  const now = Date.now()
+  const ops: Op[] = []
+
+  for (const row of upserts) {
+    if (excludeIds.has(row.id)) continue
+    const previousJson = previousIndex.get(row.id)
+    const before = previousJson ? toRemoteTask(JSON.parse(previousJson) as StoredTask) : null
+    const patch = diffFields(before, toRemoteTask(row))
+    if (Object.keys(patch).length === 0) continue
+    ops.push({
+      id: crypto.randomUUID(),
+      kind: before === null ? 'task.create' : 'task.patch',
+      targetId: row.id,
+      payload: patch,
+      createdAt: now,
+      attempts: 0,
+    })
+  }
+
+  for (const id of deletes) {
+    if (excludeIds.has(id)) continue
+    ops.push({
+      id: crypto.randomUUID(),
+      kind: 'task.delete',
+      targetId: id,
+      payload: { deleted_at: now },
+      createdAt: now,
+      attempts: 0,
+    })
+  }
+
+  for (const op of ops) await enqueueOp(op)
+}
 
 /**
  * 任務本體。
@@ -167,6 +231,21 @@ export const useTasksStore = defineStore('tasks', () => {
   let persistedIndex = new Map<string, string>()
 
   /**
+   * 這次 flush() 之前，最近一次 mergeRemote() 動到的 id 集合——這些列的
+   * 新內容本來就是從伺服器拉回來的，不該被 flush() 誤判成「本地剛編輯」
+   * 又排一筆補丁推回去。這正是 stores/sync.ts 已經修過一次的「自我循環」
+   * 問題的翻版：mergeRemote 寫回 items.value 後，內容跟 persistedIndex
+   * 不一樣（因為還沒真的存進本地 IndexedDB），單看內容差異完全沒辦法
+   * 分辨「使用者剛打的字」跟「剛從遠端合併回來的資料」，只能在
+   * mergeRemote() 呼叫當下明確記一筆「這是遠端來的」。
+   *
+   * 每次 flush() 消費後清空：只抑制「緊接在這次合併之後的那次 flush」，
+   * 不是永久排除這個 id——這些列之後如果被使用者真的編輯，還是要能正常
+   * 產生補丁。
+   */
+  let remoteMergedIds = new Set<string>()
+
+  /**
    * 回傳的 Promise 一定在資料真的寫完時才 resolve，即使呼叫時已有寫入在進行中。
    * 不做延遲防抖：那會讓「操作後立刻重新整理」出現丟資料的空窗。
    */
@@ -182,6 +261,8 @@ export const useTasksStore = defineStore('tasks', () => {
           const { upserts, deletes, nextFingerprint } = diffAgainstFingerprint(snapshot(), persistedIndex)
 
           await applyTaskChanges({ upserts, deletes })
+          if (isSyncConfigured) await enqueueSyncOps(upserts, deletes, persistedIndex, remoteMergedIds)
+          remoteMergedIds = new Set()
           await collections.flush()
           // 寫成功之後才更新指紋：失敗時保持原狀，下一次會重試同一批
           persistedIndex = nextFingerprint
@@ -592,6 +673,11 @@ export const useTasksStore = defineStore('tasks', () => {
    * 不記錄復原是同一個道理）。合併規則在 sync/merge.ts，這裡只負責寫回。
    */
   function mergeRemote(rows: readonly StoredTask[]): void {
+    // 聯集「合併前」與「合併後」的 id：前者涵蓋這次合併把某些列拿掉
+    // （遠端刪除）、後者涵蓋新增或內容變動——下一次 flush() 靠這份集合
+    // 判斷哪些 upserts／deletes 是這次合併造成的，不是使用者剛做的操作，
+    // 不該被誤判成本地變更又推一次到伺服器（見上面 remoteMergedIds 的說明）。
+    remoteMergedIds = new Set([...items.value.map((t) => t.id), ...rows.map((t) => t.id)])
     items.value = sortByOrder(rows)
   }
 
