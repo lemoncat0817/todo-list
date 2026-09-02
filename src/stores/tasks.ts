@@ -888,6 +888,83 @@ export const useTasksStore = defineStore('tasks', () => {
     })
   }
 
+  /**
+   * 專案範本（M5）：複製一個既有專案的結構到一個新專案。
+   *
+   * 「範本」不是另一種持久狀態（沒有「把這個專案標成範本」的開關）——
+   * 計畫書要驗收的行為就是「複製結構」本身，跟 Todoist 之類同類產品
+   * 實際上也是把範本做成「複製一份」而不是另外維護一份範本清單，是
+   * 同一種務實選擇。
+   *
+   * 明確排除：已完成的任務（範本是「接下來要做的事」，不是歷史）、
+   * 留言／附件／活動記錄（新任務是全新的 id，這幾張表本來就無從複製
+   * 起，不需要另外寫排除邏輯）、到期日／時間／指派對象（範本描述的是
+   * 「結構」，不是某一次執行的排程或負責人，原樣複製過去只會是一批
+   * 需要使用者自己清空的過期日期）。標籤／備註／優先度／重複規則
+   * 屬於「這件事本身是什麼」，予以保留。
+   */
+  function duplicateProject(id: string): StoredProject | null {
+    const source = collections.projects.find((p) => p.id === id)
+    if (!source) return null
+
+    const beforeTasks = snapshot()
+    const beforeCollections = collections.snapshot()
+    const beforeSections = sections.items.map((s) => ({ ...s }))
+
+    const newProject = collections.addProject(`${source.name} 的副本`)
+
+    const sectionIdMap = new Map<string, string>()
+    for (const section of sections.forProject(id)) {
+      sectionIdMap.set(section.id, sections.addSection(newProject.id, section.name).id)
+    }
+
+    const eligible = items.value.filter((t) => t.projectId === id && !t.isCompleted)
+    const taskIdMap = new Map<string, string>()
+    const created: StoredTask[] = []
+
+    // 先複製頂層，子項才找得到對照後的新 parentId；父項已完成而沒被
+    // 複製時，子項也一併跳過——一份範本不該留著指向不存在父項的孤兒。
+    for (const original of eligible.filter((t) => t.parentId === null)) {
+      const copy = createTask(original.taskName, nextRank(items.value.concat(created)), {
+        notes: original.notes,
+        priority: original.priority,
+        tagIds: [...original.tagIds],
+        recurrence: original.recurrence ? { ...original.recurrence, byDay: [...original.recurrence.byDay] } : null,
+        projectId: newProject.id,
+        sectionId: original.sectionId ? (sectionIdMap.get(original.sectionId) ?? null) : null,
+        workspaceId: newProject.workspaceId,
+      })
+      taskIdMap.set(original.id, copy.id)
+      created.push(copy)
+    }
+    for (const original of eligible.filter((t) => t.parentId !== null)) {
+      const parentId = taskIdMap.get(original.parentId as string)
+      if (!parentId) continue
+      const copy = createTask(original.taskName, nextRank(items.value.concat(created)), {
+        notes: original.notes,
+        priority: original.priority,
+        tagIds: [...original.tagIds],
+        parentId,
+        projectId: newProject.id,
+        workspaceId: newProject.workspaceId,
+      })
+      created.push(copy)
+    }
+
+    items.value = [...items.value, ...created]
+
+    history.record({
+      label: `複製專案「${source.name}」，含 ${created.length} 項任務`,
+      undo: () => {
+        items.value = beforeTasks
+        collections.restoreSnapshot(beforeCollections)
+        sections.items = beforeSections
+      },
+    })
+
+    return newProject
+  }
+
   return {
     items,
     visibleItems,
@@ -926,5 +1003,6 @@ export const useTasksStore = defineStore('tasks', () => {
     removeProject,
     removeTag,
     removeSection,
+    duplicateProject,
   }
 })
