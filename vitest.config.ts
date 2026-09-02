@@ -26,6 +26,7 @@ export default defineConfig({
     env: {
       VITE_SUPABASE_URL: '',
       VITE_SUPABASE_ANON_KEY: '',
+      VITE_VAPID_PUBLIC_KEY: '',
     },
   },
 })

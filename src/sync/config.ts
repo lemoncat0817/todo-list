@@ -12,3 +12,11 @@ export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? ''
 export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
 
 export const isSyncConfigured = SUPABASE_URL !== '' && SUPABASE_ANON_KEY !== ''
+
+/**
+ * 推播通知（M4）：獨立於同步本身的一個選配環境變數，但推播訂閱要存進
+ * Supabase 的 push_subscriptions 表，所以還是得先接上同步——沒接同步
+ * 卻設了這個值不會生效，isPushConfigured 兩個條件都要成立。
+ */
+export const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY ?? ''
+export const isPushConfigured = isSyncConfigured && VAPID_PUBLIC_KEY !== ''

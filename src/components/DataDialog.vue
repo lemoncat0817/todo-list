@@ -82,6 +82,32 @@
         </p>
       </section>
 
+      <!--
+        只有設定了 VITE_VAPID_PUBLIC_KEY（見 .env.local.example）才顯示——
+        沒接這塊的使用者（含所有沒接同步的純本機使用者）看到的是完全
+        正常、沒有殘缺的畫面，不是一個點了會壞掉的開關。
+      -->
+      <section v-if="isPushConfigured" class="flex flex-col gap-2">
+        <h3 class="text-sm font-medium text-ink-soft">推播通知</h3>
+
+        <p v-if="auth.status !== 'signed-in'" class="text-sm text-ink-faint">登入後才能開啟。</p>
+        <p v-else-if="!push.supported" class="text-sm text-ink-faint">這個瀏覽器不支援推播通知。</p>
+        <p v-else-if="push.permission === 'denied'" class="text-sm text-ink-faint">
+          通知已被瀏覽器封鎖。需要到瀏覽器的網站設定裡重新允許。
+        </p>
+        <label v-else class="flex items-center gap-2 text-[15px] text-ink">
+          <input type="checkbox" :checked="push.subscribed" :disabled="push.loading" class="size-4 accent-accent"
+            @change="togglePush">
+          被留言 @提及時通知我
+        </label>
+
+        <p v-if="push.error" role="alert" class="text-xs text-danger-ink">{{ push.error }}</p>
+        <p class="text-xs text-ink-faint">
+          跟上面的到期提醒不同，這個<strong class="font-medium text-ink-soft">分頁關掉也收得到</strong>——但只涵蓋
+          「被 @提及」，還沒有其他事件會推播。
+        </p>
+      </section>
+
       <div class="flex justify-end">
         <button type="button"
           class="rounded-lg border border-line px-3.5 py-2 text-sm font-medium text-ink-soft transition-colors hover:bg-sunken hover:text-ink"
@@ -100,6 +126,9 @@ import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
 import { usePrefsStore } from '@/stores/prefs'
 import { useDueReminders } from '@/composables/useDueReminders'
+import { useAuthStore } from '@/stores/auth'
+import { usePushStore } from '@/stores/push'
+import { isPushConfigured } from '@/sync/config'
 
 /**
  * 資料與提醒。
@@ -114,6 +143,8 @@ const tasks = useTasksStore()
 const collections = useCollectionsStore()
 const prefs = usePrefsStore()
 const reminders = useDueReminders()
+const auth = useAuthStore()
+const push = usePushStore()
 
 const dialogEl = ref<HTMLDialogElement | null>(null)
 const mode = ref<'merge' | 'replace'>('merge')
@@ -129,6 +160,7 @@ watch(
     if (open) {
       importMessage.value = null
       permission.value = reminders.permission()
+      if (isPushConfigured) void push.refresh()
       if (!el.open) el.showModal()
     } else if (el.open) {
       el.close()
@@ -187,5 +219,11 @@ async function toggleReminders(event: Event): Promise<void> {
   }
   await reminders.enable()
   permission.value = reminders.permission()
+}
+
+async function togglePush(event: Event): Promise<void> {
+  const wantsOn = (event.target as HTMLInputElement).checked
+  if (wantsOn) await push.enable()
+  else await push.disable()
 }
 </script>
