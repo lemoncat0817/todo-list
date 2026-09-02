@@ -9,7 +9,7 @@ interface IDBTaskRow {
   id: string
   taskName: string
   isCompleted: boolean
-  order: number
+  rank: string
   [key: string]: unknown
 }
 
@@ -155,7 +155,7 @@ test('升級路徑：既有使用者的舊格式資料（含 isEdit）仍可正�
   const rows = await readTasksFromIDB(page)
   expect(rows).toHaveLength(3)
   expect(rows.some((t) => 'isEdit' in t), '舊的 isEdit 欄位應已消失').toBe(false)
-  expect(rows.every((t) => typeof t.order === 'number'), '每一列都要有排序鍵').toBe(true)
+  expect(rows.every((t) => typeof t.rank === 'string'), '每一列都要有排序鍵').toBe(true)
 
   // 原始 localStorage 資料保留，讓回滾舊版仍讀得到
   const legacy = await page.evaluate(() => localStorage.getItem('todoTask'))
@@ -175,7 +175,7 @@ test('P1 已修正：編輯狀態不落地，儲存形狀乾淨', async ({ page 
   expect(Object.keys(rows[0] ?? {})).not.toContain('isEdit')
   expect(Object.keys(rows[0] ?? {}).sort()).toEqual([
     'completedAt', 'createdAt', 'dueDate', 'dueTime', 'id', 'isCompleted',
-    'notes', 'order', 'parentId', 'priority', 'projectId', 'recurrence',
+    'notes', 'parentId', 'priority', 'projectId', 'rank', 'recurrence',
     'tagIds', 'taskName', 'updatedAt',
   ])
 })

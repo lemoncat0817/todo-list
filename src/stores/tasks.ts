@@ -14,7 +14,7 @@ import { createTask, groupByParent, monotonicNow } from '@/domain/task'
 import { diffAgainstFingerprint, diffFields } from '@/domain/diff'
 import { mergeById } from '@/db/backup'
 import { nextOccurrence } from '@/domain/recurrence'
-import { nextOrder, orderBetween, sortByOrder } from '@/domain/ordering'
+import { between, nextRank, sortByRank, withJitter } from '@/domain/rank'
 import { countByFilter, queryTasks, type TaskFilter, type TaskQuery } from '@/domain/filtering'
 import {
   overdueCount,
@@ -324,7 +324,7 @@ export const useTasksStore = defineStore('tasks', () => {
   const indexOf = (id: string) => items.value.findIndex((t) => t.id === id)
 
   function add(taskName: string, overrides: Partial<StoredTask> = {}): StoredTask {
-    const task = createTask(taskName, nextOrder(items.value), overrides)
+    const task = createTask(taskName, nextRank(items.value), overrides)
     items.value.push(task)
     history.record({
       label: `新增「${taskName}」`,
@@ -349,7 +349,7 @@ export const useTasksStore = defineStore('tasks', () => {
     const parent = items.value.find((t) => t.id === parentId)
     if (!parent || parent.parentId !== null) return null
 
-    const task = createTask(taskName, nextOrder(childrenOf(parentId)), {
+    const task = createTask(taskName, nextRank(childrenOf(parentId)), {
       parentId,
       projectId: parent.projectId,
     })
@@ -397,7 +397,7 @@ export const useTasksStore = defineStore('tasks', () => {
           ? `刪除「${target.taskName}」與 ${removed.length - 1} 個子項`
           : `刪除「${target.taskName}」`,
       undo: () => {
-        items.value = sortByOrder([...items.value, ...removed])
+        items.value = sortByRank([...items.value, ...removed])
       },
       redo: () => {
         items.value = items.value.filter((t) => t.id !== id && t.parentId !== id)
@@ -412,7 +412,7 @@ export const useTasksStore = defineStore('tasks', () => {
     history.record({
       label: `清除 ${removed.length} 項已完成`,
       undo: () => {
-        items.value = sortByOrder([...items.value, ...removed])
+        items.value = sortByRank([...items.value, ...removed])
       },
       redo: () => {
         items.value = items.value.filter((t) => !t.isCompleted)
@@ -479,23 +479,34 @@ export const useTasksStore = defineStore('tasks', () => {
     const target = items.value.find((t) => t.id === targetId)
     if (!moving || !target || id === targetId) return
 
-    const sorted = sortByOrder(items.value)
+    const sorted = sortByRank(items.value)
     const targetIndex = sorted.findIndex((t) => t.id === targetId)
     const neighbour = sorted[position === 'before' ? targetIndex - 1 : targetIndex + 1] ?? null
 
-    const previousOrder = moving.order
-    // 取中間值而非重編號：一次拖曳只需寫入一列
-    moving.order =
-      position === 'before'
-        ? orderBetween(neighbour?.order ?? null, target.order)
-        : orderBetween(target.order, neighbour?.order ?? null)
+    const previousRank = moving.rank
+    // 取中間值而非重編號：一次拖曳只需寫入一列。between() 兩端相同
+    // （例如兩台裝置先前併發寫入、剛好留下相鄰兩列 rank 相同的殘留）
+    // 會丟出 RangeError，這裡當成 no-op，不阻斷使用者的操作——跟原本
+    // 浮點數版本「算出退化的中點但不報錯」是不同的失敗方式，但效果
+    // 一致：這次拖曳沒有造成看得出來的效果。withJitter() 則是加保險：
+    // 這是實際落地寫入的地方，兩台裝置幾乎同時拖到同一個間隙時，
+    // 各自的 between() 會算出同一個值，接上隨機尾碼讓兩者自然分開。
+    try {
+      moving.rank = withJitter(
+        position === 'before'
+          ? between(neighbour?.rank ?? null, target.rank)
+          : between(target.rank, neighbour?.rank ?? null),
+      )
+    } catch {
+      return
+    }
     moving.updatedAt = Date.now()
 
     history.record({
       label: `移動「${moving.taskName}」`,
       undo: () => {
         const t = items.value.find((x) => x.id === id)
-        if (t) t.order = previousOrder
+        if (t) t.rank = previousRank
       },
     })
   }
@@ -576,7 +587,7 @@ export const useTasksStore = defineStore('tasks', () => {
     history.record({
       label: `刪除 ${ids.length} 項`,
       undo: () => {
-        items.value = sortByOrder([...items.value, ...removed])
+        items.value = sortByRank([...items.value, ...removed])
       },
       redo: drop,
     })
@@ -655,7 +666,7 @@ export const useTasksStore = defineStore('tasks', () => {
     const beforeCollections = collections.snapshot()
 
     items.value =
-      mode === 'replace' ? [...data.tasks] : sortByOrder(mergeById(beforeTasks, data.tasks))
+      mode === 'replace' ? [...data.tasks] : sortByRank(mergeById(beforeTasks, data.tasks))
     collections.applyImport(data, mode)
 
     history.record({
@@ -682,7 +693,7 @@ export const useTasksStore = defineStore('tasks', () => {
     // 判斷哪些 upserts／deletes 是這次合併造成的，不是使用者剛做的操作，
     // 不該被誤判成本地變更又推一次到伺服器（見上面 remoteMergedIds 的說明）。
     remoteMergedIds = new Set([...items.value.map((t) => t.id), ...rows.map((t) => t.id)])
-    items.value = sortByOrder(rows)
+    items.value = sortByRank(rows)
   }
 
   // -------------------------------------------- 跨 store 的關聯處理
@@ -715,7 +726,7 @@ export const useTasksStore = defineStore('tasks', () => {
       undo: () => {
         collections.restoreProject(project)
         if (options.deleteTasks) {
-          items.value = sortByOrder([...items.value, ...affected])
+          items.value = sortByRank([...items.value, ...affected])
         } else {
           const ids = new Set(affected.map((a) => a.id))
           for (const task of items.value) {

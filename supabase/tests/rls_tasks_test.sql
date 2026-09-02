@@ -51,8 +51,8 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000a11c","r
 
 -- 2) 舊版前端風格的 insert（不帶 project_id）落進收件匣，不是被拒絕。
 select lives_ok(
-  $$ insert into public.tasks (id, task_name, is_completed, "order", notes, priority, tag_ids, created_at, updated_at)
-     values ('00000000-0000-0000-0000-000000000001', '舊前端任務', false, 1, '', 0, '{}', 1, 1) $$,
+  $$ insert into public.tasks (id, task_name, is_completed, rank, notes, priority, tag_ids, created_at, updated_at)
+     values ('00000000-0000-0000-0000-000000000001', '舊前端任務', false, 'A', '', 0, '{}', 1, 1) $$,
   '不帶 project_id 的 insert 不會被 RLS 擋下');
 select is(
   (select project_id from public.tasks where id = '00000000-0000-0000-0000-000000000001'),
@@ -71,8 +71,8 @@ select is(
 -- format() 在這裡先把真實的 project id 內插成字面值再交給 throws_ok，
 -- 不能直接寫成子查詢——Carol 對 projects 的 select 本來就被 RLS 擋住，
 -- 子查詢在她的 session 裡永遠只會查到 null，等於沒測到真正想測的東西。
-select format($fmt$ insert into public.tasks (id, task_name, is_completed, "order", notes, priority, project_id, tag_ids, created_at, updated_at)
-     values ('00000000-0000-0000-0000-000000000002', 'x', false, 1, '', 0, %L, '{}', 1, 1) $fmt$, :'alice_inbox') as carol_insert_sql \gset
+select format($fmt$ insert into public.tasks (id, task_name, is_completed, rank, notes, priority, project_id, tag_ids, created_at, updated_at)
+     values ('00000000-0000-0000-0000-000000000002', 'x', false, 'A', '', 0, %L, '{}', 1, 1) $fmt$, :'alice_inbox') as carol_insert_sql \gset
 
 select throws_ok(:'carol_insert_sql', null, null, 'Carol 想寫進 Alice 的收件匣被拒');
 
@@ -86,8 +86,8 @@ select is(
   (select count(*)::int from public.tasks where id = '00000000-0000-0000-0000-000000000001'),
   1, 'viewer 的 Bob 看得到 Alice 的任務');
 select throws_ok(
-  $$ insert into public.tasks (id, task_name, is_completed, "order", notes, priority, project_id, tag_ids, created_at, updated_at)
-     values ('00000000-0000-0000-0000-000000000003', 'Bob 想寫', false, 1, '', 0,
+  $$ insert into public.tasks (id, task_name, is_completed, rank, notes, priority, project_id, tag_ids, created_at, updated_at)
+     values ('00000000-0000-0000-0000-000000000003', 'Bob 想寫', false, 'A', '', 0,
              (select project_id from public.tasks where id = '00000000-0000-0000-0000-000000000001'), '{}', 1, 1) $$,
   null, null, 'viewer 的 Bob 不能新增任務');
 -- UPDATE 的 RLS USING 子句過濾掉不符合的列時是靜默影響 0 列，不會像
@@ -98,8 +98,8 @@ select is(
   (select is_completed from public.tasks where id = '00000000-0000-0000-0000-000000000001'),
   false, 'viewer 的 Bob 更新不到任何列，任務狀態沒被改動');
 select throws_ok(
-  $$ insert into public.projects (id, user_id, name, color, "order", workspace_id, updated_at)
-     values (gen_random_uuid(), '00000000-0000-0000-0000-00000000b0b0', '新專案', '#000', 0,
+  $$ insert into public.projects (id, user_id, name, color, rank, workspace_id, updated_at)
+     values (gen_random_uuid(), '00000000-0000-0000-0000-00000000b0b0', '新專案', '#000', 'A',
              (select id from public.workspaces where created_by = '00000000-0000-0000-0000-00000000a11c'), 1) $$,
   null, null, 'viewer 的 Bob 不能新建專案');
 
@@ -128,8 +128,8 @@ reset role;
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000b0b0","role":"authenticated"}';
 select lives_ok(
-  $$ insert into public.tasks (id, task_name, is_completed, "order", notes, priority, project_id, tag_ids, created_at, updated_at)
-     values ('00000000-0000-0000-0000-000000000004', 'Bob 被覆蓋成 member 後可以寫', false, 1, '', 0,
+  $$ insert into public.tasks (id, task_name, is_completed, rank, notes, priority, project_id, tag_ids, created_at, updated_at)
+     values ('00000000-0000-0000-0000-000000000004', 'Bob 被覆蓋成 member 後可以寫', false, 'A', '', 0,
              (select id from public.projects where workspace_id = (select public.personal_workspace_id('00000000-0000-0000-0000-00000000a11c')) and is_inbox),
              '{}', 1, 1) $$,
   'project_members 覆蓋生效：Bob 在這個專案能寫任務了');

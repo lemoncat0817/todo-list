@@ -94,7 +94,7 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
     await store.load()
 
     store.mergeRemote({
-      projects: [{ id: 'remote-p1', name: '遠端專案', color: '#000', order: 0, updatedAt: 1 }],
+      projects: [{ id: 'remote-p1', name: '遠端專案', color: '#000', rank: 'A', updatedAt: 1 }],
       tags: [],
       filters: [],
     })
@@ -109,7 +109,7 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
     await store.load()
 
     store.mergeRemote({
-      projects: [{ id: 'remote-p1', name: '遠端專案', color: '#000', order: 0, updatedAt: 1 }],
+      projects: [{ id: 'remote-p1', name: '遠端專案', color: '#000', rank: 'A', updatedAt: 1 }],
       tags: [],
       filters: [],
     })

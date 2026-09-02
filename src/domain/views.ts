@@ -1,7 +1,7 @@
 import type { StoredTask } from '@/db/schema'
 import { addDays, compareISODate, daysUntil, today as todayOf } from './dates'
 import { matchesKeyword } from './filtering'
-import { sortByOrder } from './ordering'
+import { compareRankValues, sortByRank } from './rank'
 
 /**
  * 檢視（view）。
@@ -127,14 +127,14 @@ function byDueThenOrder(tasks: readonly StoredTask[]): StoredTask[] {
       if (b.dueDate === null) return -1
       return compareISODate(a.dueDate, b.dueDate)
     }
-    return a.order - b.order
+    return compareRankValues(a.rank, b.rank)
   })
 }
 
 /**
  * 使用者選擇的排序。
  *
- * 每一種都以 order 收尾當作穩定的最後依據：少了它，兩筆同優先度的任務
+ * 每一種都以 rank 收尾當作穩定的最後依據：少了它，兩筆同優先度的任務
  * 會在每次重新渲染時互換位置——排序看起來就像壞掉。
  */
 export function sortTasks(tasks: readonly StoredTask[], key: SortKey = 'manual'): StoredTask[] {
@@ -148,19 +148,19 @@ export function sortTasks(tasks: readonly StoredTask[], key: SortKey = 'manual')
           if (b.dueDate === null) return -1
           return compareISODate(a.dueDate, b.dueDate)
         }
-        return a.order - b.order
+        return compareRankValues(a.rank, b.rank)
       })
     case 'priority':
       // priority 內部值愈大愈重要，所以由大到小
-      return list.sort((a, b) => b.priority - a.priority || a.order - b.order)
+      return list.sort((a, b) => b.priority - a.priority || compareRankValues(a.rank, b.rank))
     case 'name':
       return list.sort(
-        (a, b) => a.taskName.localeCompare(b.taskName, 'zh-Hant') || a.order - b.order,
+        (a, b) => a.taskName.localeCompare(b.taskName, 'zh-Hant') || compareRankValues(a.rank, b.rank),
       )
     case 'created':
-      return list.sort((a, b) => b.createdAt - a.createdAt || a.order - b.order)
+      return list.sort((a, b) => b.createdAt - a.createdAt || compareRankValues(a.rank, b.rank))
     default:
-      return sortByOrder(list)
+      return sortByRank(list)
   }
 }
 

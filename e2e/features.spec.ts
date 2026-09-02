@@ -17,7 +17,7 @@ const names = (page: Page) => page.locator('main [data-test=task-name]')
 
 interface PersistedTask {
   taskName: string
-  order: number
+  rank: string
   isCompleted: boolean
   parentId: string | null
 }
@@ -39,7 +39,7 @@ async function persistedTasks(page: Page): Promise<PersistedTask[]> {
           const tx = open.result.transaction('tasks', 'readonly')
           const req = tx.objectStore('tasks').getAll()
           req.onsuccess = () =>
-            resolve((req.result as PersistedTask[]).sort((a, b) => a.order - b.order))
+            resolve((req.result as PersistedTask[]).sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0)))
           req.onerror = () => reject(req.error)
         }
       }),

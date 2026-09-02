@@ -251,9 +251,10 @@ describe('todoTask store', () => {
     it('排序鍵接續在現有最大值之後', async () => {
       const store = setup()
       await store.init()
-      store.items = [makeTask('既有', false, { order: 5 })]
+      const existing = makeTask('既有', false, { order: 5 })
+      store.items = [existing]
 
-      expect(store.add('新的').order).toBe(6)
+      expect(store.add('新的').rank > existing.rank).toBe(true)
     })
   })
 

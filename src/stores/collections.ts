@@ -13,7 +13,7 @@ import {
 } from '@/db/schema'
 import { diffAgainstFingerprint, diffFields } from '@/domain/diff'
 import { findByNormalizedName } from '@/domain/filtering'
-import { nextOrder } from '@/domain/ordering'
+import { compareRankValues, nextRank } from '@/domain/rank'
 import { monotonicNow } from '@/domain/task'
 import { isSyncConfigured } from '@/sync/config'
 import { toRemoteFilter, toRemoteProject, toRemoteTag } from '@/sync/rowMapping'
@@ -146,7 +146,7 @@ export const useCollectionsStore = defineStore('collections', () => {
       id: crypto.randomUUID(),
       name,
       color,
-      order: nextOrder(projects.value),
+      rank: nextRank(projects.value),
       updatedAt: Date.now(),
     }
     projects.value.push(project)
@@ -194,7 +194,7 @@ export const useCollectionsStore = defineStore('collections', () => {
   }
 
   function restoreProject(project: StoredProject): void {
-    projects.value = [...projects.value, project].sort((a, b) => a.order - b.order)
+    projects.value = [...projects.value, project].sort((a, b) => compareRankValues(a.rank, b.rank))
   }
 
   // ------------------------------------------------------------- 標籤
@@ -258,7 +258,7 @@ export const useCollectionsStore = defineStore('collections', () => {
       name,
       query,
       color,
-      order: nextOrder(filters.value),
+      rank: nextRank(filters.value),
       updatedAt: Date.now(),
     }
     filters.value.push(filter)
@@ -300,7 +300,7 @@ export const useCollectionsStore = defineStore('collections', () => {
     history.record({
       label: `刪除篩選器「${filter.name}」`,
       undo: () => {
-        filters.value = [...filters.value, filter].sort((a, b) => a.order - b.order)
+        filters.value = [...filters.value, filter].sort((a, b) => compareRankValues(a.rank, b.rank))
       },
       redo: () => {
         filters.value = filters.value.filter((f) => f.id !== id)

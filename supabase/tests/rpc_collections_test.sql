@@ -14,7 +14,7 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000a11c","r
 -- 1) create_project
 select results_eq(
   $$ select name, color from public.create_project('20000000-0000-0000-0000-000000000001',
-       jsonb_build_object('id', '00000000-0000-0000-0000-000000000101', 'name', '新專案', 'order', 1)) $$,
+       jsonb_build_object('id', '00000000-0000-0000-0000-000000000101', 'name', '新專案', 'rank', 'A')) $$,
   $$ values ('新專案'::text, '#1d4ed8'::text) $$,
   'create_project() 建立專案，顏色用預設值');
 
@@ -28,7 +28,7 @@ select results_eq(
 -- 3) create_filter
 select results_eq(
   $$ select name, query from public.create_filter('20000000-0000-0000-0000-000000000003',
-       jsonb_build_object('id', '00000000-0000-0000-0000-000000000103', 'name', '本週', 'query', 'due:week', 'order', 1)) $$,
+       jsonb_build_object('id', '00000000-0000-0000-0000-000000000103', 'name', '本週', 'query', 'due:week', 'rank', 'A')) $$,
   $$ values ('本週'::text, 'due:week'::text) $$,
   'create_filter() 建立篩選器');
 
@@ -42,7 +42,7 @@ select results_eq(
 -- 5) op_id 去重：create_project 重送同一個 op_id，第二次不會用新 payload 覆蓋
 select is(
   (select name from public.create_project('20000000-0000-0000-0000-000000000001',
-     jsonb_build_object('id', '00000000-0000-0000-0000-000000000101', 'name', '被重送的名字', 'order', 1))),
+     jsonb_build_object('id', '00000000-0000-0000-0000-000000000101', 'name', '被重送的名字', 'rank', 'A'))),
   '新專案',
   'create_project 的 op_id 去重生效，重送不會覆蓋原本的名字');
 

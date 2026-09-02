@@ -124,3 +124,23 @@ export function compareRank(a: Ranked, b: Ranked): number {
 export function sortByRank<T extends Ranked>(items: readonly T[]): T[] {
   return [...items].sort(compareRank)
 }
+
+/** 新項目的排序鍵：接在目前最大值之後。空清單時等同 between(null, null)。 */
+export function nextRank(items: readonly Ranked[]): string {
+  let max: string | null = null
+  for (const item of items) {
+    if (max === null || item.rank > max) max = item.rank
+  }
+  return between(max, null)
+}
+
+/**
+ * 純粹比較兩個 rank 字串本身，不帶 id tie-break——給 domain/views.ts
+ * 那種複合排序用（例如「先比優先度，優先度相同再比 rank」），那些情境
+ * 已經有自己的 tie-break 邏輯或根本不需要，直接接舊版 `a.order - b.order`
+ * 數字相減的位置換成字串比較即可。
+ */
+export function compareRankValues(a: string, b: string): number {
+  if (a === b) return 0
+  return a < b ? -1 : 1
+}

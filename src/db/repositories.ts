@@ -16,11 +16,12 @@ import {
   type StoredTask,
 } from './schema'
 import { normalizeFilter, normalizeOp, normalizeProject, normalizeTag, normalizeTask } from '@/domain/task'
+import { nextRank } from '@/domain/rank'
 
 /**
  * IndexedDB 的存取層。
  *
- * 這一層只做 IO 與形狀驗證，不含任何業務規則——排序數學在 domain/ordering，
+ * 這一層只做 IO 與形狀驗證，不含任何業務規則——排序數學在 domain/rank，
  * 篩選在 domain/filtering。相依方向一律由外向內（db → domain），
  * 不會出現基礎設施回頭依賴 store 的情況。
  *
@@ -79,6 +80,30 @@ export function getDB(): Promise<IDBPDatabase> {
             outbox.createIndex('by-createdAt', 'createdAt')
           }
         }
+
+        if (oldVersion < 5) {
+          // order（浮點數）→ rank（字串，domain/rank.ts）。tags 沒有這個
+          // 欄位，只動 tasks／projects／filters。既有列依原本的 order
+          // 由小到大排序後，依序指派新的 rank，維持原本的相對順序；
+          // 新舊索引一起換，不是留著 by-order 不管——名字對不上實際
+          // 排序鍵，留著只會誤導以後的人。
+          for (const storeName of [STORE_TASKS, STORE_PROJECTS, STORE_FILTERS]) {
+            const store = tx.objectStore(storeName)
+            const existing = ((await store.getAll()) as Record<string, unknown>[]).sort(
+              (a, b) => (typeof a.order === 'number' ? a.order : 0) - (typeof b.order === 'number' ? b.order : 0),
+            )
+            let ranked: { id: string; rank: string }[] = []
+            for (const row of existing) {
+              const rank = nextRank(ranked)
+              ranked = [...ranked, { id: String(row.id), rank }]
+              delete row.order
+              row.rank = rank
+              await store.put(row)
+            }
+            store.deleteIndex('by-order')
+            store.createIndex('by-rank', 'rank')
+          }
+        }
       },
     })
   }
@@ -104,11 +129,11 @@ async function replaceAll<T>(storeName: string, rows: readonly T[]): Promise<voi
 
 // ---------------------------------------------------------------- tasks
 
-/** 依 order 讀出全部任務；壞掉的列被正規化或略過，不讓整批失敗。 */
+/** 依 rank 讀出全部任務；壞掉的列被正規化或略過，不讓整批失敗。 */
 export async function loadTasks(): Promise<StoredTask[]> {
   const db = await getDB()
-  const rows = await db.getAllFromIndex(STORE_TASKS, 'by-order')
-  return rows.map((row, i) => normalizeTask(row, i)).filter((t): t is StoredTask => t !== null)
+  const rows = await db.getAllFromIndex(STORE_TASKS, 'by-rank')
+  return rows.map((row, i) => normalizeTask(row, String(i))).filter((t): t is StoredTask => t !== null)
 }
 
 /** 整份覆寫。匯入或首次寫入時用；一般變更走 applyTaskChanges。 */
@@ -143,8 +168,8 @@ export async function applyTaskChanges(changes: TaskChanges): Promise<void> {
 
 export async function loadProjects(): Promise<StoredProject[]> {
   const db = await getDB()
-  const rows = await db.getAllFromIndex(STORE_PROJECTS, 'by-order')
-  return rows.map((row, i) => normalizeProject(row, i)).filter((p): p is StoredProject => p !== null)
+  const rows = await db.getAllFromIndex(STORE_PROJECTS, 'by-rank')
+  return rows.map((row, i) => normalizeProject(row, String(i))).filter((p): p is StoredProject => p !== null)
 }
 
 export function saveProjects(projects: readonly StoredProject[]): Promise<void> {
@@ -167,8 +192,8 @@ export function saveTags(tags: readonly StoredTag[]): Promise<void> {
 
 export async function loadFilters(): Promise<StoredFilter[]> {
   const db = await getDB()
-  const rows = await db.getAllFromIndex(STORE_FILTERS, 'by-order')
-  return rows.map((row, i) => normalizeFilter(row, i)).filter((f): f is StoredFilter => f !== null)
+  const rows = await db.getAllFromIndex(STORE_FILTERS, 'by-rank')
+  return rows.map((row, i) => normalizeFilter(row, String(i))).filter((f): f is StoredFilter => f !== null)
 }
 
 export function saveFilters(filters: readonly StoredFilter[]): Promise<void> {

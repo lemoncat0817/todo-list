@@ -75,6 +75,21 @@ export function stubDialogs({ confirmReturns = true } = {}): DialogLog {
 let orderSeq = 0
 
 /**
+ * 舊測試大量用數字 order 表達相對順序（包括偶爾用 1.5 這種「已經插值過」
+ * 的值），換成 rank（字串）之後不想每個呼叫端都跟著改——這裡把數字換算
+ * 成一個合法、順序一致的 rank 字串：乘 1000 消掉常見的小數精度、加偏移
+ * 量避開負數、最後補一個非零字元收尾。收尾這一步是刻意的：rank 字串
+ * 尾端的 0 會被 domain/rank.ts 的 between() 當成「沒有資訊」直接去掉
+ * （stripTrailingZeros），兩個不同的 order 數字如果都以 0 收尾，理論上
+ * 不該被那個機制視為同一個值——加這個收尾字元從根本避開這個疑慮，不用
+ * 逐一檢查每個測試傳的數字會不會撞在一起。
+ */
+function orderToRank(n: number): string {
+  const scaled = Math.round((n + 1_000_000) * 1000)
+  return `${String(scaled).padStart(10, '0')}1`
+}
+
+/**
  * 建立測試用任務。
  *
  * 領域模型不含 isEdit —— 編輯狀態自 P1 修正後改由元件區域管理。
@@ -83,19 +98,20 @@ let orderSeq = 0
 export function makeTask(
   taskName: string,
   isCompleted = false,
-  extra: Partial<StoredTask> & Record<string, unknown> = {},
+  extra: Partial<StoredTask> & { order?: number } & Record<string, unknown> = {},
 ): StoredTask {
   const seq = ++orderSeq
   const now = Date.now()
+  const { order, ...rest } = extra
   return {
     ...DEFAULT_TASK_FIELDS,
     createdAt: now,
     updatedAt: now,
-    ...extra,
+    ...rest,
     id: String(extra.id ?? `task-${seq}`),
     taskName,
     isCompleted,
-    order: typeof extra.order === 'number' ? extra.order : seq,
+    rank: typeof extra.rank === 'string' ? extra.rank : orderToRank(typeof order === 'number' ? order : seq),
     completedAt: isCompleted ? now : null,
   }
 }

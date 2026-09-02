@@ -51,12 +51,12 @@ begin
     return v_row;
   end if;
 
-  insert into public.projects (id, name, color, "order", updated_at)
+  insert into public.projects (id, name, color, rank, updated_at)
   values (
     (p_row->>'id')::uuid,
     p_row->>'name',
     coalesce(p_row->>'color', '#1d4ed8'),
-    (p_row->>'order')::double precision,
+    p_row->>'rank',
     (extract(epoch from clock_timestamp()) * 1000)::bigint
   )
   returning * into v_row;
@@ -102,13 +102,13 @@ begin
     return v_row;
   end if;
 
-  insert into public.filters (id, name, query, color, "order", updated_at)
+  insert into public.filters (id, name, query, color, rank, updated_at)
   values (
     (p_row->>'id')::uuid,
     p_row->>'name',
     p_row->>'query',
     coalesce(p_row->>'color', '#7c3aed'),
-    (p_row->>'order')::double precision,
+    p_row->>'rank',
     (extract(epoch from clock_timestamp()) * 1000)::bigint
   )
   returning * into v_row;

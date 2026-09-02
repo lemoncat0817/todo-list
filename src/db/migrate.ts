@@ -1,5 +1,6 @@
 import { DEFAULT_TASK_FIELDS, META_MIGRATED_FROM_LOCALSTORAGE, type StoredTask } from './schema'
 import { getMeta, setMeta, saveTasks } from './repositories'
+import { nextRank } from '@/domain/rank'
 
 /**
  * 從舊版 localStorage 遷移到 IndexedDB。
@@ -93,7 +94,7 @@ export async function migrateFromLocalStorage(storageKey = 'todoTask'): Promise<
       id: legacy.id,
       taskName: legacy.taskName,
       isCompleted: legacy.isCompleted,
-      order: stored.length,
+      rank: nextRank(stored),
       completedAt: legacy.isCompleted ? now : null,
       createdAt: now,
       updatedAt: now,

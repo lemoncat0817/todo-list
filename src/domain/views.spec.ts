@@ -186,7 +186,7 @@ describe('sortTasks', () => {
   ]
 
   it('預設維持手動順序——那是使用者自己排的判斷', () => {
-    expect(sortTasks(tasks).map((t) => t.order)).toEqual([1, 2, 3])
+    expect(sortTasks(tasks).map((t) => t.taskName)).toEqual(['沒日期低優先', '明天中優先', '今天最高'])
   })
 
   it('依到期日排序時，沒有日期的排最後（那是「沒排」不是「很早」）', () => {

@@ -48,7 +48,7 @@ export function toRemoteTask(task: StoredTask): Record<string, unknown> {
     id: task.id,
     task_name: task.taskName,
     is_completed: task.isCompleted,
-    order: task.order,
+    rank: task.rank,
     notes: task.notes,
     priority: task.priority,
     due_date: task.dueDate,
@@ -70,7 +70,7 @@ export function fromRemoteTask(row: Record<string, unknown>): unknown {
     id: row.id,
     taskName: row.task_name,
     isCompleted: row.is_completed,
-    order: row.order,
+    rank: row.rank,
     notes: row.notes,
     priority: row.priority,
     dueDate: row.due_date,
@@ -92,14 +92,14 @@ export function toRemoteProject(project: StoredProject): Record<string, unknown>
     id: project.id,
     name: project.name,
     color: project.color,
-    order: project.order,
+    rank: project.rank,
     updated_at: project.updatedAt,
     deleted_at: null,
   }
 }
 
 export function fromRemoteProject(row: Record<string, unknown>): unknown {
-  return { id: row.id, name: row.name, color: row.color, order: row.order, updatedAt: row.updated_at }
+  return { id: row.id, name: row.name, color: row.color, rank: row.rank, updatedAt: row.updated_at }
 }
 
 // -------------------------------------------------------------------- tags
@@ -120,7 +120,7 @@ export function toRemoteFilter(filter: StoredFilter): Record<string, unknown> {
     name: filter.name,
     query: filter.query,
     color: filter.color,
-    order: filter.order,
+    rank: filter.rank,
     updated_at: filter.updatedAt,
     deleted_at: null,
   }
@@ -132,7 +132,7 @@ export function fromRemoteFilter(row: Record<string, unknown>): unknown {
     name: row.name,
     query: row.query,
     color: row.color,
-    order: row.order,
+    rank: row.rank,
     updatedAt: row.updated_at,
   }
 }

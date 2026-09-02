@@ -1,10 +1,13 @@
 import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
+import { openDB } from 'idb'
 import {
   getDB,
   resetDBCache,
   loadTasks,
+  loadProjects,
+  loadFilters,
   saveTasks,
   getMeta,
   setMeta,
@@ -15,9 +18,21 @@ import {
   markOpAttempt,
   clearOutbox,
 } from '@/db'
-import { nextOrder, orderBetween } from '@/domain/ordering'
-import { META_MIGRATED_FROM_LOCALSTORAGE, STORE_TASKS, type Op, type StoredTask } from '@/db/schema'
+// between()／nextRank()（取代原本這裡測的 orderBetween／nextOrder）
+// 的測試在 domain/rank.spec.ts，不在這裡重複。
+import {
+  DB_NAME,
+  META_MIGRATED_FROM_LOCALSTORAGE,
+  STORE_FILTERS,
+  STORE_META,
+  STORE_PROJECTS,
+  STORE_TAGS,
+  STORE_TASKS,
+  type Op,
+  type StoredTask,
+} from '@/db/schema'
 import { makeTask } from '@/test/helpers'
+import { nextRank } from '@/domain/rank'
 
 /** 每個測試都用全新的 IndexedDB，避免互相汙染。 */
 beforeEach(() => {
@@ -42,7 +57,7 @@ describe('IndexedDB 資料層', () => {
     ])
 
     const tx = db.transaction(STORE_TASKS)
-    expect([...tx.store.indexNames]).toContain('by-order')
+    expect([...tx.store.indexNames]).toContain('by-rank')
   })
 
   it('存進去再讀出來，內容一致', async () => {
@@ -86,32 +101,6 @@ describe('IndexedDB 資料層', () => {
     expect(await getMeta('nope')).toBeUndefined()
     await setMeta('answer', 42)
     expect(await getMeta<number>('answer')).toBe(42)
-  })
-
-  describe('orderBetween —— 拖曳排序只需改動一列', () => {
-    it('兩者之間取中間值', () => {
-      expect(orderBetween(1, 2)).toBe(1.5)
-      expect(orderBetween(0, 10)).toBe(5)
-    })
-    it('移到最前面時取比後者小的值', () => {
-      expect(orderBetween(null, 5)).toBeLessThan(5)
-    })
-    it('移到最後面時取比前者大的值', () => {
-      expect(orderBetween(5, null)).toBeGreaterThan(5)
-    })
-    it('清單為空時回 0', () => {
-      expect(orderBetween(null, null)).toBe(0)
-    })
-    it('連續插入同一位置仍保持嚴格遞增', () => {
-      let lo = 0
-      const hi = 1
-      for (let i = 0; i < 10; i++) {
-        const mid = orderBetween(lo, hi)
-        expect(mid).toBeGreaterThan(lo)
-        expect(mid).toBeLessThan(hi)
-        lo = mid
-      }
-    })
   })
 
   describe('outbox —— 離線操作佇列', () => {
@@ -171,16 +160,76 @@ describe('IndexedDB 資料層', () => {
     })
   })
 
-  describe('nextOrder', () => {
-    it('空清單從 0 開始', () => {
-      expect(nextOrder([])).toBe(0)
+})
+
+/**
+ * v4 → v5 的 upgrade()：既有使用者的 order（浮點數）換算成 rank（字串），
+ * 索引從 by-order 換成 by-rank。這是這次改動裡風險最高、也最沒有機會
+ * 「跑錯了會馬上發現」的一段——沒有這個測試的話，前面 41 個測試檔案
+ * 全部都是從 v5 全新建立資料庫開始，完全沒有真正走過這條升級路徑。
+ */
+describe('v4 → v5：order 換算成 rank', () => {
+  async function seedV4Database(): Promise<void> {
+    const db = await openDB(DB_NAME, 4, {
+      upgrade(db) {
+        const tasks = db.createObjectStore(STORE_TASKS, { keyPath: 'id' })
+        tasks.createIndex('by-order', 'order')
+        db.createObjectStore(STORE_META)
+        const projects = db.createObjectStore(STORE_PROJECTS, { keyPath: 'id' })
+        projects.createIndex('by-order', 'order')
+        db.createObjectStore(STORE_TAGS, { keyPath: 'id' })
+        const filters = db.createObjectStore(STORE_FILTERS, { keyPath: 'id' })
+        filters.createIndex('by-order', 'order')
+        db.createObjectStore('outbox', { keyPath: 'id' }).createIndex('by-createdAt', 'createdAt')
+      },
     })
-    it('接在最大值之後', () => {
-      expect(nextOrder([task('a', 'x', false, 3), task('b', 'y', false, 7)])).toBe(8)
-    })
-    it('不受插入順序影響', () => {
-      expect(nextOrder([task('b', 'y', false, 7), task('a', 'x', false, 3)])).toBe(8)
-    })
+
+    // 刻意亂序寫入：升級後的相對順序要看 order 的值，不是寫入順序。
+    await db.put(STORE_TASKS, { id: 't-c', taskName: '丙', isCompleted: false, order: 20, notes: '', priority: 0, dueDate: null, dueTime: null, projectId: null, tagIds: [], parentId: null, recurrence: null, completedAt: null, createdAt: 1, updatedAt: 1 })
+    await db.put(STORE_TASKS, { id: 't-a', taskName: '甲', isCompleted: false, order: 0, notes: '', priority: 0, dueDate: null, dueTime: null, projectId: null, tagIds: [], parentId: null, recurrence: null, completedAt: null, createdAt: 1, updatedAt: 1 })
+    await db.put(STORE_TASKS, { id: 't-b', taskName: '乙', isCompleted: false, order: 10, notes: '', priority: 0, dueDate: null, dueTime: null, projectId: null, tagIds: [], parentId: null, recurrence: null, completedAt: null, createdAt: 1, updatedAt: 1 })
+
+    await db.put(STORE_PROJECTS, { id: 'p-b', name: '專案乙', color: '#000', order: 1, updatedAt: 1 })
+    await db.put(STORE_PROJECTS, { id: 'p-a', name: '專案甲', color: '#000', order: 0, updatedAt: 1 })
+
+    await db.put(STORE_FILTERS, { id: 'f-a', name: '篩選甲', query: 'today', color: '#000', order: 0, updatedAt: 1 })
+
+    db.close()
+  }
+
+  it('升級後 rank 保留原本的相對順序，order 欄位不再出現', async () => {
+    await seedV4Database()
+    resetDBCache()
+
+    const tasks = await loadTasks()
+    expect(tasks.map((t) => t.taskName)).toEqual(['甲', '乙', '丙'])
+    for (const t of tasks) {
+      expect(typeof t.rank).toBe('string')
+      expect(t.rank.length).toBeGreaterThan(0)
+      expect(t as unknown as Record<string, unknown>).not.toHaveProperty('order')
+    }
+    // rank 本身也要跟 loadTasks() 讀出的順序一致（by-rank 索引排序正確）
+    const ranks = tasks.map((t) => t.rank)
+    expect(ranks).toEqual([...ranks].sort())
+
+    const projects = await loadProjects()
+    expect(projects.map((p) => p.name)).toEqual(['專案甲', '專案乙'])
+
+    const filters = await loadFilters()
+    expect(filters.map((f) => f.name)).toEqual(['篩選甲'])
+    expect(typeof filters[0]?.rank).toBe('string')
+  })
+
+  it('升級後可以正常新增任務，新任務排在最後面', async () => {
+    await seedV4Database()
+    resetDBCache()
+
+    const before = await loadTasks()
+    const newTask = { ...makeTask('丁'), rank: nextRank(before) }
+    await saveTasks([...before, newTask])
+
+    const after = await loadTasks()
+    expect(after.map((t) => t.taskName)).toEqual(['甲', '乙', '丙', '丁'])
   })
 })
 
@@ -205,7 +254,7 @@ describe('從 localStorage 遷移', () => {
     expect(await getMeta<boolean>(META_MIGRATED_FROM_LOCALSTORAGE)).toBe(true)
   })
 
-  it('數字 id 轉成字串，order 依原順序給定', async () => {
+  it('數字 id 轉成字串，rank 給一個合法的值', async () => {
     localStorage.setItem(
       'todoTask',
       JSON.stringify({ todoList: [{ id: 1700000000000, taskName: 'x', isCompleted: false }] }),
@@ -215,7 +264,8 @@ describe('從 localStorage 遷移', () => {
     const rows = await loadTasks()
     expect(rows[0]?.id).toBe('1700000000000')
     expect(typeof rows[0]?.id).toBe('string')
-    expect(rows[0]?.order).toBe(0)
+    expect(typeof rows[0]?.rank).toBe('string')
+    expect(rows[0]?.rank.length).toBeGreaterThan(0)
   })
 
   it('壞掉的項目被跳過並計數，好的照樣搬過去', async () => {

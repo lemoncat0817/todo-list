@@ -28,7 +28,7 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000a11c","r
 select format($fmt$ select (public.create_task(
   '10000000-0000-0000-0000-000000000001',
   jsonb_build_object('id', '00000000-0000-0000-0000-000000000001', 'task_name', '原始名稱',
-    'order', 1, 'project_id', %L, 'due_date', '2026-01-01', 'tag_ids', jsonb_build_array())
+    'rank', 'A', 'project_id', %L, 'due_date', '2026-01-01', 'tag_ids', jsonb_build_array())
 )).task_name $fmt$, :'alice_inbox') as create_sql \gset
 
 select results_eq(
@@ -68,13 +68,13 @@ select is(
   'tag_ids 清空後長度為 0（array_length 對空陣列回傳 null 是正常的）');
 
 -- 5) op_id 去重：同一個 op_id 重送兩次，第二次不會再套用一次補丁
--- （用一個會累加的欄位驗證：如果套用了兩次，"order" 會變成不同的值）。
+-- （用 rank 這個欄位驗證：如果套用了兩次，會變成第二次送的值）。
 select public.apply_task_patch('10000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000001',
-  jsonb_build_object('order', 100));
+  jsonb_build_object('rank', 'X'));
 select is(
-  (select "order" from public.apply_task_patch('10000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000001',
-     jsonb_build_object('order', 999))),
-  100::double precision,
+  (select rank from public.apply_task_patch('10000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000001',
+     jsonb_build_object('rank', 'Y'))),
+  'X',
   '同一個 op_id 重送第二次不會再套用一次補丁（去重生效）');
 
 -- 6) apply_project_patch 只改 name，color 應該維持不變。
