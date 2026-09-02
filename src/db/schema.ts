@@ -14,6 +14,7 @@ export const DB_NAME = 'todolist'
  * v6: 新增 comments（任務留言，M3）——又是真的新 store，不是補欄位。
  * v7: 新增 activity（活動記錄，M3）——同上，全新 store。
  * v8: 新增 attachments（附件 metadata，M3）——同上，全新 store。
+ * v9: 新增 notifications（通知中心，M4）——同上，全新 store。
  *
  * projects／tags／filters 後來補上的 updatedAt（跨裝置同步要用它判斷哪一邊
  * 較新，見 sync/merge.ts）不需要新的版號：IndexedDB 的 object store 本來就
@@ -22,7 +23,7 @@ export const DB_NAME = 'todolist'
  * 視為現在）即可，跟其他任何邊界正規化走同一條路。只有新增／變動 store
  * 或 index 結構、或既有資料需要真的換算才需要動版號。
  */
-export const DB_VERSION = 8
+export const DB_VERSION = 9
 
 export const STORE_TASKS = 'tasks'
 export const STORE_META = 'meta'
@@ -33,6 +34,7 @@ export const STORE_OUTBOX = 'outbox'
 export const STORE_COMMENTS = 'comments'
 export const STORE_ACTIVITY = 'activity'
 export const STORE_ATTACHMENTS = 'attachments'
+export const STORE_NOTIFICATIONS = 'notifications'
 
 /** meta 用來記錄一次性遷移是否已完成，避免重複執行。 */
 export const META_MIGRATED_FROM_LOCALSTORAGE = 'migratedFromLocalStorage'
@@ -342,6 +344,29 @@ export interface StoredAttachment {
   contentType: string
   /** Supabase Storage 裡的路徑，見 sync/storageClient.ts 的 attachmentStoragePath()。 */
   storagePath: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type NotificationKind = 'mention' | 'assignment'
+
+/**
+ * 通知中心（M4）。跟 activity 一樣完全由伺服器端 trigger 產生
+ * （supabase/migrations/0017_notifications.sql 的 notify_user()），
+ * 本地端沒有 add/create，只有拉取＋合併，加一個「標已讀」的直接寫入
+ * （不走 outbox，理由跟附件的上傳/刪除一樣：這是伺服器授權的個人收件匣，
+ * 不是需要離線佇列補丁的協作欄位）。
+ */
+export interface StoredNotification {
+  id: string
+  /** 觸發這則通知的人；null 代表系統或無法辨識的來源（跟 StoredActivity.actorId 同理）。 */
+  actorId: string | null
+  kind: NotificationKind
+  taskId: string
+  /** 留言內容或任務名稱的摘要，來自伺服器 detail.body。 */
+  body: string
+  /** null 代表尚未讀取；已讀則是標已讀當下的時間戳。 */
+  readAt: number | null
   createdAt: number
   updatedAt: number
 }

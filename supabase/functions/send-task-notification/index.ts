@@ -1,10 +1,15 @@
-// M4：被 @提及時送出的 Web Push 通知。
+// M4：被 @提及、或被指派任務時送出的 Web Push 通知。
 //
-// 由 supabase/migrations/0015_push_subscriptions.sql 的 comments_notify_mentions
-// trigger（透過 pg_net）呼叫，不是給前端直接打的公開 API——用共用密鑰
-// （x-webhook-secret，值存在 Vault，trigger 端跟這裡各自讀同一份）擋掉
-// 未授權的呼叫，不是靠 Supabase 的使用者 JWT 驗證（呼叫端是資料庫本身，
-// 沒有使用者 session 可以帶）。
+// 原本叫 send-mention-push，只處理 @提及一種事件；M4 補上「被指派」後
+// 改名成通用的 send-task-notification——兩種事件共用同一套「查訂閱→送
+// Web Push→清過期訂閱」邏輯，差別只在通知標題跟摘要文字，沒有必要
+// 維護兩份幾乎一樣的函式。
+//
+// 由 supabase/migrations/0017_notifications.sql 的 notify_user()（留言
+// @提及跟任務指派兩個 trigger 都會呼叫到它）透過 pg_net 呼叫，不是給
+// 前端直接打的公開 API——用共用密鑰（x-webhook-secret，值存在 Vault，
+// trigger 端跟這裡各自讀同一份）擋掉未授權的呼叫，不是靠 Supabase 的
+// 使用者 JWT 驗證（呼叫端是資料庫本身，沒有使用者 session 可以帶）。
 //
 // 用 npm:web-push 而不是手刻 Web Push 協定（VAPID JWT 簽章＋ECDH 金鑰
 // 協議＋AES-GCM payload 加密，RFC 8291／8292）——這是這個專案目前唯一
@@ -27,9 +32,11 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails('mailto:admin@example.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
 }
 
-interface MentionPayload {
+type NotificationKind = 'mention' | 'assignment'
+
+interface NotificationPayload {
   user_id: string
-  comment_id: string
+  kind: NotificationKind
   task_id: string
   body: string
 }
@@ -41,18 +48,23 @@ interface PushSubscriptionRow {
   auth: string
 }
 
-function isMentionPayload(value: unknown): value is MentionPayload {
+function isNotificationPayload(value: unknown): value is NotificationPayload {
   if (typeof value !== 'object' || value === null) return false
   const v = value as Record<string, unknown>
   return (
     typeof v.user_id === 'string' &&
-    typeof v.comment_id === 'string' &&
+    (v.kind === 'mention' || v.kind === 'assignment') &&
     typeof v.task_id === 'string' &&
     typeof v.body === 'string'
   )
 }
 
-/** 留言內容截斷成通知摘要——推播的顯示空間有限，不需要整段留言。 */
+const TITLES: Record<NotificationKind, string> = {
+  mention: '有人在留言裡提到你',
+  assignment: '有人指派了一個任務給你',
+}
+
+/** 通知內文截斷成摘要——推播的顯示空間有限，留言內容或任務名稱都不需要整段。 */
 function summarize(body: string): string {
   const trimmed = body.trim()
   return trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed
@@ -87,13 +99,13 @@ Deno.serve(async (req) => {
   }
 
   const payload: unknown = await req.json().catch(() => null)
-  if (!isMentionPayload(payload)) {
+  if (!isNotificationPayload(payload)) {
     return new Response('payload 形狀不對', { status: 400 })
   }
 
   const subscriptions = await fetchSubscriptions(payload.user_id)
   const notification = JSON.stringify({
-    title: '有人在留言裡提到你',
+    title: TITLES[payload.kind],
     body: summarize(payload.body),
     taskId: payload.task_id,
   })
@@ -115,7 +127,7 @@ Deno.serve(async (req) => {
           await deleteSubscription(sub.id)
           return 'expired'
         }
-        console.error('[send-mention-push] 發送失敗', error)
+        console.error('[send-task-notification] 發送失敗', error)
         return 'failed'
       }
     }),

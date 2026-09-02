@@ -31,6 +31,21 @@
           </svg>
         </button>
 
+        <!-- 通知中心只在已設定同步且已登入時顯示——跟留言/活動記錄同一個
+             理由：純本機模式下沒有伺服器產生的通知可以顯示。 -->
+        <button v-if="isSyncConfigured && auth.status === 'signed-in'" type="button" aria-label="通知"
+          class="relative grid size-9 place-items-center rounded-md text-ink-soft transition-colors hover:bg-sunken hover:text-ink"
+          @click="emit('notifications')">
+          <svg viewBox="0 0 20 20" class="size-5" aria-hidden="true" fill="none" stroke="currentColor"
+            stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 8a5 5 0 0 1 10 0c0 3.5 1.2 4.8 1.2 4.8H3.8S5 11.5 5 8Z" />
+            <path d="M8.2 15.5a1.8 1.8 0 0 0 3.6 0" />
+          </svg>
+          <span v-if="notifications.unreadCount > 0"
+            class="absolute top-1.5 right-1.5 size-2 rounded-full bg-accent" aria-hidden="true" />
+          <span v-if="notifications.unreadCount > 0" class="sr-only">（{{ notifications.unreadCount }} 則未讀）</span>
+        </button>
+
         <button type="button" :aria-label="themeLabel"
           class="grid size-9 place-items-center rounded-md text-ink-soft transition-colors hover:bg-sunken hover:text-ink"
           @click="cycle">
@@ -104,16 +119,23 @@ import { useRoute } from 'vue-router'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
 import { useCollectionsStore } from '@/stores/collections'
+import { useAuthStore } from '@/stores/auth'
+import { useNotificationsStore } from '@/stores/notifications'
 import { parseQuickAdd } from '@/domain/quickAdd'
 import { useTheme } from '@/composables/useTheme'
 import { useCurrentView } from '@/composables/useCurrentView'
 import { useMediaQuery } from '@/composables/useMediaQuery'
 import { today } from '@/domain/dates'
+import { isSyncConfigured } from '@/sync/config'
 import type { StoredTask } from '@/db/schema'
+
+const emit = defineEmits<{ notifications: [] }>()
 
 const tasks = useTasksStore()
 const ui = useUiStore()
 const collections = useCollectionsStore()
+const auth = useAuthStore()
+const notifications = useNotificationsStore()
 const { preference, cycle } = useTheme()
 const { spec, title } = useCurrentView()
 const route = useRoute()

@@ -19,6 +19,7 @@ export const TABLE_FILTERS = 'filters'
 export const TABLE_COMMENTS = 'comments'
 export const TABLE_ACTIVITY = 'activity_log'
 export const TABLE_ATTACHMENTS = 'attachments'
+export const TABLE_NOTIFICATIONS = 'notifications'
 
 /** 墓碑：REST 輪詢沒有天生的刪除事件，用這個欄位標記「這筆已經不存在了」。 */
 export interface Tombstone {
@@ -258,6 +259,27 @@ export function fromRemoteAttachment(row: Record<string, unknown>): unknown {
     fileSize: row.file_size,
     contentType: row.content_type,
     storagePath: row.storage_path,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+// ------------------------------------------------------------ notifications
+
+// 沒有 toRemoteNotification：通知完全由伺服器端的 trigger 產生
+// （supabase/migrations/0017_notifications.sql），client 端只拉不推，
+// 「標已讀」是另一支直接呼叫的 PATCH（見 sync/notificationsClient.ts），
+// 不透過這裡的往返轉換。
+export function fromRemoteNotification(row: Record<string, unknown>): unknown {
+  const detail = row.detail
+  const body = detail !== null && typeof detail === 'object' && 'body' in detail ? (detail as { body: unknown }).body : ''
+  return {
+    id: row.id,
+    actorId: row.actor_id,
+    kind: row.kind,
+    taskId: row.task_id,
+    body,
+    readAt: row.read_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

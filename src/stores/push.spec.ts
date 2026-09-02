@@ -177,3 +177,52 @@ describe('push store — refresh', () => {
     expect(push.subscribed).toBe(true)
   })
 })
+
+describe('push store — isIosNotStandalone', () => {
+  function stubUserAgent(userAgent: string, standalone?: boolean, platform = '') {
+    Object.defineProperty(globalThis.navigator, 'userAgent', { value: userAgent, configurable: true })
+    Object.defineProperty(globalThis.navigator, 'platform', { value: platform, configurable: true })
+    Object.defineProperty(globalThis.navigator, 'maxTouchPoints', { value: platform === 'MacIntel' ? 5 : 0, configurable: true })
+    if (standalone !== undefined) {
+      Object.defineProperty(globalThis.navigator, 'standalone', { value: standalone, configurable: true })
+    } else {
+      Reflect.deleteProperty(globalThis.navigator, 'standalone')
+    }
+  }
+
+  it('iOS Safari 沒加到主畫面時是 true', () => {
+    stubUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15')
+    const { push } = setup()
+    expect(push.isIosNotStandalone).toBe(true)
+  })
+
+  it('iOS Safari 已加到主畫面（standalone）時是 false', () => {
+    stubUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15', true)
+    const { push } = setup()
+    expect(push.isIosNotStandalone).toBe(false)
+  })
+
+  it('iPadOS（UA 偽裝成 Mac，但有多點觸控）沒加到主畫面時是 true', () => {
+    stubUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', false, 'MacIntel')
+    const { push } = setup()
+    expect(push.isIosNotStandalone).toBe(true)
+  })
+
+  it('非 iOS（一般桌機／Android）時是 false', () => {
+    stubUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+    const { push } = setup()
+    expect(push.isIosNotStandalone).toBe(false)
+  })
+
+  it('true 時 enable() 直接跳過，不請求權限也不訂閱', async () => {
+    stubSupported()
+    stubUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15')
+    const { push, auth } = setup()
+    auth.session = fakeSession()
+
+    await push.enable()
+
+    expect(Notification.requestPermission).not.toHaveBeenCalled()
+    expect(pushClientMocks.subscribeToPush).not.toHaveBeenCalled()
+  })
+})

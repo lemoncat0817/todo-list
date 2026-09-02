@@ -4,6 +4,7 @@ import {
   fromRemoteAttachment,
   fromRemoteComment,
   fromRemoteFilter,
+  fromRemoteNotification,
   fromRemoteProject,
   fromRemoteTag,
   fromRemoteTask,
@@ -21,6 +22,7 @@ import {
   normalizeAttachment,
   normalizeComment,
   normalizeFilter,
+  normalizeNotification,
   normalizeProject,
   normalizeTag,
   normalizeTask,
@@ -198,5 +200,31 @@ describe('rowMapping — attachments', () => {
       file_size: 100, content_type: 'application/pdf', storage_path: 't1/a1-x.pdf', created_at: 1, updated_at: 1,
     }
     expect(normalizeAttachment(fromRemoteAttachment(remoteRow))?.uploaderId).toBe('u1')
+  })
+})
+
+describe('rowMapping — notifications（只拉不推）', () => {
+  it('fromRemoteNotification 正確改名，body 從 detail.body 取出', () => {
+    const remoteRow = {
+      id: 'n1', actor_id: 'u1', kind: 'mention', task_id: 't1',
+      detail: { body: '@你 看一下' }, read_at: null, created_at: 1000, updated_at: 1000,
+    }
+    expect(normalizeNotification(fromRemoteNotification(remoteRow))).toEqual({
+      id: 'n1', actorId: 'u1', kind: 'mention', taskId: 't1',
+      body: '@你 看一下', readAt: null, createdAt: 1000, updatedAt: 1000,
+    })
+  })
+
+  it('detail 缺 body 時是空字串，不是 undefined', () => {
+    const remoteRow = { id: 'n1', actor_id: 'u1', kind: 'assignment', task_id: 't1', detail: {}, created_at: 1, updated_at: 1 }
+    expect(normalizeNotification(fromRemoteNotification(remoteRow))?.body).toBe('')
+  })
+
+  it('read_at 有值時正確帶過來（已讀狀態）', () => {
+    const remoteRow = {
+      id: 'n1', actor_id: 'u1', kind: 'mention', task_id: 't1',
+      detail: {}, read_at: 1700000000000, created_at: 1, updated_at: 1,
+    }
+    expect(normalizeNotification(fromRemoteNotification(remoteRow))?.readAt).toBe(1700000000000)
   })
 })

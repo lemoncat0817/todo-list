@@ -7,6 +7,7 @@ import {
   normalizeActivity,
   normalizeAttachment,
   normalizeComment,
+  normalizeNotification,
   normalizeOp,
   normalizeProject,
   normalizeTag,
@@ -319,4 +320,39 @@ describe('normalizeAttachment', () => {
   ])('無效輸入回傳 null：%s', (bad) => {
     expect(normalizeAttachment(bad)).toBeNull()
   })
+})
+
+describe('normalizeNotification', () => {
+  it('合法輸入通過', () => {
+    expect(
+      normalizeNotification({ id: 'n1', actorId: 'u1', kind: 'mention', taskId: 't1', body: '@你 看一下', readAt: null }),
+    ).toMatchObject({ id: 'n1', actorId: 'u1', kind: 'mention', taskId: 't1', body: '@你 看一下', readAt: null })
+  })
+
+  it('kind 只接受 mention／assignment', () => {
+    expect(normalizeNotification({ id: 'n1', kind: 'assignment', taskId: 't1' })?.kind).toBe('assignment')
+    expect(normalizeNotification({ id: 'n1', kind: 'not-a-real-kind', taskId: 't1' })).toBeNull()
+  })
+
+  it('actorId 缺值時是 null——同 normalizeActivity 的理由', () => {
+    expect(normalizeNotification({ id: 'n1', kind: 'mention', taskId: 't1' })?.actorId).toBeNull()
+  })
+
+  it('readAt 是數字時保留，不是數字時歸零為 null（未讀）', () => {
+    expect(normalizeNotification({ id: 'n1', kind: 'mention', taskId: 't1', readAt: 1700000000000 })?.readAt).toBe(
+      1700000000000,
+    )
+    expect(normalizeNotification({ id: 'n1', kind: 'mention', taskId: 't1', readAt: 'nope' })?.readAt).toBeNull()
+  })
+
+  it('body 缺值時補上空字串', () => {
+    expect(normalizeNotification({ id: 'n1', kind: 'mention', taskId: 't1' })?.body).toBe('')
+  })
+
+  it.each([null, {}, { id: 'n1' }, { id: 'n1', kind: 'mention' }, { id: 'n1', taskId: 't1' }])(
+    '無效輸入回傳 null：%s',
+    (bad) => {
+      expect(normalizeNotification(bad)).toBeNull()
+    },
+  )
 })

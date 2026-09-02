@@ -22,6 +22,23 @@ export const usePushStore = defineStore('push', () => {
   )
   const permission = computed<NotificationPermission>(() => (supported.value ? Notification.permission : 'denied'))
 
+  /**
+   * iOS Safari 只有加到主畫面（standalone 模式）後才支援 Web Push——
+   * 沒加之前，`supported`／`Notification.requestPermission()` 在部分
+   * iOS 版本上仍然回報看似正常的值，實際訂閱卻會安靜失敗，畫面上就是
+   * 一顆按下去沒反應的開關。這裡另外偵測「iOS 但不是 standalone」，
+   * UI 據此顯示「先加到主畫面」的說明，而不是假裝這是個正常的開關。
+   * `navigator.standalone`是非標準屬性，只有 iOS Safari 有。
+   */
+  const isIosNotStandalone = computed(() => {
+    if (typeof navigator === 'undefined') return false
+    const isIOS =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    const isStandalone = (navigator as { standalone?: boolean }).standalone === true
+    return isIOS && !isStandalone
+  })
+
   /** 開啟這個對話框時呼叫一次，讓畫面反映瀏覽器實際的訂閱狀態（可能在別的分頁被關掉過）。 */
   async function refresh(): Promise<void> {
     if (!supported.value) return
@@ -29,7 +46,7 @@ export const usePushStore = defineStore('push', () => {
   }
 
   async function enable(): Promise<void> {
-    if (!supported.value) return
+    if (!supported.value || isIosNotStandalone.value) return
     const token = auth.session?.access_token
     if (!token) return
 
@@ -73,5 +90,5 @@ export const usePushStore = defineStore('push', () => {
     }
   }
 
-  return { subscribed, loading, error, supported, permission, refresh, enable, disable }
+  return { subscribed, loading, error, supported, permission, isIosNotStandalone, refresh, enable, disable }
 })

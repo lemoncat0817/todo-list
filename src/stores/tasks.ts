@@ -34,6 +34,7 @@ import { useCollectionsStore } from './collections'
 import { useCommentsStore } from './comments'
 import { useActivityStore } from './activity'
 import { useAttachmentsStore } from './attachments'
+import { useNotificationsStore } from './notifications'
 import { useWorkspaceStore } from './workspace'
 import { useUiStore } from './ui'
 
@@ -130,6 +131,7 @@ export const useTasksStore = defineStore('tasks', () => {
   const comments = useCommentsStore()
   const activity = useActivityStore()
   const attachments = useAttachmentsStore()
+  const notifications = useNotificationsStore()
   const workspace = useWorkspaceStore()
   const ui = useUiStore()
   const prefs = usePrefsStore()
@@ -325,6 +327,8 @@ export const useTasksStore = defineStore('tasks', () => {
       // attachments 同理：upload()／remove() 直接打網路、自己呼叫
       // persist()，不需要掛在 flush() 的 watcher 上。
       await attachments.load()
+      // notifications 同理：markRead()／markAllRead() 直接打網路、自己呼叫 persist()。
+      await notifications.load()
     } catch (error) {
       loadError.value = error
     } finally {

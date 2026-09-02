@@ -1,6 +1,7 @@
 import {
   DEFAULT_TASK_FIELDS,
   type ActivityKind,
+  type NotificationKind,
   type Op,
   type OpKind,
   type Priority,
@@ -8,6 +9,7 @@ import {
   type StoredAttachment,
   type StoredComment,
   type StoredFilter,
+  type StoredNotification,
   type StoredProject,
   type StoredTag,
   type StoredTask,
@@ -233,6 +235,29 @@ export function normalizeAttachment(raw: unknown): StoredAttachment | null {
     fileSize: finiteNumber(raw.fileSize, 0),
     contentType: str(raw.contentType, 'application/octet-stream'),
     storagePath,
+    createdAt: finiteNumber(raw.createdAt, now),
+    updatedAt: finiteNumber(raw.updatedAt, now),
+  }
+}
+
+const NOTIFICATION_KINDS: readonly NotificationKind[] = ['mention', 'assignment']
+
+export function normalizeNotification(raw: unknown): StoredNotification | null {
+  if (!isRecord(raw)) return null
+  const id = nullableId(raw.id)
+  const taskId = nullableId(raw.taskId)
+  const kind = typeof raw.kind === 'string' && (NOTIFICATION_KINDS as readonly string[]).includes(raw.kind)
+    ? (raw.kind as NotificationKind)
+    : null
+  if (id === null || taskId === null || kind === null) return null
+  const now = Date.now()
+  return {
+    id,
+    actorId: nullableId(raw.actorId),
+    kind,
+    taskId,
+    body: str(raw.body, ''),
+    readAt: typeof raw.readAt === 'number' && Number.isFinite(raw.readAt) ? raw.readAt : null,
     createdAt: finiteNumber(raw.createdAt, now),
     updatedAt: finiteNumber(raw.updatedAt, now),
   }
