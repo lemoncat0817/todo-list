@@ -1,12 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
-import { getMeta, setMeta } from '@/db'
+import { clearOutbox, getMeta, loadOutbox, markOpAttempt, removeOp, setMeta } from '@/db'
 import {
   META_SYNC_ACCOUNT_ID,
   META_SYNC_FINGERPRINT_FILTERS,
   META_SYNC_FINGERPRINT_PROJECTS,
   META_SYNC_FINGERPRINT_TAGS,
-  META_SYNC_FINGERPRINT_TASKS,
   META_SYNC_LAST_PULLED_AT,
   type StoredFilter,
   type StoredProject,
@@ -15,6 +14,7 @@ import {
 } from '@/db/schema'
 import { normalizeFilter, normalizeProject, normalizeTag, normalizeTask } from '@/domain/task'
 import { mergeByUpdatedAt } from '@/sync/merge'
+import { sendOp } from '@/sync/rpc'
 import { SyncHttpError } from '@/sync/restClient'
 import { pullTable, pushTable, type TableBinding } from '@/sync/tableSync'
 import {
@@ -43,8 +43,13 @@ const PULL_INTERVAL_MS = 30_000
 /** 本地編輯觸發推送前先等一下：一串連續編輯（例如批次操作）只值得推一次。 */
 const PUSH_DEBOUNCE_MS = 3_000
 
+/**
+ * tasks 不在這裡——outbox 取代了它的指紋比對推送（見 drainOutbox()），
+ * 「哪些欄位真的變了」已經在 stores/tasks.ts 的 flush() 算好、寫進
+ * outbox，不需要另一份指紋來回答同一個問題。projects/tags/filters
+ * 還沒搬，繼續用原本的指紋比對＋整列 upsert。
+ */
 interface Fingerprints {
-  tasks: Map<string, string>
   projects: Map<string, string>
   tags: Map<string, string>
   filters: Map<string, string>
@@ -137,7 +142,6 @@ export const useSyncStore = defineStore('sync', () => {
   const collections = useCollectionsStore()
 
   let fingerprints: Fingerprints = {
-    tasks: new Map(),
     projects: new Map(),
     tags: new Map(),
     filters: new Map(),
@@ -148,6 +152,41 @@ export const useSyncStore = defineStore('sync', () => {
   let interval: ReturnType<typeof setInterval> | null = null
   let pushTimer: ReturnType<typeof setTimeout> | null = null
   let stopWatching: (() => void) | null = null
+
+  /**
+   * outbox 依序送出，中途失敗就整批停下——不能跳過失敗的那筆繼續送
+   * 後面的，不然同一筆任務的兩個補丁有可能倒著順序抵達伺服器。失敗的
+   * 那筆記一次重試次數（markOpAttempt，供未來做退避用），錯誤原樣往上
+   * 丟給 syncOnce() 既有的 try/catch，走同一套 describeSyncError()。
+   *
+   * 這裡只送 tasks 的 op（目前 outbox 也只會有 tasks 的 op，見
+   * stores/tasks.ts 的 enqueueSyncOps）；projects/tags/filters 還沒搬過來。
+   */
+  async function drainOutbox(token: string): Promise<void> {
+    const ops = await loadOutbox()
+    for (const op of ops) {
+      try {
+        await sendOp(op, token)
+        await removeOp(op.id)
+      } catch (error) {
+        await markOpAttempt(op.id)
+        throw error
+      }
+    }
+  }
+
+  /**
+   * tasks 專屬的拉取＋合併，push 的部分已經由 drainOutbox() 做掉——
+   * 不再需要指紋比對，「哪些欄位變了」在 enqueueSyncOps() 就已經決定，
+   * 也不需要拉取贏了之後再回頭更新指紋（tasks 已經沒有推送用的指紋了）。
+   * 合併同樣讀「現在」的 tasks.items，不是呼叫當下的舊快照，理由跟
+   * syncOneTable 一致。
+   */
+  async function pullTasks(cursor: number, token: string): Promise<void> {
+    const { live, deletedIds } = await pullTable(taskBinding, cursor, token)
+    const merge = mergeByUpdatedAt(tasks.items, live, deletedIds)
+    if (merge.remoteWon.length > 0 || merge.removedIds.length > 0) tasks.mergeRemote(merge.merged)
+  }
 
   /**
    * 一張表的推送＋拉取＋合併。合併故意讀 `readLocal()`（呼叫當下的最新值），
@@ -193,7 +232,6 @@ export const useSyncStore = defineStore('sync', () => {
   async function persist(): Promise<void> {
     await setMeta(META_SYNC_LAST_PULLED_AT, lastPulledAt.value)
     await Promise.all([
-      saveFingerprint(META_SYNC_FINGERPRINT_TASKS, fingerprints.tasks),
       saveFingerprint(META_SYNC_FINGERPRINT_PROJECTS, fingerprints.projects),
       saveFingerprint(META_SYNC_FINGERPRINT_TAGS, fingerprints.tags),
       saveFingerprint(META_SYNC_FINGERPRINT_FILTERS, fingerprints.filters),
@@ -217,7 +255,8 @@ export const useSyncStore = defineStore('sync', () => {
           const cursor = lastPulledAt.value ?? 0
           const startedAt = Date.now()
 
-          await syncOneTable(taskBinding, () => tasks.items, 'tasks', cursor, token, tasks.mergeRemote)
+          await drainOutbox(token)
+          await pullTasks(cursor, token)
           await syncOneTable(
             projectBinding,
             () => collections.projects,
@@ -325,7 +364,10 @@ export const useSyncStore = defineStore('sync', () => {
       tasks.mergeRemote([])
       collections.mergeRemote({ projects: [], tags: [], filters: [] })
       lastPulledAt.value = 0
-      fingerprints = { tasks: new Map(), projects: new Map(), tags: new Map(), filters: new Map() }
+      fingerprints = { projects: new Map(), tags: new Map(), filters: new Map() }
+      // 上一個帳號還沒送出的操作，不該用這次新登入的身分／token 送出去——
+      // 那些列（targetId 指向上一個帳號的任務）本來就不屬於新使用者。
+      await clearOutbox()
       await persist()
     }
 
@@ -349,7 +391,6 @@ export const useSyncStore = defineStore('sync', () => {
 
     lastPulledAt.value = (await getMeta<number>(META_SYNC_LAST_PULLED_AT)) ?? 0
     fingerprints = {
-      tasks: await loadFingerprint(META_SYNC_FINGERPRINT_TASKS),
       projects: await loadFingerprint(META_SYNC_FINGERPRINT_PROJECTS),
       tags: await loadFingerprint(META_SYNC_FINGERPRINT_TAGS),
       filters: await loadFingerprint(META_SYNC_FINGERPRINT_FILTERS),

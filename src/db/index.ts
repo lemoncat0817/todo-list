@@ -27,6 +27,7 @@ export {
   enqueueOp,
   removeOp,
   markOpAttempt,
+  clearOutbox,
 } from './repositories'
 
 export { migrateFromLocalStorage, type MigrationResult } from './migrate'

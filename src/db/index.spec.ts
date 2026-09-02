@@ -13,6 +13,7 @@ import {
   enqueueOp,
   removeOp,
   markOpAttempt,
+  clearOutbox,
 } from '@/db'
 import { nextOrder, orderBetween } from '@/domain/ordering'
 import { META_MIGRATED_FROM_LOCALSTORAGE, STORE_TASKS, type Op, type StoredTask } from '@/db/schema'
@@ -137,6 +138,14 @@ describe('IndexedDB 資料層', () => {
       await removeOp('a')
 
       expect((await loadOutbox()).map((o) => o.id)).toEqual(['b'])
+    })
+
+    it('clearOutbox 清空整個佇列——換帳號時用，上一個帳號還沒送出的操作不該用新身分送出', async () => {
+      await enqueueOp(op('a', 10))
+      await enqueueOp(op('b', 20))
+      await clearOutbox()
+
+      expect(await loadOutbox()).toEqual([])
     })
 
     it('markOpAttempt 只累加次數，不動其他欄位', async () => {
