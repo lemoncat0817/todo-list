@@ -13,6 +13,7 @@ export const DB_NAME = 'todolist'
  *     整個垮掉。
  * v6: 新增 comments（任務留言，M3）——又是真的新 store，不是補欄位。
  * v7: 新增 activity（活動記錄，M3）——同上，全新 store。
+ * v8: 新增 attachments（附件 metadata，M3）——同上，全新 store。
  *
  * projects／tags／filters 後來補上的 updatedAt（跨裝置同步要用它判斷哪一邊
  * 較新，見 sync/merge.ts）不需要新的版號：IndexedDB 的 object store 本來就
@@ -21,7 +22,7 @@ export const DB_NAME = 'todolist'
  * 視為現在）即可，跟其他任何邊界正規化走同一條路。只有新增／變動 store
  * 或 index 結構、或既有資料需要真的換算才需要動版號。
  */
-export const DB_VERSION = 7
+export const DB_VERSION = 8
 
 export const STORE_TASKS = 'tasks'
 export const STORE_META = 'meta'
@@ -31,6 +32,7 @@ export const STORE_FILTERS = 'filters'
 export const STORE_OUTBOX = 'outbox'
 export const STORE_COMMENTS = 'comments'
 export const STORE_ACTIVITY = 'activity'
+export const STORE_ATTACHMENTS = 'attachments'
 
 /** meta 用來記錄一次性遷移是否已完成，避免重複執行。 */
 export const META_MIGRATED_FROM_LOCALSTORAGE = 'migratedFromLocalStorage'
@@ -312,6 +314,27 @@ export interface StoredActivity {
   detail: Record<string, unknown>
   createdAt: number
   /** 恆等於 createdAt——活動記錄不可變，這個欄位只是為了跟其餘表共用同一套依 updatedAt 判斷新舊的拉取機制。 */
+  updatedAt: number
+}
+
+/**
+ * 附件（M3）。只存 metadata——檔案本體在 Supabase Storage，storagePath
+ * 是兩邊對起來的鑰匙（見 sync/storageClient.ts）。跟 comments 一樣走
+ * 拉取＋合併，但建立／刪除刻意不走 outbox：上傳需要真的把位元組送到
+ * Storage，離線時沒辦法「先排進佇列，之後再送」，跟其餘幾張表能延後
+ * 推送的補丁不是同一種東西——見 stores/attachments.ts 的說明。
+ */
+export interface StoredAttachment {
+  id: string
+  taskId: string
+  /** 上傳者的 user id——本地端唯讀，永遠由伺服器的 auth.uid() 決定。 */
+  uploaderId: string
+  fileName: string
+  fileSize: number
+  contentType: string
+  /** Supabase Storage 裡的路徑，見 sync/storageClient.ts 的 attachmentStoragePath()。 */
+  storagePath: string
+  createdAt: number
   updatedAt: number
 }
 

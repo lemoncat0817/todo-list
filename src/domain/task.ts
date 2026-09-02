@@ -5,6 +5,7 @@ import {
   type OpKind,
   type Priority,
   type StoredActivity,
+  type StoredAttachment,
   type StoredComment,
   type StoredFilter,
   type StoredProject,
@@ -207,6 +208,30 @@ export function normalizeActivity(raw: unknown): StoredActivity | null {
     actorId: nullableId(raw.actorId),
     kind,
     detail: isRecord(raw.detail) ? raw.detail : {},
+    createdAt: finiteNumber(raw.createdAt, now),
+    updatedAt: finiteNumber(raw.updatedAt, now),
+  }
+}
+
+export function normalizeAttachment(raw: unknown): StoredAttachment | null {
+  if (!isRecord(raw)) return null
+  const id = nullableId(raw.id)
+  const taskId = nullableId(raw.taskId)
+  const uploaderId = nullableId(raw.uploaderId)
+  const fileName = typeof raw.fileName === 'string' && raw.fileName.length > 0 ? raw.fileName : null
+  const storagePath = typeof raw.storagePath === 'string' && raw.storagePath.length > 0 ? raw.storagePath : null
+  if (id === null || taskId === null || uploaderId === null || fileName === null || storagePath === null) {
+    return null
+  }
+  const now = Date.now()
+  return {
+    id,
+    taskId,
+    uploaderId,
+    fileName,
+    fileSize: finiteNumber(raw.fileSize, 0),
+    contentType: str(raw.contentType, 'application/octet-stream'),
+    storagePath,
     createdAt: finiteNumber(raw.createdAt, now),
     updatedAt: finiteNumber(raw.updatedAt, now),
   }

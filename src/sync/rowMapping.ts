@@ -1,4 +1,4 @@
-import type { StoredComment, StoredFilter, StoredProject, StoredTag, StoredTask } from '@/db/schema'
+import type { StoredAttachment, StoredComment, StoredFilter, StoredProject, StoredTag, StoredTask } from '@/db/schema'
 
 /**
  * 本地形狀（camelCase）與遠端資料表（snake_case）之間的轉換。
@@ -18,6 +18,7 @@ export const TABLE_TAGS = 'tags'
 export const TABLE_FILTERS = 'filters'
 export const TABLE_COMMENTS = 'comments'
 export const TABLE_ACTIVITY = 'activity_log'
+export const TABLE_ATTACHMENTS = 'attachments'
 
 /** 墓碑：REST 輪詢沒有天生的刪除事件，用這個欄位標記「這筆已經不存在了」。 */
 export interface Tombstone {
@@ -217,6 +218,44 @@ export function fromRemoteActivity(row: Record<string, unknown>): unknown {
     actorId: row.actor_id,
     kind: row.kind,
     detail: row.detail,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+// -------------------------------------------------------------- attachments
+
+/**
+ * 跟其餘表不同：這裡的 toRemoteAttachment 不是給 outbox 用的（附件
+ * 完全不走 outbox，見 stores/attachments.ts 開頭的說明），而是給
+ * upload() 直接組 POST body 用——留在這裡是為了跟其他表的欄位對應
+ * 邏輯放在同一個地方，不是因為它會被同一套 enqueueCollectionOps 呼叫。
+ */
+export function toRemoteAttachment(attachment: StoredAttachment): Record<string, unknown> {
+  return {
+    id: attachment.id,
+    task_id: attachment.taskId,
+    file_name: attachment.fileName,
+    file_size: attachment.fileSize,
+    content_type: attachment.contentType,
+    storage_path: attachment.storagePath,
+    created_at: attachment.createdAt,
+    updated_at: attachment.updatedAt,
+    deleted_at: null,
+    // uploader_id 刻意不送：跟 comments 的 author_id 同一個理由——
+    // 資料庫的 default auth.uid() 決定上傳者是誰。
+  }
+}
+
+export function fromRemoteAttachment(row: Record<string, unknown>): unknown {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    uploaderId: row.uploader_id,
+    fileName: row.file_name,
+    fileSize: row.file_size,
+    contentType: row.content_type,
+    storagePath: row.storage_path,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

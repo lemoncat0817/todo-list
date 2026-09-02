@@ -5,6 +5,7 @@ import {
   META_SYNC_ACCOUNT_ID,
   META_SYNC_LAST_PULLED_AT,
   type StoredActivity,
+  type StoredAttachment,
   type StoredComment,
   type StoredFilter,
   type StoredProject,
@@ -13,6 +14,7 @@ import {
 } from '@/db/schema'
 import {
   normalizeActivity,
+  normalizeAttachment,
   normalizeComment,
   normalizeFilter,
   normalizeProject,
@@ -26,12 +28,14 @@ import { pullTable, type TableBinding } from '@/sync/tableSync'
 import type { WorkspaceSubscription } from '@/sync/realtime'
 import {
   TABLE_ACTIVITY,
+  TABLE_ATTACHMENTS,
   TABLE_COMMENTS,
   TABLE_FILTERS,
   TABLE_PROJECTS,
   TABLE_TAGS,
   TABLE_TASKS,
   fromRemoteActivity,
+  fromRemoteAttachment,
   fromRemoteComment,
   fromRemoteFilter,
   fromRemoteProject,
@@ -41,6 +45,7 @@ import {
 import { useAuthStore } from './auth'
 import { useTasksStore } from './tasks'
 import { useActivityStore } from './activity'
+import { useAttachmentsStore } from './attachments'
 import { useCollectionsStore } from './collections'
 import { useCommentsStore } from './comments'
 import { useWorkspaceStore } from './workspace'
@@ -82,6 +87,11 @@ const activityBinding: TableBinding<StoredActivity> = {
   table: TABLE_ACTIVITY,
   fromRemote: fromRemoteActivity,
   normalize: (raw) => normalizeActivity(raw),
+}
+const attachmentBinding: TableBinding<StoredAttachment> = {
+  table: TABLE_ATTACHMENTS,
+  fromRemote: fromRemoteAttachment,
+  normalize: (raw) => normalizeAttachment(raw),
 }
 
 /**
@@ -137,6 +147,7 @@ export const useSyncStore = defineStore('sync', () => {
   const collections = useCollectionsStore()
   const comments = useCommentsStore()
   const activity = useActivityStore()
+  const attachments = useAttachmentsStore()
   const workspace = useWorkspaceStore()
 
   let inFlight: Promise<void> | null = null
@@ -318,6 +329,12 @@ export const useSyncStore = defineStore('sync', () => {
             activity.mergeRemote(rows)
             void activity.persist()
           })
+          // attachments 同理：upload()／remove() 已經直接打過網路了，
+          // 這裡的拉取是為了看到「別人」上傳／刪除的附件。
+          await pullAndMerge(attachmentBinding, () => attachments.items, cursor, token, (rows) => {
+            attachments.mergeRemote(rows)
+            void attachments.persist()
+          })
 
           lastPulledAt.value = startedAt
           await persist()
@@ -403,10 +420,12 @@ export const useSyncStore = defineStore('sync', () => {
       collections.mergeRemote({ projects: [], tags: [], filters: [] })
       comments.mergeRemote([])
       activity.mergeRemote([])
-      // activity 不掛在 tasks.ts 的持久化 watcher 上（見上面 syncOnce()
-      // 的註解），這裡清空後要自己補一次本地寫入，不然清完的只是記憶體
-      // 裡的狀態，IndexedDB 裡上一個帳號的活動記錄還留著。
+      attachments.mergeRemote([])
+      // activity／attachments 都不掛在 tasks.ts 的持久化 watcher 上（見
+      // 上面 syncOnce() 的註解），這裡清空後要自己補一次本地寫入，不然
+      // 清完的只是記憶體裡的狀態，IndexedDB 裡上一個帳號的資料還留著。
       await activity.persist()
+      await attachments.persist()
       lastPulledAt.value = 0
       await clearOutbox()
       await persist()

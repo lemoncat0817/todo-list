@@ -5,6 +5,7 @@ import {
   isEffectivelyComplete,
   monotonicNow,
   normalizeActivity,
+  normalizeAttachment,
   normalizeComment,
   normalizeOp,
   normalizeProject,
@@ -282,5 +283,33 @@ describe('normalizeActivity', () => {
     { id: 'a1', taskId: 't1', kind: 'not-a-real-kind' },
   ])('無效輸入回傳 null：%s', (bad) => {
     expect(normalizeActivity(bad)).toBeNull()
+  })
+})
+
+describe('normalizeAttachment', () => {
+  it('合法輸入通過', () => {
+    expect(
+      normalizeAttachment({
+        id: 'a1', taskId: 't1', uploaderId: 'u1', fileName: 'x.pdf',
+        fileSize: 100, contentType: 'application/pdf', storagePath: 't1/a1-x.pdf',
+      }),
+    ).toMatchObject({ id: 'a1', taskId: 't1', uploaderId: 'u1', fileName: 'x.pdf', storagePath: 't1/a1-x.pdf' })
+  })
+
+  it('缺 contentType／fileSize 時補上安全預設值', () => {
+    const attachment = normalizeAttachment({ id: 'a1', taskId: 't1', uploaderId: 'u1', fileName: 'x', storagePath: 't1/a1-x' })
+    expect(attachment?.contentType).toBe('application/octet-stream')
+    expect(attachment?.fileSize).toBe(0)
+  })
+
+  it.each([
+    null,
+    {},
+    { id: 'a1' },
+    { id: 'a1', taskId: 't1' },
+    { id: 'a1', taskId: 't1', uploaderId: 'u1' },
+    { id: 'a1', taskId: 't1', uploaderId: 'u1', fileName: 'x' },
+  ])('無效輸入回傳 null：%s', (bad) => {
+    expect(normalizeAttachment(bad)).toBeNull()
   })
 })

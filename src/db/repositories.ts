@@ -4,6 +4,7 @@ import {
   DB_VERSION,
   DEFAULT_TASK_FIELDS,
   STORE_ACTIVITY,
+  STORE_ATTACHMENTS,
   STORE_COMMENTS,
   STORE_FILTERS,
   STORE_META,
@@ -13,6 +14,7 @@ import {
   STORE_TASKS,
   type Op,
   type StoredActivity,
+  type StoredAttachment,
   type StoredComment,
   type StoredFilter,
   type StoredProject,
@@ -21,6 +23,7 @@ import {
 } from './schema'
 import {
   normalizeActivity,
+  normalizeAttachment,
   normalizeComment,
   normalizeFilter,
   normalizeOp,
@@ -131,6 +134,15 @@ export function getDB(): Promise<IDBPDatabase> {
           if (!db.objectStoreNames.contains(STORE_ACTIVITY)) {
             const activity = db.createObjectStore(STORE_ACTIVITY, { keyPath: 'id' })
             activity.createIndex('by-taskId', 'taskId')
+          }
+        }
+
+        if (oldVersion < 8) {
+          // 同上，全新的 store，沒有既有資料要搬——這裡存的只是附件的
+          // metadata，不是檔案本體，本來就不會有升級要搬的舊資料。
+          if (!db.objectStoreNames.contains(STORE_ATTACHMENTS)) {
+            const attachments = db.createObjectStore(STORE_ATTACHMENTS, { keyPath: 'id' })
+            attachments.createIndex('by-taskId', 'taskId')
           }
         }
       },
@@ -285,6 +297,22 @@ export async function loadActivity(): Promise<StoredActivity[]> {
 
 export function saveActivity(activity: readonly StoredActivity[]): Promise<void> {
   return replaceAll(STORE_ACTIVITY, activity)
+}
+
+// ------------------------------------------------------------- attachments
+
+/** 只是 metadata 快取，檔案本體在 Supabase Storage——見 db/schema.ts 的 StoredAttachment 說明。 */
+export async function loadAttachments(): Promise<StoredAttachment[]> {
+  const db = await getDB()
+  const rows = await db.getAll(STORE_ATTACHMENTS)
+  return rows
+    .map((row) => normalizeAttachment(row))
+    .filter((a): a is StoredAttachment => a !== null)
+    .sort((a, b) => a.createdAt - b.createdAt)
+}
+
+export function saveAttachments(attachments: readonly StoredAttachment[]): Promise<void> {
+  return replaceAll(STORE_ATTACHMENTS, attachments)
 }
 
 // ----------------------------------------------------------------- meta

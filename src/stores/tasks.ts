@@ -33,6 +33,7 @@ import { useHistoryStore } from './history'
 import { useCollectionsStore } from './collections'
 import { useCommentsStore } from './comments'
 import { useActivityStore } from './activity'
+import { useAttachmentsStore } from './attachments'
 import { useWorkspaceStore } from './workspace'
 import { useUiStore } from './ui'
 
@@ -128,6 +129,7 @@ export const useTasksStore = defineStore('tasks', () => {
   const collections = useCollectionsStore()
   const comments = useCommentsStore()
   const activity = useActivityStore()
+  const attachments = useAttachmentsStore()
   const workspace = useWorkspaceStore()
   const ui = useUiStore()
   const prefs = usePrefsStore()
@@ -320,6 +322,9 @@ export const useTasksStore = defineStore('tasks', () => {
       // activity 不需要跟 flush() 的 watcher 掛勾——它完全唯讀，唯一的
       // 寫入路徑是 stores/sync.ts 拉到新資料後直接呼叫 activity.persist()。
       await activity.load()
+      // attachments 同理：upload()／remove() 直接打網路、自己呼叫
+      // persist()，不需要掛在 flush() 的 watcher 上。
+      await attachments.load()
     } catch (error) {
       loadError.value = error
     } finally {

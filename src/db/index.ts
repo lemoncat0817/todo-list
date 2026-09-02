@@ -25,6 +25,8 @@ export {
   saveComments,
   loadActivity,
   saveActivity,
+  loadAttachments,
+  saveAttachments,
   getMeta,
   setMeta,
   loadOutbox,
