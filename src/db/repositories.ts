@@ -216,3 +216,13 @@ export async function markOpAttempt(id: string): Promise<void> {
   if (row) await tx.store.put({ ...row, attempts: (row as Op).attempts + 1 })
   await tx.done
 }
+
+/**
+ * 清空整個佇列。換帳號登入時用（見 stores/sync.ts 的
+ * reconcileAccountIdentity）——上一個帳號還沒送出的操作，不該用
+ * 這次新登入的身分／token 送出去，那些列本來就不屬於新帳號。
+ */
+export async function clearOutbox(): Promise<void> {
+  const db = await getDB()
+  await db.clear(STORE_OUTBOX)
+}

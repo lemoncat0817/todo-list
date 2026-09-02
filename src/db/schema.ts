@@ -37,7 +37,9 @@ export const META_MIGRATED_FROM_LOCALSTORAGE = 'migratedFromLocalStorage'
  * 「伺服器上有什麼」。
  */
 export const META_SYNC_LAST_PULLED_AT = 'syncLastPulledAt'
-export const META_SYNC_FINGERPRINT_TASKS = 'syncFingerprintTasks'
+// tasks 不在這裡：outbox 取代了它的指紋比對推送，見 stores/sync.ts
+// 的 drainOutbox()／pullTasks()。'syncFingerprintTasks' 這個 key 可能還
+// 留在既有使用者的 IndexedDB 裡，不影響——沒有程式碼再讀它。
 export const META_SYNC_FINGERPRINT_PROJECTS = 'syncFingerprintProjects'
 export const META_SYNC_FINGERPRINT_TAGS = 'syncFingerprintTags'
 export const META_SYNC_FINGERPRINT_FILTERS = 'syncFingerprintFilters'
