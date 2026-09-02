@@ -4,22 +4,25 @@ import { clearOutbox, getMeta, loadOutbox, markOpAttempt, removeOp, setMeta } fr
 import {
   META_SYNC_ACCOUNT_ID,
   META_SYNC_LAST_PULLED_AT,
+  type StoredComment,
   type StoredFilter,
   type StoredProject,
   type StoredTag,
   type StoredTask,
 } from '@/db/schema'
-import { normalizeFilter, normalizeProject, normalizeTag, normalizeTask } from '@/domain/task'
+import { normalizeComment, normalizeFilter, normalizeProject, normalizeTag, normalizeTask } from '@/domain/task'
 import { mergeByUpdatedAt } from '@/sync/merge'
 import { sendOp } from '@/sync/rpc'
 import { SyncHttpError } from '@/sync/restClient'
 import { pullTable, type TableBinding } from '@/sync/tableSync'
 import type { WorkspaceSubscription } from '@/sync/realtime'
 import {
+  TABLE_COMMENTS,
   TABLE_FILTERS,
   TABLE_PROJECTS,
   TABLE_TAGS,
   TABLE_TASKS,
+  fromRemoteComment,
   fromRemoteFilter,
   fromRemoteProject,
   fromRemoteTag,
@@ -28,6 +31,7 @@ import {
 import { useAuthStore } from './auth'
 import { useTasksStore } from './tasks'
 import { useCollectionsStore } from './collections'
+import { useCommentsStore } from './comments'
 import { useWorkspaceStore } from './workspace'
 
 /**
@@ -57,6 +61,11 @@ const filterBinding: TableBinding<StoredFilter> = {
   table: TABLE_FILTERS,
   fromRemote: fromRemoteFilter,
   normalize: (raw) => normalizeFilter(raw),
+}
+const commentBinding: TableBinding<StoredComment> = {
+  table: TABLE_COMMENTS,
+  fromRemote: fromRemoteComment,
+  normalize: (raw) => normalizeComment(raw),
 }
 
 /**
@@ -110,6 +119,7 @@ export const useSyncStore = defineStore('sync', () => {
   const auth = useAuthStore()
   const tasks = useTasksStore()
   const collections = useCollectionsStore()
+  const comments = useCommentsStore()
   const workspace = useWorkspaceStore()
 
   let inFlight: Promise<void> | null = null
@@ -283,6 +293,7 @@ export const useSyncStore = defineStore('sync', () => {
             token,
             (rows) => collections.mergeRemote({ projects: collections.projects, tags: collections.tags, filters: rows }),
           )
+          await pullAndMerge(commentBinding, () => comments.items, cursor, token, comments.mergeRemote)
 
           lastPulledAt.value = startedAt
           await persist()
@@ -366,6 +377,7 @@ export const useSyncStore = defineStore('sync', () => {
     if (lastOwnerId && lastOwnerId !== currentUserId) {
       tasks.mergeRemote([])
       collections.mergeRemote({ projects: [], tags: [], filters: [] })
+      comments.mergeRemote([])
       lastPulledAt.value = 0
       await clearOutbox()
       await persist()
@@ -400,7 +412,13 @@ export const useSyncStore = defineStore('sync', () => {
     document.addEventListener('visibilitychange', onReconnectOrFocus)
 
     stopWatching = watch(
-      [() => tasks.items, () => collections.projects, () => collections.tags, () => collections.filters],
+      [
+        () => tasks.items,
+        () => collections.projects,
+        () => collections.tags,
+        () => collections.filters,
+        () => comments.items,
+      ],
       () => {
         if (pushTimer) clearTimeout(pushTimer)
         pushTimer = setTimeout(() => void syncOnce(), PUSH_DEBOUNCE_MS)

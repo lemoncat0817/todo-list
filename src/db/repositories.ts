@@ -3,6 +3,7 @@ import {
   DB_NAME,
   DB_VERSION,
   DEFAULT_TASK_FIELDS,
+  STORE_COMMENTS,
   STORE_FILTERS,
   STORE_META,
   STORE_OUTBOX,
@@ -10,12 +11,20 @@ import {
   STORE_TAGS,
   STORE_TASKS,
   type Op,
+  type StoredComment,
   type StoredFilter,
   type StoredProject,
   type StoredTag,
   type StoredTask,
 } from './schema'
-import { normalizeFilter, normalizeOp, normalizeProject, normalizeTag, normalizeTask } from '@/domain/task'
+import {
+  normalizeComment,
+  normalizeFilter,
+  normalizeOp,
+  normalizeProject,
+  normalizeTag,
+  normalizeTask,
+} from '@/domain/task'
 import { nextRank } from '@/domain/rank'
 
 /**
@@ -102,6 +111,15 @@ export function getDB(): Promise<IDBPDatabase> {
             }
             store.deleteIndex('by-order')
             store.createIndex('by-rank', 'rank')
+          }
+        }
+
+        if (oldVersion < 6) {
+          // 全新的 store，沒有既有資料要搬。索引依 taskId：畫面只會
+          // 一次讀「這筆任務的留言」，不會整表掃描。
+          if (!db.objectStoreNames.contains(STORE_COMMENTS)) {
+            const comments = db.createObjectStore(STORE_COMMENTS, { keyPath: 'id' })
+            comments.createIndex('by-taskId', 'taskId')
           }
         }
       },
@@ -198,6 +216,27 @@ export async function loadFilters(): Promise<StoredFilter[]> {
 
 export function saveFilters(filters: readonly StoredFilter[]): Promise<void> {
   return replaceAll(STORE_FILTERS, filters)
+}
+
+// ---------------------------------------------------------------- comments
+
+/**
+ * 整份載入，跟 loadTasks 同一個模式——留言的量級（個人／小團隊的待辦
+ * 協作）不值得為了「只讀目前這筆任務的留言」另外做分頁查詢，store
+ * 端用 taskId 在記憶體裡篩就好。依 createdAt 排序：留言天生是時間序，
+ * 不像 tasks/projects/filters 需要使用者自訂的 rank。
+ */
+export async function loadComments(): Promise<StoredComment[]> {
+  const db = await getDB()
+  const rows = await db.getAll(STORE_COMMENTS)
+  return rows
+    .map((row) => normalizeComment(row))
+    .filter((c): c is StoredComment => c !== null)
+    .sort((a, b) => a.createdAt - b.createdAt)
+}
+
+export function saveComments(comments: readonly StoredComment[]): Promise<void> {
+  return replaceAll(STORE_COMMENTS, comments)
 }
 
 // ----------------------------------------------------------------- meta

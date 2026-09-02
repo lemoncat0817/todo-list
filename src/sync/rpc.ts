@@ -29,6 +29,10 @@ const RPC_BY_KIND: Record<OpKind, { fn: string; params: (op: Op) => Record<strin
   'filter.create': { fn: 'create_filter', params: (op) => ({ p_op_id: op.id, p_row: op.payload }) },
   'filter.patch': { fn: 'apply_filter_patch', params: (op) => ({ p_op_id: op.id, p_filter_id: op.targetId, p_patch: op.payload }) },
   'filter.delete': { fn: 'apply_filter_patch', params: (op) => ({ p_op_id: op.id, p_filter_id: op.targetId, p_patch: op.payload }) },
+
+  'comment.create': { fn: 'create_comment', params: (op) => ({ p_op_id: op.id, p_row: op.payload }) },
+  'comment.patch': { fn: 'apply_comment_patch', params: (op) => ({ p_op_id: op.id, p_comment_id: op.targetId, p_patch: op.payload }) },
+  'comment.delete': { fn: 'apply_comment_patch', params: (op) => ({ p_op_id: op.id, p_comment_id: op.targetId, p_patch: op.payload }) },
 }
 
 /** 把一個 op 送到它對應的 RPC。失敗時丟出 SyncHttpError，呼叫端（drain 迴圈）負責重試。 */

@@ -8,7 +8,9 @@ import {
   loadTasks,
   loadProjects,
   loadFilters,
+  loadComments,
   saveTasks,
+  saveComments,
   getMeta,
   setMeta,
   migrateFromLocalStorage,
@@ -45,9 +47,10 @@ const task = (id: string, name: string, done = false, order = 0): StoredTask =>
   makeTask(name, done, { id, order })
 
 describe('IndexedDB 資料層', () => {
-  it('建立時就備妥六個 object store 與排序索引', async () => {
+  it('建立時就備妥七個 object store 與排序索引', async () => {
     const db = await getDB()
     expect([...db.objectStoreNames].sort()).toEqual([
+      'comments',
       'filters',
       'meta',
       'outbox',
@@ -64,6 +67,15 @@ describe('IndexedDB 資料層', () => {
     const rows = [task('a', '買牛奶', false, 0), task('b', '寫測試', true, 1)]
     await saveTasks(rows)
     expect(await loadTasks()).toEqual(rows)
+  })
+
+  it('留言存進去再讀出來，依 createdAt 排序', async () => {
+    const rows = [
+      { id: 'c2', taskId: 't1', authorId: 'u1', body: '第二則', createdAt: 200, updatedAt: 200 },
+      { id: 'c1', taskId: 't1', authorId: 'u1', body: '第一則', createdAt: 100, updatedAt: 100 },
+    ]
+    await saveComments(rows)
+    expect((await loadComments()).map((c) => c.id)).toEqual(['c1', 'c2'])
   })
 
   it('讀出時依 order 排序，而非插入順序', async () => {

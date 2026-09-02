@@ -4,6 +4,7 @@ import {
   groupByParent,
   isEffectivelyComplete,
   monotonicNow,
+  normalizeComment,
   normalizeOp,
   normalizeProject,
   normalizeTag,
@@ -221,5 +222,34 @@ describe('normalizeOp', () => {
     expect(result?.payload).toEqual({})
     expect(result?.attempts).toBe(0)
     expect(typeof result?.createdAt).toBe('number')
+  })
+})
+
+describe('normalizeComment', () => {
+  it('合法輸入通過', () => {
+    expect(normalizeComment({ id: 'c1', taskId: 't1', authorId: 'u1', body: '討論一下' })).toMatchObject({
+      id: 'c1',
+      taskId: 't1',
+      authorId: 'u1',
+      body: '討論一下',
+    })
+  })
+
+  it.each([
+    null,
+    {},
+    { id: 'c1' },
+    { id: 'c1', taskId: 't1', authorId: 'u1' },
+    { id: 'c1', taskId: 't1', authorId: 'u1', body: '' },
+    { id: 'c1', taskId: 't1', authorId: 'u1', body: '   ' },
+  ])('無效輸入回傳 null：%s', (bad) => {
+    expect(normalizeComment(bad)).toBeNull()
+  })
+
+  it('缺 createdAt／updatedAt 時補上現在的時間', () => {
+    const before = Date.now()
+    const comment = normalizeComment({ id: 'c1', taskId: 't1', authorId: 'u1', body: 'x' })
+    expect(comment?.createdAt).toBeGreaterThanOrEqual(before)
+    expect(comment?.updatedAt).toBeGreaterThanOrEqual(before)
   })
 })

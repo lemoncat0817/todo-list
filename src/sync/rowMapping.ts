@@ -1,4 +1,4 @@
-import type { StoredFilter, StoredProject, StoredTag, StoredTask } from '@/db/schema'
+import type { StoredComment, StoredFilter, StoredProject, StoredTag, StoredTask } from '@/db/schema'
 
 /**
  * 本地形狀（camelCase）與遠端資料表（snake_case）之間的轉換。
@@ -16,6 +16,7 @@ export const TABLE_TASKS = 'tasks'
 export const TABLE_PROJECTS = 'projects'
 export const TABLE_TAGS = 'tags'
 export const TABLE_FILTERS = 'filters'
+export const TABLE_COMMENTS = 'comments'
 
 /** 墓碑：REST 輪詢沒有天生的刪除事件，用這個欄位標記「這筆已經不存在了」。 */
 export interface Tombstone {
@@ -172,5 +173,31 @@ export function fromRemoteFilter(row: Record<string, unknown>): unknown {
     rank: row.rank,
     updatedAt: row.updated_at,
     workspaceId: row.workspace_id,
+  }
+}
+
+// ---------------------------------------------------------------- comments
+
+export function toRemoteComment(comment: StoredComment): Record<string, unknown> {
+  return {
+    id: comment.id,
+    task_id: comment.taskId,
+    body: comment.body,
+    created_at: comment.createdAt,
+    updated_at: comment.updatedAt,
+    deleted_at: null,
+    // author_id 刻意不送：跟 tasks 表的 user_id 同一個理由——資料庫的
+    // default auth.uid() 決定作者是誰，client 端沒有欄位可以造假。
+  }
+}
+
+export function fromRemoteComment(row: Record<string, unknown>): unknown {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    authorId: row.author_id,
+    body: row.body,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }
 }

@@ -31,6 +31,7 @@ import { toRemoteTask } from '@/sync/rowMapping'
 import { usePrefsStore } from './prefs'
 import { useHistoryStore } from './history'
 import { useCollectionsStore } from './collections'
+import { useCommentsStore } from './comments'
 import { useWorkspaceStore } from './workspace'
 import { useUiStore } from './ui'
 
@@ -124,6 +125,7 @@ export const useTasksStore = defineStore('tasks', () => {
 
   const history = useHistoryStore()
   const collections = useCollectionsStore()
+  const comments = useCommentsStore()
   const workspace = useWorkspaceStore()
   const ui = useUiStore()
   const prefs = usePrefsStore()
@@ -282,6 +284,7 @@ export const useTasksStore = defineStore('tasks', () => {
           if (isSyncConfigured) await enqueueSyncOps(upserts, deletes, persistedIndex, remoteMergedIds)
           remoteMergedIds = new Set()
           await collections.flush()
+          await comments.flush()
           // 寫成功之後才更新指紋：失敗時保持原狀，下一次會重試同一批
           persistedIndex = nextFingerprint
         } while (dirty)
@@ -311,6 +314,7 @@ export const useTasksStore = defineStore('tasks', () => {
       // 否則第一次 flush 會把每一列都當成新的而重寫一遍
       persistedIndex = new Map(snapshot().map((t) => [t.id, JSON.stringify(t)]))
       await collections.load()
+      await comments.load()
     } catch (error) {
       loadError.value = error
     } finally {
@@ -324,8 +328,15 @@ export const useTasksStore = defineStore('tasks', () => {
 
   watch(
     // filters 曾經漏在這份清單外——單獨新增／改名／刪除一個篩選器不會觸發
-    // flush()，要等任務或專案／標籤也剛好變動才會連帶存進去。
-    [items, () => collections.projects, () => collections.tags, () => collections.filters],
+    // flush()，要等任務或專案／標籤也剛好變動才會連帶存進去。comments
+    // 加入時直接記取教訓，一起放進來。
+    [
+      items,
+      () => collections.projects,
+      () => collections.tags,
+      () => collections.filters,
+      () => comments.items,
+    ],
     () => {
       if (hydrating) return
       void flush()
