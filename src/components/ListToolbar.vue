@@ -11,7 +11,7 @@
       <label class="sr-only" for="group-by">分組方式</label>
       <select id="group-by" :value="prefs.groupBy" :class="selectClass"
         @change="prefs.setGroupBy(($event.target as HTMLSelectElement).value as GroupKey)">
-        <option v-for="(label, key) in GROUP_LABELS" :key="key" :value="key">分組：{{ label }}</option>
+        <option v-for="(label, key) in groupOptions" :key="key" :value="key">分組：{{ label }}</option>
       </select>
     </template>
 
@@ -35,6 +35,7 @@ import {
 } from '@/domain/views'
 import { usePrefsStore } from '@/stores/prefs'
 import { useCollectionsStore } from '@/stores/collections'
+import { isSyncConfigured } from '@/sync/config'
 
 /**
  * 排序與分組的控制列。
@@ -54,6 +55,16 @@ const selectClass =
 
 const isDateView = computed(
   () => props.viewKind === 'today' || props.viewKind === 'upcoming',
+)
+
+/**
+ * 「依負責人」只在接了同步時才有意義——純本機模式下沒有「別人」可以
+ * 指派，選單裡出現一個永遠只會分到「未指派」一組的選項只會讓人困惑。
+ */
+const groupOptions = computed(() =>
+  isSyncConfigured
+    ? GROUP_LABELS
+    : (Object.fromEntries(Object.entries(GROUP_LABELS).filter(([key]) => key !== 'assignee')) as typeof GROUP_LABELS),
 )
 
 /** 用查詢字串本身當預設名稱：多數人存下來之後才會想到要改名。 */

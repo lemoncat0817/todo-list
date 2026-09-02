@@ -191,6 +191,7 @@ export const useTasksStore = defineStore('tasks', () => {
             sort: prefs.sortBy,
             groupBy: prefs.groupBy,
             projects: collections.visibleProjects,
+            assignees: workspace.members.map((m) => ({ id: m.user_id, name: m.profiles?.display_name || '（未命名）' })),
           }),
         ),
   )

@@ -45,13 +45,19 @@ export const SORT_LABELS: Record<SortKey, string> = {
   created: '建立時間',
 }
 
-/** 分組方式。日期軸的檢視（今天／即將到來）自帶分組，不受這個設定影響。 */
-export type GroupKey = 'none' | 'project' | 'priority'
+/**
+ * 分組方式。日期軸的檢視（今天／即將到來）自帶分組，不受這個設定影響。
+ * assignee（M5）只在 isSyncConfigured 時才有意義——純本機模式下沒有
+ * 「別人」可以指派，這個選項該由呼叫端（ListToolbar.vue）決定要不要
+ * 出現在下拉選單裡，這一層仍然對「有沒有接同步」零感知。
+ */
+export type GroupKey = 'none' | 'project' | 'priority' | 'assignee'
 
 export const GROUP_LABELS: Record<GroupKey, string> = {
   none: '不分組',
   project: '專案',
   priority: '優先度',
+  assignee: '負責人',
 }
 
 export interface ViewOptions {
@@ -61,6 +67,8 @@ export interface ViewOptions {
   groupBy?: GroupKey
   /** 分組標題需要專案名稱；沒有傳就退回「未分類」之類的通用標題。 */
   projects?: readonly NamedCollection[]
+  /** groupBy 為 assignee 時，分組標題需要成員顯示名稱；沒有傳就退回「未指派」。 */
+  assignees?: readonly NamedCollection[]
   /**
    * 這個工作區的收件匣專案 id 集合（見 db/schema.ts 的 StoredProject.isInbox
    * 說明）。task.projectId 落在這個集合裡時，跟 projectId 是 null 視為
@@ -289,6 +297,27 @@ function buildGroups(
         matched.filter((t) => t.priority === priority),
         sort,
       ),
+    }))
+  }
+
+  if (groupBy === 'assignee') {
+    const byAssignee = new Map<string, StoredTask[]>()
+    for (const task of matched) {
+      const key = task.assigneeId ?? ''
+      const bucket = byAssignee.get(key)
+      if (bucket) bucket.push(task)
+      else byAssignee.set(key, [task])
+    }
+    // 未指派固定排最後，跟未分類專案同一個理由：它是「還沒決定」，
+    // 不是一個跟其他負責人並列的負責人。
+    const keys = [...byAssignee.keys()].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : 0))
+    return keys.map((key) => ({
+      key: key === '' ? 'unassigned' : key,
+      // 找不到對應成員（已離開工作區）跟「本來就沒指派」是兩種不同的
+      // 狀態，不能都顯示成「未指派」——那會讓人以為指派憑空消失了，
+      // 跟 useMemberName() 對留言/活動記錄作者的處理保持一致。
+      label: key === '' ? '未指派' : (options.assignees?.find((a) => a.id === key)?.name ?? '已離開的成員'),
+      tasks: sortTasks(byAssignee.get(key) ?? [], sort),
     }))
   }
 
