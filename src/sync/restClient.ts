@@ -18,7 +18,7 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from './config'
 export class SyncHttpError extends Error {
   constructor(
     readonly table: string,
-    readonly operation: 'fetch' | 'upsert' | 'delete',
+    readonly operation: 'fetch' | 'upsert' | 'delete' | 'rpc',
     readonly status: number,
     detail: string,
   ) {
@@ -27,7 +27,8 @@ export class SyncHttpError extends Error {
   }
 }
 
-async function safeText(res: Response): Promise<string> {
+/** sync/rpc.ts 也要組一樣的 header／錯誤內文擷取，這裡匯出而不是重複一份。 */
+export async function safeText(res: Response): Promise<string> {
   try {
     return (await res.text()).slice(0, 300)
   } catch {
@@ -35,7 +36,7 @@ async function safeText(res: Response): Promise<string> {
   }
 }
 
-function headers(accessToken: string, extra: Record<string, string> = {}): Record<string, string> {
+export function headers(accessToken: string, extra: Record<string, string> = {}): Record<string, string> {
   return {
     apikey: SUPABASE_ANON_KEY,
     Authorization: `Bearer ${accessToken}`,
