@@ -1,17 +1,76 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { loadFilters, loadProjects, loadTags, saveFilters, saveProjects, saveTags } from '@/db'
+import { enqueueOp, loadFilters, loadProjects, loadTags, saveFilters, saveProjects, saveTags } from '@/db'
 import {
   DEFAULT_FILTER_COLOR,
   DEFAULT_PROJECT_COLOR,
   DEFAULT_TAG_COLOR,
+  type Op,
+  type OpKind,
   type StoredFilter,
   type StoredProject,
   type StoredTag,
 } from '@/db/schema'
+import { diffAgainstFingerprint, diffFields } from '@/domain/diff'
 import { findByNormalizedName } from '@/domain/filtering'
 import { nextOrder } from '@/domain/ordering'
+import { isSyncConfigured } from '@/sync/config'
+import { toRemoteFilter, toRemoteProject, toRemoteTag } from '@/sync/rowMapping'
 import { useHistoryStore } from './history'
+
+/**
+ * 跟 stores/tasks.ts 的 enqueueSyncOps 同一套邏輯，套用在
+ * projects/tags/filters 上——三者形狀不同但規則相同，寫一支泛型函式
+ * 而不是各寫一份。`kind` 決定 op 的種類前綴（project／tag／filter），
+ * `toRemote` 是各自的欄位對應（sync/rowMapping.ts）。
+ *
+ * 這裡只算「要排哪些 op」，不動本地寫入——collections.ts 的本地寫入
+ * （saveProjects 等）維持整份覆寫，量小到不值得為此另外做逐列指紋；
+ * `previousIndex` 純粹是為了推導遠端補丁而存在的另一份帳，跟本地
+ * IndexedDB 寫不寫得有效率無關。
+ */
+async function enqueueCollectionOps<T extends { id: string; updatedAt: number }>(
+  kind: 'project' | 'tag' | 'filter',
+  current: readonly T[],
+  previousIndex: ReadonlyMap<string, string>,
+  toRemote: (row: T) => Record<string, unknown>,
+  excludeIds: ReadonlySet<string>,
+): Promise<Map<string, string>> {
+  const { upserts, deletes, nextFingerprint } = diffAgainstFingerprint(current, previousIndex)
+  const now = Date.now()
+  const ops: Op[] = []
+
+  for (const row of upserts) {
+    if (excludeIds.has(row.id)) continue
+    const previousJson = previousIndex.get(row.id)
+    const before = previousJson ? toRemote(JSON.parse(previousJson) as T) : null
+    const patch = diffFields(before, toRemote(row))
+    if (Object.keys(patch).length === 0) continue
+    ops.push({
+      id: crypto.randomUUID(),
+      kind: `${kind}.${before === null ? 'create' : 'patch'}` as OpKind,
+      targetId: row.id,
+      payload: patch,
+      createdAt: now,
+      attempts: 0,
+    })
+  }
+
+  for (const id of deletes) {
+    if (excludeIds.has(id)) continue
+    ops.push({
+      id: crypto.randomUUID(),
+      kind: `${kind}.delete` as OpKind,
+      targetId: id,
+      payload: { deleted_at: now },
+      createdAt: now,
+      attempts: 0,
+    })
+  }
+
+  for (const op of ops) await enqueueOp(op)
+  return nextFingerprint
+}
 
 /**
  * 專案與標籤。
@@ -26,16 +85,47 @@ export const useCollectionsStore = defineStore('collections', () => {
   const filters = ref<StoredFilter[]>([])
   const history = useHistoryStore()
 
+  /** 純粹用來推導 outbox 補丁的內容指紋，跟本地 IndexedDB 寫入無關（見上方 enqueueCollectionOps 的說明）。 */
+  let persistedProjectsIndex = new Map<string, string>()
+  let persistedTagsIndex = new Map<string, string>()
+  let persistedFiltersIndex = new Map<string, string>()
+  /** mergeRemote() 這次動到的 id，下一次 flush() 消費後清空——理由跟 stores/tasks.ts 的 remoteMergedIds 一致。 */
+  let remoteMergedIds = new Set<string>()
+
   async function load(): Promise<void> {
     projects.value = await loadProjects()
     tags.value = await loadTags()
     filters.value = await loadFilters()
+    // 剛讀進來的內容就是「已經跟本地一致」的基準，否則第一次 flush()
+    // 會把每一列都當成新的而排一整批 create op。
+    persistedProjectsIndex = new Map(projects.value.map((p) => [p.id, JSON.stringify(p)]))
+    persistedTagsIndex = new Map(tags.value.map((t) => [t.id, JSON.stringify(t)]))
+    persistedFiltersIndex = new Map(filters.value.map((f) => [f.id, JSON.stringify(f)]))
   }
 
   async function flush(): Promise<void> {
     await saveProjects(projects.value.map((p) => ({ ...p })))
     await saveTags(tags.value.map((t) => ({ ...t })))
     await saveFilters(filters.value.map((f) => ({ ...f })))
+
+    if (isSyncConfigured) {
+      persistedProjectsIndex = await enqueueCollectionOps(
+        'project',
+        projects.value,
+        persistedProjectsIndex,
+        toRemoteProject,
+        remoteMergedIds,
+      )
+      persistedTagsIndex = await enqueueCollectionOps('tag', tags.value, persistedTagsIndex, toRemoteTag, remoteMergedIds)
+      persistedFiltersIndex = await enqueueCollectionOps(
+        'filter',
+        filters.value,
+        persistedFiltersIndex,
+        toRemoteFilter,
+        remoteMergedIds,
+      )
+      remoteMergedIds = new Set()
+    }
   }
 
   // ------------------------------------------------------------- 專案
@@ -265,6 +355,20 @@ export const useCollectionsStore = defineStore('collections', () => {
     tags: readonly StoredTag[]
     filters: readonly StoredFilter[]
   }): void {
+    // 聯集合併前後的 id（含遠端刪除的），下一次 flush() 靠這份集合排除
+    // 剛從遠端合併回來的資料，不誤判成本地變更又推一次回去——理由跟
+    // stores/tasks.ts 的 mergeRemote／remoteMergedIds 完全一致。用聯集
+    // 而不是直接覆蓋：mergeRemote 理論上可能在同一次 flush() 之前被呼叫
+    // 超過一次（例如 tasks／projects／tags／filters 各自一輪拉取都命中）。
+    remoteMergedIds = new Set([
+      ...remoteMergedIds,
+      ...projects.value.map((p) => p.id),
+      ...data.projects.map((p) => p.id),
+      ...tags.value.map((t) => t.id),
+      ...data.tags.map((t) => t.id),
+      ...filters.value.map((f) => f.id),
+      ...data.filters.map((f) => f.id),
+    ])
     projects.value = [...data.projects]
     tags.value = [...data.tags]
     filters.value = [...data.filters]

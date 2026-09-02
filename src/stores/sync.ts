@@ -3,9 +3,6 @@ import { ref, watch } from 'vue'
 import { clearOutbox, getMeta, loadOutbox, markOpAttempt, removeOp, setMeta } from '@/db'
 import {
   META_SYNC_ACCOUNT_ID,
-  META_SYNC_FINGERPRINT_FILTERS,
-  META_SYNC_FINGERPRINT_PROJECTS,
-  META_SYNC_FINGERPRINT_TAGS,
   META_SYNC_LAST_PULLED_AT,
   type StoredFilter,
   type StoredProject,
@@ -16,7 +13,7 @@ import { normalizeFilter, normalizeProject, normalizeTag, normalizeTask } from '
 import { mergeByUpdatedAt } from '@/sync/merge'
 import { sendOp } from '@/sync/rpc'
 import { SyncHttpError } from '@/sync/restClient'
-import { pullTable, pushTable, type TableBinding } from '@/sync/tableSync'
+import { pullTable, type TableBinding } from '@/sync/tableSync'
 import {
   TABLE_FILTERS,
   TABLE_PROJECTS,
@@ -26,10 +23,6 @@ import {
   fromRemoteProject,
   fromRemoteTag,
   fromRemoteTask,
-  toRemoteFilter,
-  toRemoteProject,
-  toRemoteTag,
-  toRemoteTask,
 } from '@/sync/rowMapping'
 import { useAuthStore } from './auth'
 import { useTasksStore } from './tasks'
@@ -43,48 +36,23 @@ const PULL_INTERVAL_MS = 30_000
 /** 本地編輯觸發推送前先等一下：一串連續編輯（例如批次操作）只值得推一次。 */
 const PUSH_DEBOUNCE_MS = 3_000
 
-/**
- * tasks 不在這裡——outbox 取代了它的指紋比對推送（見 drainOutbox()），
- * 「哪些欄位真的變了」已經在 stores/tasks.ts 的 flush() 算好、寫進
- * outbox，不需要另一份指紋來回答同一個問題。projects/tags/filters
- * 還沒搬，繼續用原本的指紋比對＋整列 upsert。
- */
-interface Fingerprints {
-  projects: Map<string, string>
-  tags: Map<string, string>
-  filters: Map<string, string>
-}
-
-async function loadFingerprint(key: string): Promise<Map<string, string>> {
-  const raw = await getMeta<Record<string, string>>(key)
-  return new Map(Object.entries(raw ?? {}))
-}
-
-function saveFingerprint(key: string, fingerprint: Map<string, string>): Promise<void> {
-  return setMeta(key, Object.fromEntries(fingerprint))
-}
-
 const taskBinding: TableBinding<StoredTask> = {
   table: TABLE_TASKS,
-  toRemote: toRemoteTask,
   fromRemote: fromRemoteTask,
   normalize: (raw) => normalizeTask(raw),
 }
 const projectBinding: TableBinding<StoredProject> = {
   table: TABLE_PROJECTS,
-  toRemote: toRemoteProject,
   fromRemote: fromRemoteProject,
   normalize: (raw) => normalizeProject(raw),
 }
 const tagBinding: TableBinding<StoredTag> = {
   table: TABLE_TAGS,
-  toRemote: toRemoteTag,
   fromRemote: fromRemoteTag,
   normalize: (raw) => normalizeTag(raw),
 }
 const filterBinding: TableBinding<StoredFilter> = {
   table: TABLE_FILTERS,
-  toRemote: toRemoteFilter,
   fromRemote: fromRemoteFilter,
   normalize: (raw) => normalizeFilter(raw),
 }
@@ -141,12 +109,6 @@ export const useSyncStore = defineStore('sync', () => {
   const tasks = useTasksStore()
   const collections = useCollectionsStore()
 
-  let fingerprints: Fingerprints = {
-    projects: new Map(),
-    tags: new Map(),
-    filters: new Map(),
-  }
-
   let inFlight: Promise<void> | null = null
   let dirty = false
   let interval: ReturnType<typeof setInterval> | null = null
@@ -159,8 +121,9 @@ export const useSyncStore = defineStore('sync', () => {
    * 那筆記一次重試次數（markOpAttempt，供未來做退避用），錯誤原樣往上
    * 丟給 syncOnce() 既有的 try/catch，走同一套 describeSyncError()。
    *
-   * 這裡只送 tasks 的 op（目前 outbox 也只會有 tasks 的 op，見
-   * stores/tasks.ts 的 enqueueSyncOps）；projects/tags/filters 還沒搬過來。
+   * 四張表（tasks/projects/tags/filters）的 op 混在同一個佇列裡，
+   * 依 createdAt 排序一起送——outbox 本來就不分表，見 stores/tasks.ts
+   * 的 enqueueSyncOps／stores/collections.ts 的 enqueueCollectionOps。
    */
   async function drainOutbox(token: string): Promise<void> {
     const ops = await loadOutbox()
@@ -176,66 +139,39 @@ export const useSyncStore = defineStore('sync', () => {
   }
 
   /**
-   * tasks 專屬的拉取＋合併，push 的部分已經由 drainOutbox() 做掉——
-   * 不再需要指紋比對，「哪些欄位變了」在 enqueueSyncOps() 就已經決定，
-   * 也不需要拉取贏了之後再回頭更新指紋（tasks 已經沒有推送用的指紋了）。
-   * 合併同樣讀「現在」的 tasks.items，不是呼叫當下的舊快照，理由跟
-   * syncOneTable 一致。
-   */
-  async function pullTasks(cursor: number, token: string): Promise<void> {
-    const { live, deletedIds } = await pullTable(taskBinding, cursor, token)
-    const merge = mergeByUpdatedAt(tasks.items, live, deletedIds)
-    if (merge.remoteWon.length > 0 || merge.removedIds.length > 0) tasks.mergeRemote(merge.merged)
-  }
-
-  /**
-   * 一張表的推送＋拉取＋合併。合併故意讀 `readLocal()`（呼叫當下的最新值），
-   * 不是進函式當時就固定住的參數——中間有兩次網路等待，這段時間本地如果
-   * 發生「整份陣列替換」式的操作（remove／batchUpdate／undo…），合併時
-   * 用一份舊快照當基準會把那個操作靜靜蓋掉。細節見 sync/tableSync.ts 開頭。
+   * 一張表的拉取＋合併。push 已經由 drainOutbox() 統一做掉，這裡不再
+   * 需要指紋——「哪些欄位變了」在各自 store 的 flush() 就已經決定、
+   * 寫進 outbox 了，也不需要拉取贏了之後回頭更新指紋（沒有指紋了）。
+   *
+   * 合併故意讀 `readLocal()`（呼叫當下的最新值），不是進函式當時就固定
+   * 住的參數——中間有一次網路等待（拉取），這段時間本地如果發生
+   * 「整份陣列替換」式的操作（remove／batchUpdate／undo…），合併時用
+   * 一份舊快照當基準會把那個操作靜靜蓋掉。
    *
    * `applyMerge()` 只在真的有東西要改（遠端贏了某幾列、或遠端回報刪除）
-   * 時才呼叫——這裡曾經是無條件呼叫，就算這一輪遠端完全沒有變化，
-   * `mergeByUpdatedAt` 仍然回傳一個內容相同、但參照不同的新陣列，把它
-   * 寫回 `tasks.items`／`collections.*` 一樣會觸發下面 `start()` 那個
-   * 「本地編輯」防抖 watcher（它分不出這次陣列替換是使用者剛編輯的，
-   * 還是同步自己寫回去的），排出下一次推送。下一次推送又是同一輪
-   * 「沒變化 → 還是整批寫回 → 又觸發 watcher」，整個同步引擎因此陷入
-   * 每 PUSH_DEBOUNCE_MS 就自己觸發一次的無窮迴圈，完全繞過原本設計的
-   * PULL_INTERVAL_MS 輪詢間隔——多打的每一次網路請求都是純粹浪費，
-   * 一直安靜地跑不會有錯誤訊息，只是在背景持續打 API。是寫這次的
-   * flushPendingPush() 回歸測試時才發現的：一輪同步剛跑完，照理不該有
-   * 任何「還沒送出的變更」，但 pushTimer 卻總是掛著。
+   * 時才呼叫——不然就算這一輪遠端完全沒有變化，`mergeByUpdatedAt` 仍然
+   * 回傳一個內容相同、但參照不同的新陣列，寫回 `tasks.items`／
+   * `collections.*` 會觸發下面 `start()` 的「本地編輯」防抖 watcher
+   * （它分不出這次陣列替換是使用者剛編輯的，還是同步自己寫回去的），
+   * 排出下一次推送，形成每 PUSH_DEBOUNCE_MS 就自己觸發一次的無窮迴圈，
+   * 完全繞過 PULL_INTERVAL_MS 輪詢間隔。是寫 flushPendingPush() 回歸
+   * 測試時才發現的：一輪同步剛跑完，照理不該有任何「還沒送出的變更」，
+   * 但 pushTimer 卻總是掛著。
    */
-  async function syncOneTable<T extends { id: string; updatedAt: number }>(
+  async function pullAndMerge<T extends { id: string; updatedAt: number }>(
     binding: TableBinding<T>,
     readLocal: () => readonly T[],
-    fingerprintKey: keyof Fingerprints,
     cursor: number,
     token: string,
     applyMerge: (rows: T[]) => void,
   ): Promise<void> {
-    const fingerprint = fingerprints[fingerprintKey] as Map<string, string>
-    const pushedFingerprint = await pushTable(binding, readLocal(), fingerprint, token)
     const { live, deletedIds } = await pullTable(binding, cursor, token)
-
-    // 兩次網路呼叫都結束了，這裡才第一次讀「現在」的本地狀態來合併——
-    // 跟上面那次 readLocal() 之間完全沒有 await，不會有時間差。
     const merge = mergeByUpdatedAt(readLocal(), live, deletedIds)
     if (merge.remoteWon.length > 0 || merge.removedIds.length > 0) applyMerge(merge.merged)
-    for (const row of merge.remoteWon) pushedFingerprint.set(row.id, JSON.stringify(row))
-    for (const id of merge.removedIds) pushedFingerprint.delete(id)
-
-    fingerprints = { ...fingerprints, [fingerprintKey]: pushedFingerprint }
   }
 
   async function persist(): Promise<void> {
     await setMeta(META_SYNC_LAST_PULLED_AT, lastPulledAt.value)
-    await Promise.all([
-      saveFingerprint(META_SYNC_FINGERPRINT_PROJECTS, fingerprints.projects),
-      saveFingerprint(META_SYNC_FINGERPRINT_TAGS, fingerprints.tags),
-      saveFingerprint(META_SYNC_FINGERPRINT_FILTERS, fingerprints.filters),
-    ])
   }
 
   /** 跟 stores/tasks.ts 的 flush() 同一套 inFlight／dirty 寫法：呼叫中再被呼叫就排隊重跑一次。 */
@@ -256,27 +192,24 @@ export const useSyncStore = defineStore('sync', () => {
           const startedAt = Date.now()
 
           await drainOutbox(token)
-          await pullTasks(cursor, token)
-          await syncOneTable(
+          await pullAndMerge(taskBinding, () => tasks.items, cursor, token, tasks.mergeRemote)
+          await pullAndMerge(
             projectBinding,
             () => collections.projects,
-            'projects',
             cursor,
             token,
             (rows) => collections.mergeRemote({ projects: rows, tags: collections.tags, filters: collections.filters }),
           )
-          await syncOneTable(
+          await pullAndMerge(
             tagBinding,
             () => collections.tags,
-            'tags',
             cursor,
             token,
             (rows) => collections.mergeRemote({ projects: collections.projects, tags: rows, filters: collections.filters }),
           )
-          await syncOneTable(
+          await pullAndMerge(
             filterBinding,
             () => collections.filters,
-            'filters',
             cursor,
             token,
             (rows) => collections.mergeRemote({ projects: collections.projects, tags: collections.tags, filters: rows }),
@@ -331,24 +264,25 @@ export const useSyncStore = defineStore('sync', () => {
 
   /**
    * 本地快取（IndexedDB 裡的 tasks／projects／tags／filters，加上這個 store
-   * 的同步游標與指紋）從頭到尾沒有依「目前登入的是誰」分區——這是刻意的
-   * 離線優先設計：`stores/auth.ts` 的 `signOut()` 明確不清本地資料，
-   * 這裡的 `stop()` 也一樣。但這只涵蓋了「同一個人換裝置」，沒有涵蓋
-   * 「同一台裝置／瀏覽器換了不同的人登入」——這種情況下，新登入的帳號會
-   * 直接繼承、甚至把上一個帳號留在本機的資料當成自己的推送上去，是真正
-   * 的資料隔離缺陷，不是單純的畫面顯示問題：使用者會看到不屬於自己的
-   * 待辦內容，而且只要在那個狀態下編輯任何一筆，就會嘗試用自己的帳號
-   * 去 upsert 一筆 id 屬於另一個使用者的遠端列。
+   * 的同步游標，以及 outbox 裡還沒送出的操作）從頭到尾沒有依「目前登入
+   * 的是誰」分區——這是刻意的離線優先設計：`stores/auth.ts` 的
+   * `signOut()` 明確不清本地資料，這裡的 `stop()` 也一樣。但這只涵蓋了
+   * 「同一個人換裝置」，沒有涵蓋「同一台裝置／瀏覽器換了不同的人登入」
+   * ——這種情況下，新登入的帳號會直接繼承、甚至把上一個帳號留在本機的
+   * 資料當成自己的推送上去，是真正的資料隔離缺陷，不是單純的畫面顯示
+   * 問題：使用者會看到不屬於自己的待辦內容，而且只要在那個狀態下編輯
+   * 任何一筆，就會嘗試用自己的帳號去寫一筆 id 屬於另一個使用者的遠端列。
    *
    * 做法比照業界慣例（Google Drive／Dropbox 換帳號登入時的處理）：本地
    * 額外記一把「這份快取上次是跟哪個 user id 對過帳」（`META_SYNC_ACCOUNT_ID`）。
    * 登入時發現跟上次不同，代表這份本地快取邏輯上不屬於新使用者，直接
    * 清空（`mergeRemote([])`／`mergeRemote({ projects: [], tags: [], filters: [] })`
    * ——跟遠端合併結果套用是同一條路徑，不特別記一筆復原命令，理由跟
-   * `tasks.ts` 的 `mergeRemote` 一致：這不是使用者在這台裝置上剛做的操作）
-   * 並把游標歸零、指紋清空——下一輪同步會用乾淨狀態完整拉一次新帳號在
-   * 伺服器上真正的資料，不會有任何本地殘留被誤判成新帳號的內容，也不會
-   * 有本地殘留被誤推到新帳號名下。
+   * `tasks.ts` 的 `mergeRemote` 一致：這不是使用者在這台裝置上剛做的操作）、
+   * 把游標歸零、並清空 outbox（上一個帳號還沒送出的操作不該用新身分
+   * 送出去）——下一輪同步會用乾淨狀態完整拉一次新帳號在伺服器上真正的
+   * 資料，不會有任何本地殘留被誤判成新帳號的內容，也不會有本地殘留被
+   * 誤推到新帳號名下。
    *
    * 「本地從沒記錄過任何 owner」時（全新安裝、或使用者第一次登入前就已經
    * 累積的本地待辦）刻意不清——那是使用者真正想要的既有行為：登入後把
@@ -364,9 +298,6 @@ export const useSyncStore = defineStore('sync', () => {
       tasks.mergeRemote([])
       collections.mergeRemote({ projects: [], tags: [], filters: [] })
       lastPulledAt.value = 0
-      fingerprints = { projects: new Map(), tags: new Map(), filters: new Map() }
-      // 上一個帳號還沒送出的操作，不該用這次新登入的身分／token 送出去——
-      // 那些列（targetId 指向上一個帳號的任務）本來就不屬於新使用者。
       await clearOutbox()
       await persist()
     }
@@ -390,13 +321,8 @@ export const useSyncStore = defineStore('sync', () => {
     if (!enabled.value) return
 
     lastPulledAt.value = (await getMeta<number>(META_SYNC_LAST_PULLED_AT)) ?? 0
-    fingerprints = {
-      projects: await loadFingerprint(META_SYNC_FINGERPRINT_PROJECTS),
-      tags: await loadFingerprint(META_SYNC_FINGERPRINT_TAGS),
-      filters: await loadFingerprint(META_SYNC_FINGERPRINT_FILTERS),
-    }
-    // 同一個理由再檢查一次：上面四次 fingerprint 讀取都是各自獨立的
-    // await，stop() 一樣可能發生在其中任何一次之間。
+    // 同一個理由再檢查一次：上面這次讀取也是獨立的 await，stop() 一樣
+    // 可能發生在期間。
     if (!enabled.value) return
 
     void syncOnce()
