@@ -70,13 +70,16 @@ describe('MembersDialog.vue', () => {
     expect(w.text()).toContain('擁有者')
   })
 
-  it('建立邀請成功後顯示可複製的連結', async () => {
+  it('建立邀請成功後顯示可複製的連結；信有寄出時多顯示一句提示', async () => {
     const auth = useAuthStore()
     auth.session = fakeSession('u1')
     const workspace = useWorkspaceStore()
     workspace.currentWorkspaceId = 'w1'
     workspace.members = [{ user_id: 'u1', role: 'owner', joined_at: '', profiles: { display_name: 'Alice', avatar_url: null } }]
-    vi.spyOn(workspace, 'invite').mockResolvedValue('raw-token-abc')
+    vi.spyOn(workspace, 'invite').mockResolvedValue({
+      link: 'https://example.test/#/accept-invite?token=raw-token-abc',
+      emailSent: true,
+    })
 
     const w = mountDialog()
     await w.find('#invite-email').setValue('bob@example.com')
@@ -87,6 +90,27 @@ describe('MembersDialog.vue', () => {
     expect(link.exists()).toBe(true)
     expect((link.element as HTMLInputElement).value).toContain('raw-token-abc')
     expect((link.element as HTMLInputElement).value).toContain('#/accept-invite?token=')
+    expect(w.text()).toContain('邀請信已寄出')
+  })
+
+  it('信沒有寄出時顯示對應的說法，連結仍然可用', async () => {
+    const auth = useAuthStore()
+    auth.session = fakeSession('u1')
+    const workspace = useWorkspaceStore()
+    workspace.currentWorkspaceId = 'w1'
+    workspace.members = [{ user_id: 'u1', role: 'owner', joined_at: '', profiles: { display_name: 'Alice', avatar_url: null } }]
+    vi.spyOn(workspace, 'invite').mockResolvedValue({
+      link: 'https://example.test/#/accept-invite?token=raw-token-abc',
+      emailSent: false,
+    })
+
+    const w = mountDialog()
+    await w.find('#invite-email').setValue('bob@example.com')
+    await w.find('form').trigger('submit')
+    await w.vm.$nextTick()
+
+    expect(w.text()).toContain('邀請信沒有寄出')
+    expect(w.find('#invite-link').exists()).toBe(true)
   })
 
   it('只有一個工作區時不顯示切換器', () => {

@@ -7,6 +7,7 @@ import {
   createInvitation,
   revokeInvitation,
   acceptInvitation,
+  sendInvitationEmail,
   updateMemberRole,
   removeMember,
 } from './workspaceClient'
@@ -73,6 +74,58 @@ describe('createInvitation', () => {
       p_email: 'bob@example.com',
       p_role: 'member',
     })
+  })
+})
+
+describe('sendInvitationEmail', () => {
+  it('呼叫 send-invitation-email edge function，帶上完整的邀請內容', async () => {
+    const fetchMock = mockFetch({ ok: true, json: async () => ({ sent: true }) } as Response)
+
+    const result = await sendInvitationEmail(
+      {
+        workspaceId: 'w1',
+        workspaceName: '工作區',
+        email: 'bob@example.com',
+        role: 'member',
+        inviteLink: 'https://example.test/#/accept-invite?token=abc',
+        inviterName: 'Alice',
+      },
+      'token',
+    )
+
+    expect(result).toBe(true)
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('/functions/v1/send-invitation-email')
+    expect(JSON.parse(options.body as string)).toEqual({
+      workspace_id: 'w1',
+      workspace_name: '工作區',
+      email: 'bob@example.com',
+      role: 'member',
+      invite_link: 'https://example.test/#/accept-invite?token=abc',
+      inviter_name: 'Alice',
+    })
+  })
+
+  it('函式回報 sent:false 時（例如寄信服務沒設定）如實回傳 false', async () => {
+    mockFetch({ ok: true, json: async () => ({ sent: false, reason: 'not_configured' }) } as Response)
+
+    const result = await sendInvitationEmail(
+      { workspaceId: 'w1', workspaceName: '工作區', email: 'bob@example.com', role: 'member', inviteLink: 'x', inviterName: '' },
+      'token',
+    )
+
+    expect(result).toBe(false)
+  })
+
+  it('HTTP 失敗時拋出錯誤', async () => {
+    mockFetch({ ok: false, status: 403, text: async () => 'forbidden' } as Response)
+
+    await expect(
+      sendInvitationEmail(
+        { workspaceId: 'w1', workspaceName: '工作區', email: 'bob@example.com', role: 'member', inviteLink: 'x', inviterName: '' },
+        'token',
+      ),
+    ).rejects.toThrow(SyncHttpError)
   })
 })
 
