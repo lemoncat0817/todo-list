@@ -69,4 +69,12 @@ describe('upsertRows', () => {
     mockFetch({ ok: false, status: 500, text: async () => 'server error' } as Response)
     await expect(upsertRows('tasks', [{ id: 'a' }], 'token')).rejects.toThrow(SyncHttpError)
   })
+
+  it('conflictColumn 可覆寫——device_cursors（M6）的主鍵不是 id', async () => {
+    const fetchMock = mockFetch({ ok: true } as Response)
+    await upsertRows('device_cursors', [{ device_id: 'd1', last_synced_at: 1 }], 'token', 'device_id')
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('on_conflict=device_id')
+  })
 })

@@ -79,6 +79,15 @@ export const META_SYNC_FINGERPRINT_FILTERS = 'syncFingerprintFilters'
 export const META_SYNC_ACCOUNT_ID = 'syncAccountId'
 
 /**
+ * 這台裝置的穩定識別碼（M6）。第一次需要時產生一次、存進 meta，之後
+ * 每次開機都讀同一個值——伺服器端的 device_cursors 表（見 0019
+ * migration）靠這個 id 判斷「這是同一台裝置回報的游標」，不是每次
+ * 開機都算一台新裝置。刻意不放進 sync 帳號隔離會清空的那組 key：
+ * 換帳號登入不代表換了一台實體裝置，device_id 應該跨帳號存活。
+ */
+export const META_DEVICE_ID = 'deviceId'
+
+/**
  * 離線操作佇列。取代舊版「比對本地內容指紋算差異」的推送方式——那套
  * 在多人情境下會把別人剛下推的變更誤判成本地變更再推回去（見計畫書
  * 第 6 節）。改成使用者一做動作就在本地記一筆操作，上傳器照 createdAt

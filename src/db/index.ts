@@ -33,6 +33,7 @@ export {
   saveSections,
   getMeta,
   setMeta,
+  getOrCreateDeviceId,
   loadOutbox,
   enqueueOp,
   removeOp,

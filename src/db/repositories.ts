@@ -3,6 +3,7 @@ import {
   DB_NAME,
   DB_VERSION,
   DEFAULT_TASK_FIELDS,
+  META_DEVICE_ID,
   STORE_ACTIVITY,
   STORE_ATTACHMENTS,
   STORE_COMMENTS,
@@ -383,6 +384,15 @@ export async function getMeta<T>(key: string): Promise<T | undefined> {
 export async function setMeta(key: string, value: unknown): Promise<void> {
   const db = await getDB()
   await db.put(STORE_META, value, key)
+}
+
+/** 見 db/schema.ts 的 META_DEVICE_ID 說明——沒有就現產一個並存起來，之後都讀同一個。 */
+export async function getOrCreateDeviceId(): Promise<string> {
+  const existing = await getMeta<string>(META_DEVICE_ID)
+  if (typeof existing === 'string' && existing.length > 0) return existing
+  const id = crypto.randomUUID()
+  await setMeta(META_DEVICE_ID, id)
+  return id
 }
 
 // ---------------------------------------------------------------- outbox
