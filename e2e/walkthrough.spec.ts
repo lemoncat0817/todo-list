@@ -174,7 +174,7 @@ test('P1 已修正：編輯狀態不落地，儲存形狀乾淨', async ({ page 
   // v2 的形狀：編輯狀態不落地，但多了到期日、優先度等欄位
   expect(Object.keys(rows[0] ?? {})).not.toContain('isEdit')
   expect(Object.keys(rows[0] ?? {}).sort()).toEqual([
-    'completedAt', 'createdAt', 'dueDate', 'dueTime', 'id', 'isCompleted',
+    'assigneeId', 'completedAt', 'createdAt', 'dueDate', 'dueTime', 'id', 'isCompleted',
     'notes', 'parentId', 'priority', 'projectId', 'rank', 'recurrence',
     'tagIds', 'taskName', 'updatedAt', 'workspaceId',
   ])

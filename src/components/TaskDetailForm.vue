@@ -43,6 +43,23 @@
       </select>
     </label>
 
+    <!--
+      指派給：跟留言／活動記錄一樣只有已設定同步且已登入時才有意義——
+      純本機模式下沒有「別人」可以指派。選項來自 workspace.members，
+      跟留言 @提及／活動記錄的作者名稱同一份資料來源。
+    -->
+    <label v-if="isSyncConfigured && auth.status === 'signed-in'"
+      class="flex flex-col gap-1.5 text-sm font-medium text-ink-soft">
+      指派給
+      <select v-model="assigneeInput"
+        class="h-9 rounded-lg border border-line bg-surface px-2.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none">
+        <option value="">未指派</option>
+        <option v-for="m in workspace.members" :key="m.user_id" :value="m.user_id">
+          {{ m.profiles?.display_name || '（未命名）' }}
+        </option>
+      </select>
+    </label>
+
     <!-- 就地建立：沒有這條路徑的話，第一次使用時專案與標籤永遠是空清單 -->
     <div class="flex gap-2">
       <input v-model.trim="newProjectName" aria-label="新專案名稱" placeholder="新增專案…"
@@ -154,6 +171,7 @@ import { DEFAULT_RECURRENCE, describeRecurrence } from '@/domain/recurrence'
 import { isValidISODate, isValidTime } from '@/domain/dates'
 import { findByNormalizedName } from '@/domain/filtering'
 import { isSyncConfigured } from '@/sync/config'
+import { useWorkspaceStore } from '@/stores/workspace'
 import TaskComments from './TaskComments.vue'
 import TaskActivity from './TaskActivity.vue'
 import TaskAttachments from './TaskAttachments.vue'
@@ -174,11 +192,13 @@ const emit = defineEmits<{ close: [] }>()
 const tasks = useTasksStore()
 const collections = useCollectionsStore()
 const auth = useAuthStore()
+const workspace = useWorkspaceStore()
 
 const draft = ref<StoredTask | null>(null)
 const dueDateInput = ref('')
 const dueTimeInput = ref('')
 const projectInput = ref('')
+const assigneeInput = ref('')
 const newProjectName = ref('')
 const newTagName = ref('')
 
@@ -197,6 +217,7 @@ watch(
     dueDateInput.value = task.dueDate ?? ''
     dueTimeInput.value = task.dueTime ?? ''
     projectInput.value = task.projectId ?? ''
+    assigneeInput.value = task.assigneeId ?? ''
   },
   { immediate: true },
 )
@@ -268,6 +289,13 @@ function save(): void {
     projectId: projectInput.value === '' ? null : projectInput.value,
     tagIds: current.tagIds,
     recurrence: current.recurrence,
+    // 欄位隱藏時（沒開同步／沒登入）assigneeInput 不會反映 draft 真正的
+    // 值，直接送出去會把既有的指派靜默清掉——只有欄位顯示、使用者真的
+    // 有機會改過它時才採用 assigneeInput，否則原封不動送回目前的值。
+    assigneeId:
+      isSyncConfigured && auth.status === 'signed-in'
+        ? assigneeInput.value === '' ? null : assigneeInput.value
+        : current.assigneeId,
   })
   emit('close')
 }

@@ -208,6 +208,14 @@ export interface StoredTask {
    * 純本機模式下建立。
    */
   workspaceId: string | null
+  /**
+   * 指派給的成員 user id；null 代表未指派。單一負責人，不是多人指派——
+   * 跟大多數同類產品一致，也讓 M5 的「依負責人分組」是單純的 group by。
+   * 只有伺服器端驗證指派對象是不是這個工作區的成員（見 0016 migration
+   * 的 validate_task_assignee trigger）；純本機模式下這裡永遠是 null，
+   * 沒有同步就沒有「別人」可以指派。
+   */
+  assigneeId: string | null
 }
 
 export interface StoredProject {
@@ -360,6 +368,7 @@ export const DEFAULT_TASK_FIELDS: Omit<
   recurrence: null,
   completedAt: null,
   workspaceId: null,
+  assigneeId: null,
 }
 
 /**
