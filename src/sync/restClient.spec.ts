@@ -42,6 +42,22 @@ describe('fetchRowsSince', () => {
       status: 401,
     })
   })
+
+  it('錯誤內文是 PostgREST 的 JSON 時，解析出 code 供上層區分失敗類型', async () => {
+    mockFetch({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ code: 'PT001', details: null, hint: null, message: '任務已經被其他成員刪除' }),
+    } as Response)
+
+    await expect(fetchRowsSince('tasks', 0, 'token')).rejects.toMatchObject({ code: 'PT001' })
+  })
+
+  it('錯誤內文不是 JSON 時，code 是 null 而不是丟出解析例外', async () => {
+    mockFetch({ ok: false, status: 500, text: async () => '<html>502 Bad Gateway</html>' } as Response)
+
+    await expect(fetchRowsSince('tasks', 0, 'token')).rejects.toMatchObject({ code: null })
+  })
 })
 
 describe('upsertRows', () => {

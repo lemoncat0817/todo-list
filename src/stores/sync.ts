@@ -131,12 +131,30 @@ const sectionBinding: TableBinding<StoredSection> = {
  * 連線重新呼叫，不是空話）。技術細節改用 `console.error` 留給開發者
  * 從 DevTools 查，不再出現在使用者看得到的畫面上。
  */
+/**
+ * PT001/PT002/PT003 是 apply_task_patch()（supabase/migrations/
+ * 0020_task_patch_errors.sql）用自訂 SQLSTATE 標出的三種失敗原因——
+ * 「已被刪除」「找不到」「沒有權限」在 UPDATE 影響 0 rows 之前完全無法
+ * 分辨，這裡各自對應一句不同的說法。這三種都不適用「稍後會自動重試」
+ * ——outbox 會用一模一樣的補丁內容重送，結果只會一樣：任務還是那個
+ * 已刪除／不存在／沒權限的任務，重試不會讓它變回來，說「會自動重試」
+ * 反而是誤導使用者以為問題會自己解決。
+ */
+const TASK_PATCH_ERROR_MESSAGES: Record<string, string> = {
+  PT001: '這筆任務已經被其他成員刪除，本機顯示的內容可能已經過期',
+  PT002: '找不到這筆任務，可能還沒同步完成',
+  PT003: '沒有權限編輯這筆任務，可能已經被移出這個工作區或專案',
+}
+
 function describeSyncError(error: unknown): string {
   // fetch 本身連不上（離線、DNS、CORS 之類）在瀏覽器一律是拋出
   // `TypeError: Failed to fetch`，跟「伺服器回應了、但回應是錯的」
   // （SyncHttpError）性質不同，值得分開講。
   if (error instanceof TypeError) return '目前連不上網路，恢復連線後會自動重試'
-  if (error instanceof SyncHttpError) return '伺服器暫時無法處理，稍後會自動重試'
+  if (error instanceof SyncHttpError) {
+    const specific = error.code !== null ? TASK_PATCH_ERROR_MESSAGES[error.code] : undefined
+    return specific ?? '伺服器暫時無法處理，稍後會自動重試'
+  }
   return '發生未預期的問題，稍後會自動重試'
 }
 

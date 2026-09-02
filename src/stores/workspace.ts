@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
+import { SyncHttpError } from '@/sync/restClient'
 import {
   acceptInvitation,
   createInvitation,
@@ -16,6 +17,19 @@ import {
   type WorkspaceRow,
 } from '@/sync/workspaceClient'
 import { useAuthStore } from './auth'
+
+/**
+ * PT004（supabase/migrations/0021_workspace_member_cap.sql）是唯一目前
+ * 會從 create_invitation()／accept_invitation() 冒出來的自訂錯誤代碼，
+ * 不管哪一邊觸發，使用者看到的說法是同一句——「成員已滿」本身就是完整
+ * 的原因，不需要因為觸發點是「邀請」還是「接受」而分兩種講法。
+ */
+function describeWorkspaceError(e: unknown, fallback: string): string {
+  if (e instanceof SyncHttpError && e.code === 'PT004') {
+    return '這個工作區的成員已經滿了，請聯絡工作區管理者'
+  }
+  return fallback
+}
 
 const PENDING_INVITE_KEY = 'todoTask:pendingInvite'
 
@@ -184,7 +198,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       return { link, emailSent }
     } catch (e) {
       console.error('[workspace] 建立邀請失敗', e)
-      error.value = '邀請沒有送出，請稍後再試一次'
+      error.value = describeWorkspaceError(e, '邀請沒有送出，請稍後再試一次')
       return null
     }
   }
@@ -256,7 +270,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return true
       } catch (e) {
         console.error('[workspace] 接受邀請失敗', e)
-        error.value = '這個邀請連結無法使用，可能已經過期或被撤銷'
+        error.value = describeWorkspaceError(e, '這個邀請連結無法使用，可能已經過期或被撤銷')
         return false
       } finally {
         acceptInFlight = null
