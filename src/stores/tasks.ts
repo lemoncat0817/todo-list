@@ -768,8 +768,13 @@ export const useTasksStore = defineStore('tasks', () => {
     const beforeTasks = snapshot()
     const beforeCollections = collections.snapshot()
 
+    // 理由同 collections.ts 的 applyImport()：匯出範圍改成只含目前工作區
+    // 之後，「取代」只能動目前工作區的任務，其餘工作區的本機快取不能
+    // 被一份只含單一工作區的備份檔連帶清空。
     items.value =
-      mode === 'replace' ? [...data.tasks] : sortByRank(mergeById(beforeTasks, data.tasks))
+      mode === 'replace'
+        ? [...beforeTasks.filter((t) => !inCurrentWorkspace(t, workspace.currentWorkspaceId)), ...data.tasks]
+        : sortByRank(mergeById(beforeTasks, data.tasks))
     collections.applyImport(data, mode)
 
     history.record({
