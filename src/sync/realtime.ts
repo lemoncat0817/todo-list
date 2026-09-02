@@ -36,6 +36,7 @@ export interface WorkspaceSubscription {
 
 export interface SubscribeOptions {
   workspaceId: string
+  userId: string
   /** RealtimeClient 需要在每次連線／重連時取得目前有效的 token，不是只在建立當下讀一次。 */
   getAccessToken: () => Promise<string | null>
   /** 這個工作區的四張表有任何變更時觸發（已去抖動）。 */
@@ -43,6 +44,11 @@ export interface SubscribeOptions {
   /** 每次成功連上（含首次與每次重連）都會呼叫一次。 */
   onSubscribed: () => void
   onStatusChange?: (status: RealtimeStatus) => void
+  /**
+   * 這個工作區目前線上的 user id 集合有變動時觸發（成員上線／下線、
+   * 或剛連上時的初始快照）。M3 的線上狀態——見下方 presence 區塊的說明。
+   */
+  onPresenceChange?: (userIds: readonly string[]) => void
 }
 
 let client: RealtimeClient | null = null
@@ -66,7 +72,14 @@ function mapStatus(status: REALTIME_SUBSCRIBE_STATES): RealtimeStatus {
 
 export function subscribeToWorkspace(opts: SubscribeOptions): WorkspaceSubscription {
   const rt = getClient(opts.getAccessToken)
-  const channel: RealtimeChannel = rt.channel(`workspace:${opts.workspaceId}`)
+  // presence.key 決定 presenceState() 的 key 是什麼——不設的話預設是每個
+  // 連線各自的亂數識別碼，不是 user_id，onPresenceChange 會拿到一堆看不懂
+  // 的字串而不是使用者名單。同一個人開兩個分頁／裝置會共用同一個 key，
+  // 疊成同一個線上狀態，這正是「這個人在線上」而不是「這個連線在線上」
+  // 該有的語意。
+  const channel: RealtimeChannel = rt.channel(`workspace:${opts.workspaceId}`, {
+    config: { presence: { key: opts.userId } },
+  })
 
   let debounceTimer: ReturnType<typeof setTimeout> | undefined
   const notifyChange = () => {
@@ -82,14 +95,37 @@ export function subscribeToWorkspace(opts: SubscribeOptions): WorkspaceSubscript
     )
   }
 
+  /**
+   * 線上狀態（M3）。跟上面的 postgres_changes 是兩種機制：那邊拉的是
+   * 「資料庫裡的資料變了」，這裡是「誰現在開著這個工作區」——track() 送出的
+   * 只有 user_id／online_at，不經過資料庫，也不受任何一張表的 RLS 保護。
+   *
+   * 頻道名稱（workspace:${workspaceId}）本身不是私有頻道（沒有另外設定
+   * Realtime 的 Authorization for Presence／Broadcast），知道這個工作區
+   * UUID 的人理論上都能訂閱到這裡的線上狀態——UUID 不是容易被外部猜到的
+   * 值，而且暴露的只是「這幾個 user id 現在在線上」，不是任務內容，這裡
+   * 接受這個已知、範圍很小的取捨，不是沒注意到。真的需要私有頻道等級的
+   * 保護時，Realtime 有 RLS-based 的頻道授權機制可以加，這裡先不做。
+   */
+  if (opts.onPresenceChange) {
+    const onPresenceChange = opts.onPresenceChange
+    channel.on('presence', { event: 'sync' }, () => {
+      onPresenceChange(Object.keys(channel.presenceState()))
+    })
+  }
+
   channel.subscribe((status) => {
     opts.onStatusChange?.(mapStatus(status))
-    if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) opts.onSubscribed()
+    if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
+      opts.onSubscribed()
+      void channel.track({ user_id: opts.userId, online_at: new Date().toISOString() })
+    }
   })
 
   return {
     stop: () => {
       clearTimeout(debounceTimer)
+      void channel.untrack()
       void channel.unsubscribe()
     },
   }

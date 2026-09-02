@@ -252,9 +252,11 @@ export const useSyncStore = defineStore('sync', () => {
         id,
         realtime.subscribeToWorkspace({
           workspaceId: id,
+          userId: auth.session?.user.id ?? '',
           getAccessToken: async () => auth.session?.access_token ?? null,
           onChange: () => void syncOnce(),
           onSubscribed: () => void syncOnce(),
+          onPresenceChange: (userIds) => workspace.setOnlineUsers(id, userIds),
         }),
       )
     }

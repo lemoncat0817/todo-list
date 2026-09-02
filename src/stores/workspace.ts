@@ -66,6 +66,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const pendingInvitations = ref<InvitationRow[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
+  /**
+   * 線上狀態（M3）：workspaceId → 目前透過 Realtime presence 回報在線的
+   * user id 集合。由 stores/sync.ts 的 reconcileRealtimeSubscriptions()
+   * 寫入（見 sync/realtime.ts 的 onPresenceChange），這個 store 只負責
+   * 存著給畫面讀，不自己碰 Realtime。
+   */
+  const onlineUserIdsByWorkspace = ref<Record<string, string[]>>({})
 
   const auth = useAuthStore()
 
@@ -78,6 +85,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return members.value.find((m) => m.user_id === userId)?.role ?? null
   })
   const canManageMembers = computed(() => myRole.value === 'owner' || myRole.value === 'admin')
+  /** 目前所在工作區的線上成員 id——MembersDialog.vue 顯示綠點用這個。 */
+  const onlineUserIds = computed(() => {
+    const workspaceId = currentWorkspaceId.value
+    if (!workspaceId) return new Set<string>()
+    return new Set(onlineUserIdsByWorkspace.value[workspaceId] ?? [])
+  })
+
+  function setOnlineUsers(workspaceId: string, userIds: readonly string[]): void {
+    onlineUserIdsByWorkspace.value = { ...onlineUserIdsByWorkspace.value, [workspaceId]: [...userIds] }
+  }
 
   function accessToken(): string | null {
     return auth.session?.access_token ?? null
@@ -221,6 +238,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     members.value = []
     pendingInvitations.value = []
     error.value = null
+    onlineUserIdsByWorkspace.value = {}
   }
 
   // 跟 stores/sync.ts 同一個理由：不管登入是在哪個分頁、用哪種方式完成的，
@@ -247,6 +265,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     pendingInvitations,
     myRole,
     canManageMembers,
+    onlineUserIds,
+    setOnlineUsers,
     loading,
     error,
     load,

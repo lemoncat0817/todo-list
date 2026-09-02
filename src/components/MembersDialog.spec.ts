@@ -135,4 +135,25 @@ describe('MembersDialog.vue', () => {
     expect(w.text()).toContain('carol@example.com')
     expect(w.text()).toContain('撤銷')
   })
+
+  it('線上狀態：自己一定算在線上，其餘成員依 workspace.onlineUserIds 顯示', () => {
+    const auth = useAuthStore()
+    auth.session = fakeSession('u1')
+    const workspace = useWorkspaceStore()
+    workspace.currentWorkspaceId = 'w1'
+    workspace.members = [
+      { user_id: 'u1', role: 'owner', joined_at: '', profiles: { display_name: 'Alice', avatar_url: null } },
+      { user_id: 'u2', role: 'member', joined_at: '', profiles: { display_name: 'Bob', avatar_url: null } },
+      { user_id: 'u3', role: 'member', joined_at: '', profiles: { display_name: 'Carol', avatar_url: null } },
+    ]
+    workspace.setOnlineUsers('w1', ['u2'])
+
+    const w = mountDialog()
+    const rows = w.findAll('li')
+    const dotClass = (li: (typeof rows)[number]) => li.find('[aria-hidden="true"]').classes()
+
+    expect(dotClass(rows[0]!)).toContain('bg-success') // Alice：自己
+    expect(dotClass(rows[1]!)).toContain('bg-success') // Bob：在 onlineUserIds 裡
+    expect(dotClass(rows[2]!)).toContain('bg-sunken') // Carol：不在
+  })
 })

@@ -30,6 +30,8 @@
         <ul class="flex flex-col gap-1.5">
           <li v-for="member in workspace.members" :key="member.user_id"
             class="flex items-center gap-2 rounded-lg border border-line px-2.5 py-1.5">
+            <span class="size-2 shrink-0 rounded-full" :class="isOnline(member.user_id) ? 'bg-success' : 'bg-sunken'"
+              :title="isOnline(member.user_id) ? '線上' : '離線'" aria-hidden="true" />
             <span class="min-w-0 grow truncate text-sm text-ink">
               {{ member.profiles?.display_name || '（未命名）' }}
               <span v-if="member.user_id === myUserId" class="text-ink-faint">（你）</span>
@@ -153,6 +155,16 @@ const auth = useAuthStore()
 
 const dialogEl = ref<HTMLDialogElement | null>(null)
 const myUserId = computed(() => auth.session?.user.id ?? null)
+
+/**
+ * 線上狀態（M3）：workspace.onlineUserIds 是 Realtime presence 回報的
+ * 集合（見 sync/realtime.ts），自己一定算在線上——用 Realtime 的
+ * track() 需要等 SUBSCRIBED 狀態才會真的送出，中間有一段時間差，
+ * 不能只靠那份集合判斷「我自己在不在線上」這種答案本來就已知的問題。
+ */
+function isOnline(userId: string): boolean {
+  return userId === myUserId.value || workspace.onlineUserIds.has(userId)
+}
 
 const inviteEmail = ref('')
 const inviteRole = ref<Exclude<MemberRole, 'owner'>>('member')
