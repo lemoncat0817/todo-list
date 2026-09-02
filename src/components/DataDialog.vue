@@ -11,6 +11,9 @@
           資料只存在這一台裝置的瀏覽器裡。清除瀏覽資料就會全部消失，
           換一台機器也帶不過去——所以請定期匯出一份。
         </p>
+        <p v-if="isSyncConfigured && auth.status === 'signed-in'" class="text-xs text-ink-faint">
+          匯出／匯入只會動到目前所在的工作區，不影響其他工作區的資料。
+        </p>
         <div class="flex flex-wrap gap-2">
           <button type="button"
             class="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
@@ -18,7 +21,7 @@
             匯出 JSON
           </button>
           <span class="self-center text-sm tabular-nums text-ink-faint">
-            目前 {{ tasks.items.length }} 筆任務
+            目前 {{ tasks.visibleItems.length }} 筆任務
           </span>
         </div>
       </section>
@@ -202,12 +205,25 @@ watch(
   },
 )
 
+/**
+ * 匯出範圍改成只含目前所在的工作區（計畫書：「備份匯入匯出：範圍改為
+ * 以工作區為單位」）。純本機模式下 workspace.currentWorkspaceId 恆為
+ * null，inCurrentWorkspace() 對 null 一律放行（見
+ * domain/workspaceScope.ts），這裡改用 visibleItems／
+ * projectsInCurrentWorkspace／visibleTags／visibleFilters 之後，純本機
+ * 使用者匯出的內容跟改之前完全一樣，不受影響。
+ *
+ * 專案用 projectsInCurrentWorkspace 而不是 visibleProjects：後者刻意
+ * 排除收件匣（給選單/側邊欄用，見 collections.ts 的說明），但備份是
+ * 「完整可還原的快照」，收件匣本身也要在裡面，不然還原回來的任務會
+ * 找不到自己的收件匣專案。
+ */
 function exportBackup(): void {
   const json = serializeBackup({
-    tasks: tasks.items,
-    projects: collections.projects,
-    tags: collections.tags,
-    filters: collections.filters,
+    tasks: tasks.visibleItems,
+    projects: collections.projectsInCurrentWorkspace,
+    tags: collections.visibleTags,
+    filters: collections.visibleFilters,
   })
   const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
   const link = document.createElement('a')

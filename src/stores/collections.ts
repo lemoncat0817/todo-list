@@ -330,8 +330,20 @@ export const useCollectionsStore = defineStore('collections', () => {
     },
     mode: 'merge' | 'replace',
   ): void {
-    const merge = <T extends { id: string }>(existing: T[], incoming: readonly T[]): T[] => {
-      if (mode === 'replace') return [...incoming]
+    // 匯出範圍改成只含目前工作區（見 DataDialog.vue 的 exportBackup()）
+    // 之後，「取代」不能再是清空全部——那會連別的工作區在本機的快取也
+    // 一起清掉，使用者看到的卻是「我只是匯入了 A 工作區的備份」。
+    // 取代的語意收斂成「取代目前工作區的部分，其餘工作區原封不動」。
+    const merge = <T extends { id: string; workspaceId: string | null }>(
+      existing: T[],
+      incoming: readonly T[],
+    ): T[] => {
+      if (mode === 'replace') {
+        const outsideCurrentWorkspace = existing.filter(
+          (item) => !inCurrentWorkspace(item, workspace.currentWorkspaceId),
+        )
+        return [...outsideCurrentWorkspace, ...incoming]
+      }
       const byId = new Map(existing.map((item) => [item.id, item]))
       for (const item of incoming) byId.set(item.id, item)
       return [...byId.values()]
