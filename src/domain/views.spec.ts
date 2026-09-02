@@ -255,6 +255,29 @@ describe('resolveView — 分組與排序設定', () => {
     expect(groups.map((g) => g.label)).toEqual(['P1', 'P3'])
   })
 
+  it('依負責人分組時，未指派固定排最後，標題用成員顯示名稱', () => {
+    const withAssignee = [
+      makeTask('指派給 Bob 的事', false, { order: 3, assigneeId: 'bob' }),
+      ...tasks,
+    ]
+    const groups = resolveView(withAssignee, spec('all'), {
+      now: NOW,
+      groupBy: 'assignee',
+      assignees: [{ id: 'bob', name: 'Bob' }],
+    })
+    expect(groups.map((g) => g.label)).toEqual(['Bob', '未指派'])
+    expect(groups.find((g) => g.label === '未指派')?.tasks.map((t) => t.taskName).sort()).toEqual([
+      '工作的事',
+      '未分類的事',
+    ])
+  })
+
+  it('依負責人分組時，找不到對應成員（已離開工作區）顯示「已離開的成員」，跟「本來就沒指派」分開', () => {
+    const withAssignee = [makeTask('指派給已離開成員的事', false, { assigneeId: 'ghost' })]
+    const groups = resolveView(withAssignee, spec('all'), { now: NOW, groupBy: 'assignee' })
+    expect(groups.map((g) => g.label)).toEqual(['已離開的成員'])
+  })
+
   it('排序設定套用在每個分組之內', () => {
     const groups = resolveView(tasks, spec('all'), { now: NOW, sort: 'priority' })
     expect(groups[0]?.tasks.map((t) => t.taskName)).toEqual(['工作的事', '未分類的事'])
