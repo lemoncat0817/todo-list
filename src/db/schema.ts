@@ -5,15 +5,21 @@ export const DB_NAME = 'todolist'
  * v3: 新增 filters（儲存的篩選器查詢）。
  * v4: 新增 outbox（離線操作佇列，見下方 Op）——這是真的新 store，
  *     不是像 updatedAt 那樣補個欄位就好，所以要動版號。
+ * v5: tasks／projects／filters 的排序鍵從浮點數 order 換成字串 rank
+ *     （domain/rank.ts）。這次要動版號，理由跟前幾次「補欄位不用動」
+ *     不一樣：order 索引換成 rank 索引，是 index 結構本身變了，而且
+ *     既有列的 order 數值要換算成 rank 字串，不是留著讓正規化補預設值
+ *     就能矇混過去——沒有 upgrade() 搬資料的話，既有使用者的排序會
+ *     整個垮掉。
  *
  * projects／tags／filters 後來補上的 updatedAt（跨裝置同步要用它判斷哪一邊
  * 較新，見 sync/merge.ts）不需要新的版號：IndexedDB 的 object store 本來就
  * 沒有固定 schema，新增欄位不需要 upgrade() 搬資料，既有列在讀取時
  * 由 normalizeProject/normalizeTag/normalizeFilter 補上 updatedAt（缺值時
  * 視為現在）即可，跟其他任何邊界正規化走同一條路。只有新增／變動 store
- * 或 index 結構才需要真的動版號。
+ * 或 index 結構、或既有資料需要真的換算才需要動版號。
  */
-export const DB_VERSION = 4
+export const DB_VERSION = 5
 
 export const STORE_TASKS = 'tasks'
 export const STORE_META = 'meta'
@@ -162,8 +168,13 @@ export interface StoredTask {
   id: string
   taskName: string
   isCompleted: boolean
-  /** 可插值的排序鍵：拖曳排序只需改動一列。 */
-  order: number
+  /**
+   * 可插值的字串排序鍵（domain/rank.ts）。v5 之前是浮點數（domain/ordering.ts，
+   * 現已移除）——多人協作下，兩台裝置同時拖曳到同一個間隙時，浮點數中點
+   * 會算出完全相同的值，字串鍵沒有精度上限，碰撞用 withJitter() 而不是
+   * 整份重新編號解決。
+   */
+  rank: string
 
   // --- v2 新增 ---
   notes: string
@@ -186,7 +197,7 @@ export interface StoredProject {
   id: string
   name: string
   color: string
-  order: number
+  rank: string
   /** v4 新增，供跨裝置同步判斷衝突時哪一邊較新（見 sync/merge.ts）。 */
   updatedAt: number
 }
@@ -209,7 +220,7 @@ export interface StoredFilter {
   name: string
   query: string
   color: string
-  order: number
+  rank: string
   updatedAt: number
 }
 
@@ -223,7 +234,7 @@ export interface LegacyTaskV1 {
 
 export const DEFAULT_TASK_FIELDS: Omit<
   StoredTask,
-  'id' | 'taskName' | 'isCompleted' | 'order' | 'createdAt' | 'updatedAt'
+  'id' | 'taskName' | 'isCompleted' | 'rank' | 'createdAt' | 'updatedAt'
 > = {
   notes: '',
   priority: 0,

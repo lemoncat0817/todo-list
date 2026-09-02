@@ -105,7 +105,9 @@ describe('AppHeader.vue', () => {
         await textInput(w).setValue(name)
         await addButton(w).trigger('click')
       }
-      expect(store.items.map((t) => t.order)).toEqual([0, 1, 2])
+      const ranks = store.items.map((t) => t.rank)
+      expect(ranks).toEqual([...ranks].sort())
+      expect(new Set(ranks).size).toBe(3)
     })
   })
 

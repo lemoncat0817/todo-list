@@ -45,7 +45,7 @@ begin
   update public.tasks t set
     task_name    = coalesce(p_patch->>'task_name', t.task_name),
     is_completed = coalesce((p_patch->>'is_completed')::boolean, t.is_completed),
-    "order"      = coalesce((p_patch->>'order')::double precision, t."order"),
+    rank         = coalesce(p_patch->>'rank', t.rank),
     notes        = coalesce(p_patch->>'notes', t.notes),
     priority     = coalesce((p_patch->>'priority')::smallint, t.priority),
     due_date     = case when p_patch ? 'due_date' then p_patch->>'due_date' else t.due_date end,
@@ -89,13 +89,13 @@ begin
   end if;
 
   insert into public.tasks (
-    id, task_name, is_completed, "order", notes, priority, due_date, due_time,
+    id, task_name, is_completed, rank, notes, priority, due_date, due_time,
     project_id, tag_ids, parent_id, recurrence, completed_at, created_at, updated_at
   ) values (
     (p_row->>'id')::uuid,
     p_row->>'task_name',
     coalesce((p_row->>'is_completed')::boolean, false),
-    (p_row->>'order')::double precision,
+    p_row->>'rank',
     coalesce(p_row->>'notes', ''),
     coalesce((p_row->>'priority')::smallint, 0),
     p_row->>'due_date',
@@ -117,7 +117,7 @@ end;
 $$;
 
 -- projects/filters 沒有 tasks 那麼多欄位，補丁函式比照精簡版本；
--- tags 沒有 order／可補丁的欄位（name/color 直接整欄蓋過即可），
+-- tags 沒有 rank／可補丁的欄位（name/color 直接整欄蓋過即可），
 -- 不需要專用的補丁函式，繼續走原本 upsert 即可。
 create or replace function public.apply_project_patch(p_op_id uuid, p_project_id uuid, p_patch jsonb)
 returns public.projects
@@ -135,7 +135,7 @@ begin
   update public.projects p set
     name       = coalesce(p_patch->>'name', p.name),
     color      = coalesce(p_patch->>'color', p.color),
-    "order"    = coalesce((p_patch->>'order')::double precision, p."order"),
+    rank       = coalesce(p_patch->>'rank', p.rank),
     updated_at = (extract(epoch from clock_timestamp()) * 1000)::bigint
   where p.id = p_project_id
   returning * into v_row;
@@ -164,7 +164,7 @@ begin
     name       = coalesce(p_patch->>'name', f.name),
     query      = coalesce(p_patch->>'query', f.query),
     color      = coalesce(p_patch->>'color', f.color),
-    "order"    = coalesce((p_patch->>'order')::double precision, f."order"),
+    rank       = coalesce(p_patch->>'rank', f.rank),
     updated_at = (extract(epoch from clock_timestamp()) * 1000)::bigint
   where f.id = p_filter_id
   returning * into v_row;

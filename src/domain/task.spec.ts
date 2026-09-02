@@ -109,18 +109,18 @@ describe('normalizeTask', () => {
 
 describe('createTask', () => {
   it('產生 UUID 形狀的 id（稽核 P17）', () => {
-    expect(createTask('x', 0).id).toMatch(
+    expect(createTask('x', 'A').id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     )
   })
 
   it('連續建立的 id 互不相同', () => {
-    const ids = new Set(Array.from({ length: 50 }, () => createTask('x', 0).id))
+    const ids = new Set(Array.from({ length: 50 }, () => createTask('x', 'A').id))
     expect(ids.size).toBe(50)
   })
 
   it('overrides 可覆寫預設欄位', () => {
-    expect(createTask('x', 0, { priority: 3, notes: '備註' })).toMatchObject({
+    expect(createTask('x', 'A', { priority: 3, notes: '備註' })).toMatchObject({
       priority: 3,
       notes: '備註',
     })

@@ -219,8 +219,8 @@ describe('moveTask 排序', () => {
       makeTask('丙', false, { id: 'c', order: 20 }),
     ]
   }
-  const idsByOrder = (store: ReturnType<typeof useTasksStore>) =>
-    [...store.items].sort((x, y) => x.order - y.order).map((t) => t.id)
+  const idsByRank = (store: ReturnType<typeof useTasksStore>) =>
+    [...store.items].sort((x, y) => (x.rank < y.rank ? -1 : x.rank > y.rank ? 1 : 0)).map((t) => t.id)
 
   it('移到目標之前', async () => {
     const app = setup()
@@ -228,7 +228,7 @@ describe('moveTask 排序', () => {
     seed(app.tasks)
 
     app.tasks.move('c', 'b', 'before')
-    expect(idsByOrder(app.tasks)).toEqual(['a', 'c', 'b'])
+    expect(idsByRank(app.tasks)).toEqual(['a', 'c', 'b'])
   })
 
   it('移到目標之後', async () => {
@@ -237,19 +237,22 @@ describe('moveTask 排序', () => {
     seed(app.tasks)
 
     app.tasks.move('a', 'b', 'after')
-    expect(idsByOrder(app.tasks)).toEqual(['b', 'a', 'c'])
+    expect(idsByRank(app.tasks)).toEqual(['b', 'a', 'c'])
   })
 
   it('只改動被移動的那一列，其餘排序鍵不變', async () => {
     const app = setup()
     await app.tasks.init()
     seed(app.tasks)
+    const rankOf = (id: string) => app.tasks.items.find((t) => t.id === id)?.rank
+    const [rankA, rankB] = [rankOf('a'), rankOf('b')]
 
     app.tasks.move('c', 'a', 'after')
 
-    expect(app.tasks.items.find((t) => t.id === 'a')?.order, '未被移動').toBe(0)
-    expect(app.tasks.items.find((t) => t.id === 'b')?.order, '未被移動').toBe(10)
-    expect(app.tasks.items.find((t) => t.id === 'c')?.order, '取中間值').toBe(5)
+    expect(rankOf('a'), '未被移動').toBe(rankA)
+    expect(rankOf('b'), '未被移動').toBe(rankB)
+    const rankC = rankOf('c') as string
+    expect(rankC > (rankA as string) && rankC < (rankB as string), '取中間值').toBe(true)
   })
 
   it('移到最前面', async () => {
@@ -258,7 +261,7 @@ describe('moveTask 排序', () => {
     seed(app.tasks)
 
     app.tasks.move('c', 'a', 'before')
-    expect(idsByOrder(app.tasks)).toEqual(['c', 'a', 'b'])
+    expect(idsByRank(app.tasks)).toEqual(['c', 'a', 'b'])
   })
 
   it('移到最後面', async () => {
@@ -267,26 +270,28 @@ describe('moveTask 排序', () => {
     seed(app.tasks)
 
     app.tasks.move('a', 'c', 'after')
-    expect(idsByOrder(app.tasks)).toEqual(['b', 'c', 'a'])
+    expect(idsByRank(app.tasks)).toEqual(['b', 'c', 'a'])
   })
 
   it('移動可復原', async () => {
     const app = setup()
     await app.tasks.init()
     seed(app.tasks)
+    const rankBBefore = app.tasks.items.find((t) => t.id === 'b')?.rank
 
     app.tasks.move('b', 'a', 'before')
     await app.history.undo()
-    expect(app.tasks.items.find((t) => t.id === 'b')?.order).toBe(10)
+    expect(app.tasks.items.find((t) => t.id === 'b')?.rank).toBe(rankBBefore)
   })
 
   it('移到自己身上是 no-op', async () => {
     const app = setup()
     await app.tasks.init()
     seed(app.tasks)
+    const rankABefore = app.tasks.items.find((t) => t.id === 'a')?.rank
 
     app.tasks.move('a', 'a', 'before')
-    expect(app.tasks.items.find((t) => t.id === 'a')?.order).toBe(0)
+    expect(app.tasks.items.find((t) => t.id === 'a')?.rank).toBe(rankABefore)
   })
 })
 

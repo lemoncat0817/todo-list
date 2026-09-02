@@ -109,14 +109,14 @@ export function parseBackup(raw: unknown): ParseResult {
   const rawFilters = asArray(record.filters)
 
   const tasks = rawTasks
-    .map((row, i) => normalizeTask(row, i))
+    .map((row, i) => normalizeTask(row, String(i)))
     .filter((t): t is StoredTask => t !== null)
   const projects = rawProjects
-    .map((row, i) => normalizeProject(row, i))
+    .map((row, i) => normalizeProject(row, String(i)))
     .filter((p): p is StoredProject => p !== null)
   const tags = rawTags.map(normalizeTag).filter((t): t is StoredTag => t !== null)
   const filters = rawFilters
-    .map((row, i) => normalizeFilter(row, i))
+    .map((row, i) => normalizeFilter(row, String(i)))
     .filter((f): f is StoredFilter => f !== null)
 
   return {

@@ -1,5 +1,5 @@
 import type { StoredTask } from '@/db/schema'
-import { sortByOrder } from './ordering'
+import { sortByRank } from './rank'
 
 /**
  * 清單的篩選與搜尋。
@@ -86,7 +86,7 @@ export function queryTasks(tasks: readonly StoredTask[], query: TaskQuery = {}):
     return true
   })
 
-  return sortByOrder(matched)
+  return sortByRank(matched)
 }
 
 /** 各分頁的項目數。與清單走同一條篩選路徑，數字不會對不上。 */

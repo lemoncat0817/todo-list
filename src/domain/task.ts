@@ -10,6 +10,7 @@ import {
 } from '@/db/schema'
 import { isValidISODate, isValidTime } from './dates'
 import { isRecurrence } from './recurrence'
+import { compareRankValues } from './rank'
 
 /**
  * 任務形狀的正規化與驗證。
@@ -50,8 +51,12 @@ function finiteNumber(v: unknown, fallback: number): number {
  * 把任意輸入正規化成合法的 StoredTask。
  * 無法構成有效任務（缺 id 或 taskName）時回傳 null，由呼叫端濾除。
  * 其餘欄位一律補上安全的預設值，而不是讓壞值流進 store。
+ *
+ * fallbackRank 給讀不到合法 rank 的壞資料用（理論上不該發生，是最後
+ * 一道防線，不是真的排序演算法）——呼叫端傳位置索引轉成的字串即可，
+ * 不需要真的呼叫 domain/rank.ts 的 between()。
  */
-export function normalizeTask(raw: unknown, fallbackOrder = 0): StoredTask | null {
+export function normalizeTask(raw: unknown, fallbackRank = ''): StoredTask | null {
   if (!isRecord(raw)) return null
 
   const id = nullableId(raw.id) ?? (typeof raw.id === 'number' ? String(raw.id) : null)
@@ -65,7 +70,7 @@ export function normalizeTask(raw: unknown, fallbackOrder = 0): StoredTask | nul
     id,
     taskName,
     isCompleted: raw.isCompleted === true,
-    order: finiteNumber(raw.order, fallbackOrder),
+    rank: str(raw.rank, fallbackRank),
     notes: str(raw.notes, DEFAULT_TASK_FIELDS.notes),
     priority: isPriority(raw.priority) ? raw.priority : DEFAULT_TASK_FIELDS.priority,
     dueDate,
@@ -83,7 +88,7 @@ export function normalizeTask(raw: unknown, fallbackOrder = 0): StoredTask | nul
   }
 }
 
-export function createTask(taskName: string, order: number, overrides: Partial<StoredTask> = {}): StoredTask {
+export function createTask(taskName: string, rank: string, overrides: Partial<StoredTask> = {}): StoredTask {
   const now = Date.now()
   return {
     ...DEFAULT_TASK_FIELDS,
@@ -91,14 +96,14 @@ export function createTask(taskName: string, order: number, overrides: Partial<S
     id: crypto.randomUUID(),
     taskName,
     isCompleted: false,
-    order,
+    rank,
     createdAt: now,
     updatedAt: now,
     ...overrides,
   }
 }
 
-export function normalizeProject(raw: unknown, fallbackOrder = 0): StoredProject | null {
+export function normalizeProject(raw: unknown, fallbackRank = ''): StoredProject | null {
   if (!isRecord(raw)) return null
   const id = nullableId(raw.id)
   const name = typeof raw.name === 'string' && raw.name.length > 0 ? raw.name : null
@@ -107,7 +112,7 @@ export function normalizeProject(raw: unknown, fallbackOrder = 0): StoredProject
     id,
     name,
     color: str(raw.color, '#1d4ed8'),
-    order: finiteNumber(raw.order, fallbackOrder),
+    rank: str(raw.rank, fallbackRank),
     // v4 之前的資料沒有這個欄位，補上現在的時間——比讓它是 0 更安全：
     // 0 會讓一筆舊資料在跟任何遠端版本比較時永遠「看起來最舊」而被覆蓋。
     updatedAt: finiteNumber(raw.updatedAt, Date.now()),
@@ -127,7 +132,7 @@ export function normalizeTag(raw: unknown): StoredTag | null {
   }
 }
 
-export function normalizeFilter(raw: unknown, fallbackOrder = 0): StoredFilter | null {
+export function normalizeFilter(raw: unknown, fallbackRank = ''): StoredFilter | null {
   if (!isRecord(raw)) return null
   const id = nullableId(raw.id)
   const name = typeof raw.name === 'string' && raw.name.length > 0 ? raw.name : null
@@ -139,7 +144,7 @@ export function normalizeFilter(raw: unknown, fallbackOrder = 0): StoredFilter |
     name,
     query,
     color: str(raw.color, '#7c3aed'),
-    order: finiteNumber(raw.order, fallbackOrder),
+    rank: str(raw.rank, fallbackRank),
     updatedAt: finiteNumber(raw.updatedAt, Date.now()),
   }
 }
@@ -213,7 +218,7 @@ export function groupByParent(tasks: readonly StoredTask[]): Map<string, StoredT
     if (list) list.push(task)
     else map.set(task.parentId, [task])
   }
-  for (const list of map.values()) list.sort((a, b) => a.order - b.order)
+  for (const list of map.values()) list.sort((a, b) => compareRankValues(a.rank, b.rank))
   return map
 }
 

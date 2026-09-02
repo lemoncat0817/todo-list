@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { between, compareRank, sortByRank, withJitter } from './rank'
+import { between, compareRank, compareRankValues, nextRank, sortByRank, withJitter } from './rank'
 
 describe('between', () => {
   it('兩端都是 null 時回傳一個中間值', () => {
@@ -121,5 +121,50 @@ describe('compareRank / sortByRank', () => {
   it('compareRank 對相同物件回傳 0', () => {
     const item = { id: 'x', rank: 'A' }
     expect(compareRank(item, item)).toBe(0)
+  })
+})
+
+describe('nextRank', () => {
+  it('空清單時回傳一個合法的鍵', () => {
+    expect(nextRank([])).toBe(between(null, null))
+  })
+
+  it('接在目前最大值之後，不受插入順序影響', () => {
+    const items = [
+      { id: 'b', rank: 'B' },
+      { id: 'a', rank: 'A' },
+    ]
+    const next = nextRank(items)
+    expect(next > 'B').toBe(true)
+  })
+
+  it('連續呼叫多次都嚴格遞增', () => {
+    let items: { id: string; rank: string }[] = []
+    for (let i = 0; i < 20; i++) {
+      const rank = nextRank(items)
+      items = [...items, { id: String(i), rank }]
+    }
+    const sorted = [...items].sort((a, b) => (a.rank < b.rank ? -1 : 1))
+    expect(items.map((i) => i.id)).toEqual(sorted.map((i) => i.id))
+  })
+})
+
+describe('compareRankValues', () => {
+  it('回傳負值／零／正值，符合 Array.sort 的慣例', () => {
+    expect(compareRankValues('A', 'B')).toBeLessThan(0)
+    expect(compareRankValues('B', 'A')).toBeGreaterThan(0)
+    expect(compareRankValues('A', 'A')).toBe(0)
+  })
+
+  it('可以直接取代 a.order - b.order 用在複合排序裡', () => {
+    const items = [
+      { priority: 1, rank: 'B' },
+      { priority: 1, rank: 'A' },
+      { priority: 2, rank: 'Z' },
+    ]
+    const sorted = [...items].sort(
+      (a, b) => b.priority - a.priority || compareRankValues(a.rank, b.rank),
+    )
+    expect(sorted.map((i) => i.rank)).toEqual(['Z', 'A', 'B'])
   })
 })

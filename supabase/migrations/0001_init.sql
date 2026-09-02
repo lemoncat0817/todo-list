@@ -29,7 +29,7 @@ create table public.tasks (
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   task_name text not null,
   is_completed boolean not null default false,
-  "order" double precision not null,
+  rank text not null,
   notes text not null default '',
   priority smallint not null default 0,
   due_date text,
@@ -49,7 +49,7 @@ create table public.projects (
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   name text not null,
   color text not null,
-  "order" double precision not null,
+  rank text not null,
   updated_at bigint not null,
   deleted_at bigint
 );
@@ -69,7 +69,7 @@ create table public.filters (
   name text not null,
   query text not null,
   color text not null,
-  "order" double precision not null,
+  rank text not null,
   updated_at bigint not null,
   deleted_at bigint
 );

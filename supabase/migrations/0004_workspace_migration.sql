@@ -123,8 +123,8 @@ begin
   insert into public.workspace_members (workspace_id, user_id, role)
   values (v_workspace, new.id, 'owner');
 
-  insert into public.projects (id, user_id, name, color, "order", workspace_id, is_inbox, updated_at)
-  values (gen_random_uuid(), new.id, '收件匣', '#6b7280', 0, v_workspace, true,
+  insert into public.projects (id, user_id, name, color, rank, workspace_id, is_inbox, updated_at)
+  values (gen_random_uuid(), new.id, '收件匣', '#6b7280', 'A', v_workspace, true,
           (extract(epoch from clock_timestamp()) * 1000)::bigint);
 
   return new;
@@ -189,8 +189,8 @@ update public.projects set workspace_id = public.personal_workspace_id(user_id) 
 update public.tags set workspace_id = public.personal_workspace_id(user_id) where workspace_id is null;
 update public.filters set workspace_id = public.personal_workspace_id(user_id) where workspace_id is null;
 
-insert into public.projects (id, user_id, name, color, "order", workspace_id, is_inbox, updated_at)
-select gen_random_uuid(), w.created_by, '收件匣', '#6b7280', 0, w.id, true,
+insert into public.projects (id, user_id, name, color, rank, workspace_id, is_inbox, updated_at)
+select gen_random_uuid(), w.created_by, '收件匣', '#6b7280', 'A', w.id, true,
        (extract(epoch from clock_timestamp()) * 1000)::bigint
   from public.workspaces w
  where not exists (select 1 from public.projects p where p.workspace_id = w.id and p.is_inbox);

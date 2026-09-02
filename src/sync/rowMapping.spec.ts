@@ -43,7 +43,7 @@ describe('rowMapping — tasks', () => {
 
 describe('rowMapping — projects／tags／filters', () => {
   it('專案往返等價', () => {
-    const project = { id: 'p1', name: '工作', color: '#1d4ed8', order: 3, updatedAt: 1000 }
+    const project = { id: 'p1', name: '工作', color: '#1d4ed8', rank: 'C', updatedAt: 1000 }
     expect(normalizeProject(fromRemoteProject(toRemoteProject(project)))).toEqual(project)
   })
 
@@ -53,7 +53,7 @@ describe('rowMapping — projects／tags／filters', () => {
   })
 
   it('篩選器往返等價', () => {
-    const filter = { id: 'f1', name: '要事', query: 'today & p1', color: '#7c3aed', order: 0, updatedAt: 1000 }
+    const filter = { id: 'f1', name: '要事', query: 'today & p1', color: '#7c3aed', rank: 'A', updatedAt: 1000 }
     expect(normalizeFilter(fromRemoteFilter(toRemoteFilter(filter)))).toEqual(filter)
   })
 })
