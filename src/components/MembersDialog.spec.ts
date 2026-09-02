@@ -89,6 +89,37 @@ describe('MembersDialog.vue', () => {
     expect((link.element as HTMLInputElement).value).toContain('#/accept-invite?token=')
   })
 
+  it('只有一個工作區時不顯示切換器', () => {
+    const auth = useAuthStore()
+    auth.session = fakeSession('u1')
+    const workspace = useWorkspaceStore()
+    workspace.currentWorkspaceId = 'w1'
+    workspace.workspaces = [{ id: 'w1', name: '個人工作區', is_personal: true, created_by: 'u1', updated_at: 1 }]
+
+    const w = mountDialog()
+
+    expect(w.find('select').exists()).toBe(false)
+  })
+
+  it('有多個工作區時顯示切換器，選擇後呼叫 selectWorkspace', async () => {
+    const auth = useAuthStore()
+    auth.session = fakeSession('u1')
+    const workspace = useWorkspaceStore()
+    workspace.currentWorkspaceId = 'w1'
+    workspace.workspaces = [
+      { id: 'w1', name: '個人工作區', is_personal: true, created_by: 'u1', updated_at: 1 },
+      { id: 'w2', name: '設計團隊', is_personal: false, created_by: 'u2', updated_at: 1 },
+    ]
+    const selectSpy = vi.spyOn(workspace, 'selectWorkspace').mockResolvedValue()
+
+    const w = mountDialog()
+    const select = w.find('select')
+    expect(select.exists()).toBe(true)
+    await select.setValue('w2')
+
+    expect(selectSpy).toHaveBeenCalledWith('w2')
+  })
+
   it('待處理邀請顯示信箱與撤銷按鈕', () => {
     const auth = useAuthStore()
     auth.session = fakeSession('u1')
