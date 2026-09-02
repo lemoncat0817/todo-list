@@ -60,7 +60,7 @@
     </dialog>
 
     <main class="flex min-w-0 grow flex-col overflow-hidden bg-surface">
-      <AppHeader />
+      <AppHeader @notifications="isNotificationsOpen = true" />
       <RouterView />
       <AppFooter />
     </main>
@@ -72,6 +72,7 @@
     <DataDialog :open="isDataOpen" @close="isDataOpen = false" />
     <AccountDialog v-if="isSyncConfigured" :open="isAccountOpen" @close="isAccountOpen = false" />
     <MembersDialog v-if="isSyncConfigured" :open="isMembersOpen" @close="isMembersOpen = false" />
+    <NotificationCenterDialog v-if="isSyncConfigured" :open="isNotificationsOpen" @close="isNotificationsOpen = false" />
     <CommandPalette :open="ui.isPaletteOpen" @close="ui.closePalette()" />
     <ShortcutsDialog :open="isHelpOpen" @close="isHelpOpen = false" />
   </div>
@@ -89,6 +90,7 @@ import CollectionsDialog from './components/CollectionsDialog.vue'
 import DataDialog from './components/DataDialog.vue'
 import AccountDialog from './components/AccountDialog.vue'
 import MembersDialog from './components/MembersDialog.vue'
+import NotificationCenterDialog from './components/NotificationCenterDialog.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import { useHistoryStore } from '@/stores/history'
@@ -122,6 +124,7 @@ const isHelpOpen = ref(false)
 const isDataOpen = ref(false)
 const isAccountOpen = ref(false)
 const isMembersOpen = ref(false)
+const isNotificationsOpen = ref(false)
 const drawerEl = ref<HTMLDialogElement | null>(null)
 
 const detailTask = computed(

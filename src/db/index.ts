@@ -27,6 +27,8 @@ export {
   saveActivity,
   loadAttachments,
   saveAttachments,
+  loadNotifications,
+  saveNotifications,
   getMeta,
   setMeta,
   loadOutbox,

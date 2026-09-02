@@ -8,6 +8,7 @@ import {
   STORE_COMMENTS,
   STORE_FILTERS,
   STORE_META,
+  STORE_NOTIFICATIONS,
   STORE_OUTBOX,
   STORE_PROJECTS,
   STORE_TAGS,
@@ -17,6 +18,7 @@ import {
   type StoredAttachment,
   type StoredComment,
   type StoredFilter,
+  type StoredNotification,
   type StoredProject,
   type StoredTag,
   type StoredTask,
@@ -26,6 +28,7 @@ import {
   normalizeAttachment,
   normalizeComment,
   normalizeFilter,
+  normalizeNotification,
   normalizeOp,
   normalizeProject,
   normalizeTag,
@@ -143,6 +146,13 @@ export function getDB(): Promise<IDBPDatabase> {
           if (!db.objectStoreNames.contains(STORE_ATTACHMENTS)) {
             const attachments = db.createObjectStore(STORE_ATTACHMENTS, { keyPath: 'id' })
             attachments.createIndex('by-taskId', 'taskId')
+          }
+        }
+
+        if (oldVersion < 9) {
+          // 同上，全新的 store，沒有既有資料要搬。
+          if (!db.objectStoreNames.contains(STORE_NOTIFICATIONS)) {
+            db.createObjectStore(STORE_NOTIFICATIONS, { keyPath: 'id' })
           }
         }
       },
@@ -313,6 +323,22 @@ export async function loadAttachments(): Promise<StoredAttachment[]> {
 
 export function saveAttachments(attachments: readonly StoredAttachment[]): Promise<void> {
   return replaceAll(STORE_ATTACHMENTS, attachments)
+}
+
+// -------------------------------------------------------------- notifications
+
+/** 純粹是拉取進來的快取，見 db/schema.ts 的 StoredNotification 說明——「標已讀」是直接打網路，不經過這裡。 */
+export async function loadNotifications(): Promise<StoredNotification[]> {
+  const db = await getDB()
+  const rows = await db.getAll(STORE_NOTIFICATIONS)
+  return rows
+    .map((row) => normalizeNotification(row))
+    .filter((n): n is StoredNotification => n !== null)
+    .sort((a, b) => b.createdAt - a.createdAt)
+}
+
+export function saveNotifications(notifications: readonly StoredNotification[]): Promise<void> {
+  return replaceAll(STORE_NOTIFICATIONS, notifications)
 }
 
 // ----------------------------------------------------------------- meta

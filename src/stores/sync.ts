@@ -8,6 +8,7 @@ import {
   type StoredAttachment,
   type StoredComment,
   type StoredFilter,
+  type StoredNotification,
   type StoredProject,
   type StoredTag,
   type StoredTask,
@@ -17,11 +18,13 @@ import {
   normalizeAttachment,
   normalizeComment,
   normalizeFilter,
+  normalizeNotification,
   normalizeProject,
   normalizeTag,
   normalizeTask,
 } from '@/domain/task'
 import { mergeByUpdatedAt } from '@/sync/merge'
+import { DEFAULT_NOTIFICATION_PREFS } from '@/sync/notificationsClient'
 import { sendOp } from '@/sync/rpc'
 import { SyncHttpError } from '@/sync/restClient'
 import { pullTable, type TableBinding } from '@/sync/tableSync'
@@ -31,6 +34,7 @@ import {
   TABLE_ATTACHMENTS,
   TABLE_COMMENTS,
   TABLE_FILTERS,
+  TABLE_NOTIFICATIONS,
   TABLE_PROJECTS,
   TABLE_TAGS,
   TABLE_TASKS,
@@ -38,6 +42,7 @@ import {
   fromRemoteAttachment,
   fromRemoteComment,
   fromRemoteFilter,
+  fromRemoteNotification,
   fromRemoteProject,
   fromRemoteTag,
   fromRemoteTask,
@@ -48,6 +53,7 @@ import { useActivityStore } from './activity'
 import { useAttachmentsStore } from './attachments'
 import { useCollectionsStore } from './collections'
 import { useCommentsStore } from './comments'
+import { useNotificationsStore } from './notifications'
 import { useWorkspaceStore } from './workspace'
 
 /**
@@ -92,6 +98,11 @@ const attachmentBinding: TableBinding<StoredAttachment> = {
   table: TABLE_ATTACHMENTS,
   fromRemote: fromRemoteAttachment,
   normalize: (raw) => normalizeAttachment(raw),
+}
+const notificationBinding: TableBinding<StoredNotification> = {
+  table: TABLE_NOTIFICATIONS,
+  fromRemote: fromRemoteNotification,
+  normalize: (raw) => normalizeNotification(raw),
 }
 
 /**
@@ -148,6 +159,7 @@ export const useSyncStore = defineStore('sync', () => {
   const comments = useCommentsStore()
   const activity = useActivityStore()
   const attachments = useAttachmentsStore()
+  const notifications = useNotificationsStore()
   const workspace = useWorkspaceStore()
 
   let inFlight: Promise<void> | null = null
@@ -337,6 +349,12 @@ export const useSyncStore = defineStore('sync', () => {
             attachments.mergeRemote(rows)
             void attachments.persist()
           })
+          // notifications 同理：markRead()／markAllRead() 已經直接打過網路了，
+          // 這裡的拉取是為了看到新產生的通知、以及在其他裝置標過已讀的狀態。
+          await pullAndMerge(notificationBinding, () => notifications.items, cursor, token, (rows) => {
+            notifications.mergeRemote(rows)
+            void notifications.persist()
+          })
 
           lastPulledAt.value = startedAt
           await persist()
@@ -423,11 +441,15 @@ export const useSyncStore = defineStore('sync', () => {
       comments.mergeRemote([])
       activity.mergeRemote([])
       attachments.mergeRemote([])
-      // activity／attachments 都不掛在 tasks.ts 的持久化 watcher 上（見
-      // 上面 syncOnce() 的註解），這裡清空後要自己補一次本地寫入，不然
-      // 清完的只是記憶體裡的狀態，IndexedDB 裡上一個帳號的資料還留著。
+      notifications.mergeRemote([])
+      notifications.prefs = DEFAULT_NOTIFICATION_PREFS
+      // activity／attachments／notifications 都不掛在 tasks.ts 的持久化
+      // watcher 上（見上面 syncOnce() 的註解），這裡清空後要自己補一次
+      // 本地寫入，不然清完的只是記憶體裡的狀態，IndexedDB 裡上一個帳號
+      // 的資料還留著。
       await activity.persist()
       await attachments.persist()
+      await notifications.persist()
       lastPulledAt.value = 0
       await clearOutbox()
       await persist()

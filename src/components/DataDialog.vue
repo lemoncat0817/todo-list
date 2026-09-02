@@ -91,6 +91,10 @@
         <h3 class="text-sm font-medium text-ink-soft">推播通知</h3>
 
         <p v-if="auth.status !== 'signed-in'" class="text-sm text-ink-faint">登入後才能開啟。</p>
+        <p v-else-if="push.isIosNotStandalone" class="text-sm text-ink-faint">
+          iOS 上要先把這個網站加到主畫面（分享→加入主畫面）才能開啟推播通知，
+          Safari 分頁裡沒有這個功能。
+        </p>
         <p v-else-if="!push.supported" class="text-sm text-ink-faint">這個瀏覽器不支援推播通知。</p>
         <p v-else-if="push.permission === 'denied'" class="text-sm text-ink-faint">
           通知已被瀏覽器封鎖。需要到瀏覽器的網站設定裡重新允許。
@@ -98,14 +102,41 @@
         <label v-else class="flex items-center gap-2 text-[15px] text-ink">
           <input type="checkbox" :checked="push.subscribed" :disabled="push.loading" class="size-4 accent-accent"
             @change="togglePush">
-          被留言 @提及時通知我
+          分頁關閉時也用推播通知我
         </label>
 
         <p v-if="push.error" role="alert" class="text-xs text-danger-ink">{{ push.error }}</p>
         <p class="text-xs text-ink-faint">
-          跟上面的到期提醒不同，這個<strong class="font-medium text-ink-soft">分頁關掉也收得到</strong>——但只涵蓋
-          「被 @提及」，還沒有其他事件會推播。
+          跟上面的到期提醒不同，這個<strong class="font-medium text-ink-soft">分頁關掉也收得到</strong>——實際會通知
+          哪些事件，由下面的「通知偏好」決定。
         </p>
+      </section>
+
+      <!--
+        通知偏好獨立於推播開關：這裡決定的是「這一類事件要不要被記錄、
+        要不要推播」，即使瀏覽器推播沒開（isPushConfigured 為 false，
+        或使用者沒訂閱），關掉某一類一樣會讓通知中心不再出現那一類。
+      -->
+      <section v-if="isSyncConfigured && auth.status === 'signed-in'" class="flex flex-col gap-2">
+        <h3 class="text-sm font-medium text-ink-soft">通知偏好</h3>
+
+        <label class="flex items-center gap-2 text-[15px] text-ink">
+          <input type="checkbox" :checked="notifications.prefs.notifyOnMention" class="size-4 accent-accent"
+            @change="notifications.setPref({ notifyOnMention: ($event.target as HTMLInputElement).checked })">
+          被留言 @提及時通知我
+        </label>
+        <label class="flex items-center gap-2 text-[15px] text-ink">
+          <input type="checkbox" :checked="notifications.prefs.notifyOnAssignment" class="size-4 accent-accent"
+            @change="notifications.setPref({ notifyOnAssignment: ($event.target as HTMLInputElement).checked })">
+          被指派任務時通知我
+        </label>
+        <label class="flex items-center gap-2 text-[15px] text-ink">
+          <input type="checkbox" :checked="notifications.prefs.dailyDigestEnabled" class="size-4 accent-accent"
+            @change="notifications.setPref({ dailyDigestEnabled: ($event.target as HTMLInputElement).checked })">
+          每天寄一封摘要信
+        </label>
+
+        <p v-if="notifications.error" role="alert" class="text-xs text-danger-ink">{{ notifications.error }}</p>
       </section>
 
       <div class="flex justify-end">
@@ -128,7 +159,8 @@ import { usePrefsStore } from '@/stores/prefs'
 import { useDueReminders } from '@/composables/useDueReminders'
 import { useAuthStore } from '@/stores/auth'
 import { usePushStore } from '@/stores/push'
-import { isPushConfigured } from '@/sync/config'
+import { useNotificationsStore } from '@/stores/notifications'
+import { isPushConfigured, isSyncConfigured } from '@/sync/config'
 
 /**
  * 資料與提醒。
@@ -145,6 +177,7 @@ const prefs = usePrefsStore()
 const reminders = useDueReminders()
 const auth = useAuthStore()
 const push = usePushStore()
+const notifications = useNotificationsStore()
 
 const dialogEl = ref<HTMLDialogElement | null>(null)
 const mode = ref<'merge' | 'replace'>('merge')
@@ -161,6 +194,7 @@ watch(
       importMessage.value = null
       permission.value = reminders.permission()
       if (isPushConfigured) void push.refresh()
+      if (isSyncConfigured && auth.status === 'signed-in') void notifications.refreshPrefs()
       if (!el.open) el.showModal()
     } else if (el.open) {
       el.close()

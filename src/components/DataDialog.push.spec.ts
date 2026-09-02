@@ -20,10 +20,20 @@ function stubPushSupported() {
   })
 }
 
+const originalUserAgent = globalThis.navigator.userAgent
+
+function stubIosUserAgent() {
+  Object.defineProperty(globalThis.navigator, 'userAgent', {
+    value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+    configurable: true,
+  })
+}
+
 afterEach(() => {
   Reflect.deleteProperty(globalThis.navigator, 'serviceWorker')
   Reflect.deleteProperty(globalThis, 'PushManager')
   Reflect.deleteProperty(globalThis, 'Notification')
+  Object.defineProperty(globalThis.navigator, 'userAgent', { value: originalUserAgent, configurable: true })
   vi.restoreAllMocks()
 })
 
@@ -76,5 +86,18 @@ describe('DataDialog.vue — 推播通知區塊（isPushConfigured 為 true）',
 
     const w = mountWith(DataDialog, pinia, { props: { open: true } })
     expect(w.text()).toContain('開啟推播通知失敗，請稍後再試一次')
+  })
+
+  it('iOS 尚未加到主畫面時顯示對應說明，不顯示推播開關', () => {
+    stubPushSupported()
+    stubIosUserAgent()
+    const pinia = freshPinia()
+    useAuthStore().status = 'signed-in'
+
+    const w = mountWith(DataDialog, pinia, { props: { open: true } })
+    expect(w.text()).toContain('先把這個網站加到主畫面')
+    // stubPushSupported() 順便也讓到期提醒那段判定成支援，所以這裡是 1
+    // 顆（到期提醒），不是 0——重點是「沒有第二顆」，也就是推播開關沒出現。
+    expect(w.findAll('input[type="checkbox"]').length).toBe(1)
   })
 })
