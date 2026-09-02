@@ -90,6 +90,7 @@ export function normalizeTask(raw: unknown, fallbackRank = ''): StoredTask | nul
     createdAt: finiteNumber(raw.createdAt, now),
     updatedAt: finiteNumber(raw.updatedAt, now),
     workspaceId: nullableId(raw.workspaceId),
+    assigneeId: nullableId(raw.assigneeId),
   }
 }
 

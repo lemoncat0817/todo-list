@@ -30,6 +30,10 @@
       <span class="size-2 rounded-full" :style="{ backgroundColor: tag.color }" aria-hidden="true" />
       #{{ tag.name }}
     </span>
+
+    <span v-if="assigneeName" class="rounded bg-sunken px-1.5 py-0.5 text-[12px] font-medium text-ink-soft">
+      → {{ assigneeName }}
+    </span>
   </p>
 </template>
 
@@ -39,6 +43,8 @@ import { PRIORITY_LABELS, type StoredTask } from '@/db/schema'
 import { describeDue, isOverdue } from '@/domain/dates'
 import { describeRecurrence } from '@/domain/recurrence'
 import { useCollectionsStore } from '@/stores/collections'
+import { useMemberName } from '@/composables/useMemberName'
+import { isSyncConfigured } from '@/sync/config'
 
 /**
  * 任務的中繼資料標記。
@@ -50,6 +56,7 @@ import { useCollectionsStore } from '@/stores/collections'
 const props = defineProps<{ task: StoredTask }>()
 
 const collections = useCollectionsStore()
+const memberName = useMemberName()
 
 const hasMeta = computed(
   () =>
@@ -57,7 +64,14 @@ const hasMeta = computed(
     props.task.dueDate !== null ||
     props.task.recurrence !== null ||
     props.task.projectId !== null ||
-    props.task.tagIds.length > 0,
+    props.task.tagIds.length > 0 ||
+    (isSyncConfigured && props.task.assigneeId !== null),
+)
+
+// isSyncConfigured 沒開的話 assigneeId 必然是 null（見 db/schema.ts 的
+// 欄位註解），這裡多判斷一次只是讓意圖更明確，不是真的會擋到什麼。
+const assigneeName = computed(() =>
+  isSyncConfigured && props.task.assigneeId !== null ? memberName(props.task.assigneeId) : null,
 )
 
 // 優先度不用彩虹色，只用強度遞增的單一維度——

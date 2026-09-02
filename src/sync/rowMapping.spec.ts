@@ -48,6 +48,7 @@ describe('rowMapping — tasks', () => {
       tagIds: ['t1', 't2'],
       parentId: null,
       recurrence: { freq: 'daily', interval: 1, byDay: [], byMonthDay: null, until: null, count: null },
+      assigneeId: 'bob',
     })
     const roundTripped = normalizeTask(fromRemoteTask(toRemoteTask(task)))
     expect(roundTripped).toEqual(task)

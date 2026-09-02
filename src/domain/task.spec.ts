@@ -30,7 +30,14 @@ describe('normalizeTask', () => {
       parentId: null,
       recurrence: null,
       completedAt: null,
+      assigneeId: null,
     })
+  })
+
+  it('assigneeId 是合法字串時保留，不是字串或空字串時歸零為 null', () => {
+    expect(normalizeTask({ id: 'a', taskName: 'x', assigneeId: 'bob' })?.assigneeId).toBe('bob')
+    expect(normalizeTask({ id: 'a', taskName: 'x', assigneeId: '' })?.assigneeId).toBeNull()
+    expect(normalizeTask({ id: 'a', taskName: 'x', assigneeId: 42 })?.assigneeId).toBeNull()
   })
 
   it.each([
