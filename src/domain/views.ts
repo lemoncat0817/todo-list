@@ -62,11 +62,24 @@ export interface ViewOptions {
   /** 分組標題需要專案名稱；沒有傳就退回「未分類」之類的通用標題。 */
   projects?: readonly NamedCollection[]
   /**
+   * 這個工作區的收件匣專案 id 集合（見 db/schema.ts 的 StoredProject.isInbox
+   * 說明）。task.projectId 落在這個集合裡時，跟 projectId 是 null 視為
+   * 同一件事——「收件匣」檢視、以及分組時的「未分類」桶都要認得這一點，
+   * 不然任務同步一輪回來就會從收件匣消失、改冒出一個看似使用者自建的
+   * 「收件匣」專案分組。
+   */
+  inboxProjectIds?: ReadonlySet<string>
+  /**
    * filter 檢視專用的述詞（由 domain/filterQuery 編譯而來）。
    * 傳 null 代表查詢寫錯了——此時不回傳任何任務，
    * 讓畫面能說「查詢有問題」而不是假裝「沒有符合的項目」。
    */
   predicate?: ((task: StoredTask) => boolean) | null
+}
+
+/** 沒有專案，或專案是這個工作區的收件匣——兩者都算「未分類」。 */
+function isUncategorized(task: StoredTask, inboxProjectIds?: ReadonlySet<string>): boolean {
+  return task.projectId === null || (inboxProjectIds?.has(task.projectId) ?? false)
 }
 
 /**
@@ -75,7 +88,12 @@ export interface ViewOptions {
  * 「今天」與「即將到來」都把逾期任務算進來，這是刻意的：逾期的事不會因為
  * 日期過了就不用做，把它藏在昨天等於讓使用者永遠看不到它。
  */
-export function matchesView(task: StoredTask, spec: ViewSpec, now: Date = new Date()): boolean {
+export function matchesView(
+  task: StoredTask,
+  spec: ViewSpec,
+  now: Date = new Date(),
+  inboxProjectIds?: ReadonlySet<string>,
+): boolean {
   switch (spec.kind) {
     case 'today':
       return (
@@ -88,7 +106,7 @@ export function matchesView(task: StoredTask, spec: ViewSpec, now: Date = new Da
         compareISODate(task.dueDate, addDays(todayOf(now), UPCOMING_DAYS - 1)) <= 0
       )
     case 'inbox':
-      return !task.isCompleted && task.projectId === null
+      return !task.isCompleted && isUncategorized(task, inboxProjectIds)
     case 'active':
       return !task.isCompleted
     case 'completed':
@@ -194,7 +212,7 @@ export function resolveView(
     (task) =>
       task.parentId === null &&
       matchesKeyword(task, keyword) &&
-      matchesView(task, spec, now) &&
+      matchesView(task, spec, now, options.inboxProjectIds) &&
       (spec.kind !== 'filter' || predicate(task)),
   )
 
@@ -246,7 +264,7 @@ function buildGroups(
   if (groupBy === 'project') {
     const byProject = new Map<string, StoredTask[]>()
     for (const task of matched) {
-      const key = task.projectId ?? ''
+      const key = isUncategorized(task, options.inboxProjectIds) ? '' : (task.projectId as string)
       const bucket = byProject.get(key)
       if (bucket) bucket.push(task)
       else byProject.set(key, [task])

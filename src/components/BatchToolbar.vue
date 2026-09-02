@@ -22,7 +22,7 @@
       <select id="batch-project" :value="''" :class="chipClass" @change="setProject">
         <option value="" disabled>移到專案…</option>
         <option value="none">未分類</option>
-        <option v-for="p in collections.projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+        <option v-for="p in collections.visibleProjects" :key="p.id" :value="p.id">{{ p.name }}</option>
       </select>
 
       <button type="button"
@@ -100,7 +100,7 @@ function setProject(event: Event): void {
   const raw = (event.target as HTMLSelectElement).value
   if (raw === '') return
   const projectId = raw === 'none' ? null : raw
-  const name = projectId === null ? '未分類' : (collections.projects.find((p) => p.id === projectId)?.name ?? '專案')
+  const name = projectId === null ? '未分類' : (collections.visibleProjects.find((p) => p.id === projectId)?.name ?? '專案')
   tasks.batchUpdate(ui.selectedIds, { projectId }, `移到「${name}」`)
   done()
 }

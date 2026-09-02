@@ -45,6 +45,16 @@ describe('matchesView', () => {
     expect(matchesView(makeTask('已完成', true), spec('inbox'), NOW)).toBe(false)
   })
 
+  it('收件匣：projectId 指向這個工作區真正的收件匣專案，等同沒有專案', () => {
+    // 見 db/schema.ts 的 StoredProject.isInbox 說明——task 同步一輪回來，
+    // projectId 會從 null 換成伺服器真正的收件匣 UUID，這裡不能因此漏收。
+    const inboxIds = new Set(['real-inbox-uuid'])
+    const task = makeTask('同步過的收件匣任務', false, { projectId: 'real-inbox-uuid' })
+    expect(matchesView(task, spec('inbox'), NOW, inboxIds)).toBe(true)
+    expect(matchesView(task, spec('inbox'), NOW)).toBe(false)
+    expect(matchesView(task, spec('project', 'real-inbox-uuid'), NOW, inboxIds)).toBe(true)
+  })
+
   it('專案與標籤依 id 比對', () => {
     const task = makeTask('分類過的', false, { projectId: 'p1', tagIds: ['t1'] })
     expect(matchesView(task, spec('project', 'p1'), NOW)).toBe(true)
@@ -223,6 +233,21 @@ describe('resolveView — 分組與排序設定', () => {
       projects: [{ id: 'p1', name: '工作' }],
     })
     expect(groups.map((g) => g.label)).toEqual(['工作', '未分類'])
+  })
+
+  it('依專案分組時，收件匣專案的任務併進「未分類」，不會自成一組', () => {
+    const withInboxTask = [...tasks, makeTask('同步過的收件匣任務', false, { projectId: 'inbox-uuid', order: 3 })]
+    const groups = resolveView(withInboxTask, spec('all'), {
+      now: NOW,
+      groupBy: 'project',
+      projects: [{ id: 'p1', name: '工作' }],
+      inboxProjectIds: new Set(['inbox-uuid']),
+    })
+    expect(groups.map((g) => g.label)).toEqual(['工作', '未分類'])
+    expect(groups.find((g) => g.label === '未分類')?.tasks.map((t) => t.taskName).sort()).toEqual([
+      '同步過的收件匣任務',
+      '未分類的事',
+    ])
   })
 
   it('依優先度分組時標題用對外的 P 編號', () => {

@@ -141,7 +141,7 @@ const isTaskView = computed(() => route.name !== 'stats')
  * 成本遠低於「使用者送出後才發現猜錯」的代價。
  */
 const parsed = computed(() =>
-  parseQuickAdd(draft.value, { projects: collections.projects, tags: collections.tags }),
+  parseQuickAdd(draft.value, { projects: collections.visibleProjects, tags: collections.tags }),
 )
 const tokens = computed(() => parsed.value.tokens)
 

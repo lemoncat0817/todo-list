@@ -55,3 +55,28 @@ describe('addTag 防重名', () => {
     expect(collections.tags).toHaveLength(1)
   })
 })
+
+describe('visibleProjects／inboxProjectIds', () => {
+  it('新建立的專案一律不是收件匣，會出現在 visibleProjects', () => {
+    const collections = setup()
+    const project = collections.addProject('工作')
+    expect(project.isInbox).toBe(false)
+    expect(collections.visibleProjects.map((p) => p.id)).toContain(project.id)
+    expect(collections.inboxProjectIds.size).toBe(0)
+  })
+
+  it('拉回來的收件匣專案只留在 projects，不會出現在 visibleProjects', () => {
+    const collections = setup()
+    collections.mergeRemote({
+      projects: [
+        { id: 'inbox-1', name: '收件匣', color: '#6b7280', rank: 'A', updatedAt: 1, isInbox: true },
+        { id: 'p1', name: '工作', color: '#1d4ed8', rank: 'B', updatedAt: 1, isInbox: false },
+      ],
+      tags: [],
+      filters: [],
+    })
+    expect(collections.projects.map((p) => p.id).sort()).toEqual(['inbox-1', 'p1'])
+    expect(collections.visibleProjects.map((p) => p.id)).toEqual(['p1'])
+    expect(collections.inboxProjectIds).toEqual(new Set(['inbox-1']))
+  })
+})

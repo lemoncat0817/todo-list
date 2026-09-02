@@ -95,11 +95,21 @@ export function toRemoteProject(project: StoredProject): Record<string, unknown>
     rank: project.rank,
     updated_at: project.updatedAt,
     deleted_at: null,
+    // is_inbox 刻意不送：這欄位完全由伺服器決定（handle_new_user() 與
+    // 既有帳號的補建遷移），create_project／apply_project_patch 這兩支
+    // RPC 也不讀 payload 裡的這個鍵——client 端永遠是唯讀。
   }
 }
 
 export function fromRemoteProject(row: Record<string, unknown>): unknown {
-  return { id: row.id, name: row.name, color: row.color, rank: row.rank, updatedAt: row.updated_at }
+  return {
+    id: row.id,
+    name: row.name,
+    color: row.color,
+    rank: row.rank,
+    updatedAt: row.updated_at,
+    isInbox: row.is_inbox,
+  }
 }
 
 // -------------------------------------------------------------------- tags

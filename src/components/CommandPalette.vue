@@ -95,7 +95,7 @@ const commands = computed<Command[]>(() => {
     })
   }
 
-  for (const project of collections.projects) {
+  for (const project of collections.visibleProjects) {
     list.push({
       key: `project:${project.id}`,
       group: '專案',

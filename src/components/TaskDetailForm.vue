@@ -39,7 +39,7 @@
       <select v-model="projectInput"
         class="h-9 rounded-lg border border-line bg-surface px-2.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none">
         <option value="">未分類</option>
-        <option v-for="p in collections.projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+        <option v-for="p in collections.visibleProjects" :key="p.id" :value="p.id">{{ p.name }}</option>
       </select>
     </label>
 
@@ -191,6 +191,8 @@ watch(
  * 讓「建立」按鈕對一個已存在的名字生效只會讓人以為自己多建了一個。
  */
 const projectNameError = computed(() =>
+  // 用未過濾的 projects：跟收件匣同名也要擋，理由同 CollectionsDialog.vue
+  // 的 projectNameError——store 的重名防線比對全量，這裡要一致。
   newProjectName.value !== '' && findByNormalizedName(collections.projects, newProjectName.value)
     ? '已有相同名稱的專案，請從上方選單選取'
     : null,
