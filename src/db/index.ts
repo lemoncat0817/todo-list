@@ -29,6 +29,8 @@ export {
   saveAttachments,
   loadNotifications,
   saveNotifications,
+  loadSections,
+  saveSections,
   getMeta,
   setMeta,
   loadOutbox,

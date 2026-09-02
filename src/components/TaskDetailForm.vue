@@ -279,6 +279,7 @@ function save(): void {
   if (!current || current.taskName.trim() === '') return
 
   const dueDate = isValidISODate(dueDateInput.value) ? dueDateInput.value : null
+  const nextProjectId = projectInput.value === '' ? null : projectInput.value
   tasks.update(current.id, {
     taskName: current.taskName.trim(),
     notes: current.notes,
@@ -286,7 +287,12 @@ function save(): void {
     dueDate,
     // 沒有日期的時間沒有意義
     dueTime: dueDate !== null && isValidTime(dueTimeInput.value) ? dueTimeInput.value : null,
-    projectId: projectInput.value === '' ? null : projectInput.value,
+    projectId: nextProjectId,
+    // 換了專案的話，原本的區段（看板欄）一定屬於舊專案，繼續留著會被
+    // 伺服器端的 validate_task_section 擋下——搬專案視同「移出看板」，
+    // 沒換專案則保留原本的區段不動（這裡不提供改區段的欄位，那是看板
+    // 拖曳的事）。
+    sectionId: nextProjectId === current.projectId ? current.sectionId : null,
     tagIds: current.tagIds,
     recurrence: current.recurrence,
     // 欄位隱藏時（沒開同步／沒登入）assigneeInput 不會反映 draft 真正的

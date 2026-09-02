@@ -15,6 +15,7 @@ export const DB_NAME = 'todolist'
  * v7: 新增 activity（活動記錄，M3）——同上，全新 store。
  * v8: 新增 attachments（附件 metadata，M3）——同上，全新 store。
  * v9: 新增 notifications（通知中心，M4）——同上，全新 store。
+ * v10: 新增 sections（看板欄，M5）——同上，全新 store。
  *
  * projects／tags／filters 後來補上的 updatedAt（跨裝置同步要用它判斷哪一邊
  * 較新，見 sync/merge.ts）不需要新的版號：IndexedDB 的 object store 本來就
@@ -23,7 +24,7 @@ export const DB_NAME = 'todolist'
  * 視為現在）即可，跟其他任何邊界正規化走同一條路。只有新增／變動 store
  * 或 index 結構、或既有資料需要真的換算才需要動版號。
  */
-export const DB_VERSION = 9
+export const DB_VERSION = 10
 
 export const STORE_TASKS = 'tasks'
 export const STORE_META = 'meta'
@@ -35,6 +36,7 @@ export const STORE_COMMENTS = 'comments'
 export const STORE_ACTIVITY = 'activity'
 export const STORE_ATTACHMENTS = 'attachments'
 export const STORE_NOTIFICATIONS = 'notifications'
+export const STORE_SECTIONS = 'sections'
 
 /** meta 用來記錄一次性遷移是否已完成，避免重複執行。 */
 export const META_MIGRATED_FROM_LOCALSTORAGE = 'migratedFromLocalStorage'
@@ -101,6 +103,9 @@ export type OpKind =
   | 'comment.create'
   | 'comment.patch'
   | 'comment.delete'
+  | 'section.create'
+  | 'section.patch'
+  | 'section.delete'
 
 export interface Op {
   id: string
@@ -218,6 +223,13 @@ export interface StoredTask {
    * 沒有同步就沒有「別人」可以指派。
    */
   assigneeId: string | null
+  /**
+   * 所屬區段（M5，看板檢視的欄）；null 代表不屬於任何區段——這在專案
+   * 沒有建立區段時是常態，不是異常狀態。跟 assigneeId 一樣只有伺服器端
+   * 驗證合法性（必須屬於任務所在的專案，見 0018 migration 的
+   * validate_task_section trigger），純本機模式下這裡永遠是 null。
+   */
+  sectionId: string | null
 }
 
 export interface StoredProject {
@@ -301,6 +313,20 @@ export interface StoredComment {
    */
   mentionedUserIds: string[]
   createdAt: number
+  updatedAt: number
+}
+
+/**
+ * 區段（Section，M5）——專案內的分組，也是看板檢視的欄來源。
+ * 沒有 workspaceId 欄位：跟留言一樣完全依附於 projectId 反推所屬工作區
+ * （見 supabase/migrations/0018_sections.sql），不需要自己快取一份。
+ */
+export interface StoredSection {
+  id: string
+  projectId: string
+  name: string
+  /** 看板欄本身的順序，跟欄內任務的順序（StoredTask.rank）是兩個獨立的排序軸。 */
+  rank: string
   updatedAt: number
 }
 
@@ -394,6 +420,7 @@ export const DEFAULT_TASK_FIELDS: Omit<
   completedAt: null,
   workspaceId: null,
   assigneeId: null,
+  sectionId: null,
 }
 
 /**

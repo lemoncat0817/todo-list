@@ -35,6 +35,7 @@ import { useCommentsStore } from './comments'
 import { useActivityStore } from './activity'
 import { useAttachmentsStore } from './attachments'
 import { useNotificationsStore } from './notifications'
+import { useSectionsStore } from './sections'
 import { useWorkspaceStore } from './workspace'
 import { useUiStore } from './ui'
 
@@ -132,6 +133,7 @@ export const useTasksStore = defineStore('tasks', () => {
   const activity = useActivityStore()
   const attachments = useAttachmentsStore()
   const notifications = useNotificationsStore()
+  const sections = useSectionsStore()
   const workspace = useWorkspaceStore()
   const ui = useUiStore()
   const prefs = usePrefsStore()
@@ -292,6 +294,7 @@ export const useTasksStore = defineStore('tasks', () => {
           remoteMergedIds = new Set()
           await collections.flush()
           await comments.flush()
+          await sections.flush()
           // 寫成功之後才更新指紋：失敗時保持原狀，下一次會重試同一批
           persistedIndex = nextFingerprint
         } while (dirty)
@@ -322,6 +325,7 @@ export const useTasksStore = defineStore('tasks', () => {
       persistedIndex = new Map(snapshot().map((t) => [t.id, JSON.stringify(t)]))
       await collections.load()
       await comments.load()
+      await sections.load()
       // activity 不需要跟 flush() 的 watcher 掛勾——它完全唯讀，唯一的
       // 寫入路徑是 stores/sync.ts 拉到新資料後直接呼叫 activity.persist()。
       await activity.load()
@@ -351,6 +355,7 @@ export const useTasksStore = defineStore('tasks', () => {
       () => collections.tags,
       () => collections.filters,
       () => comments.items,
+      () => sections.items,
     ],
     () => {
       if (hydrating) return
@@ -547,6 +552,64 @@ export const useTasksStore = defineStore('tasks', () => {
       undo: () => {
         const t = items.value.find((x) => x.id === id)
         if (t) t.rank = previousRank
+      },
+    })
+  }
+
+  /**
+   * 看板拖曳：把任務放進某個區段（可能跟原本同一個），可選在某張卡片
+   * 之前/之後。跟 move() 最大的不同是排序範圍——move() 對著全域 rank
+   * 排序找鄰居，這裡刻意只在「同一個專案、同一個目標區段」的任務裡找
+   * 鄰居：區段是子集合，鄰居要是取自全域排序，中間可能藏著其他區段的
+   * 任務，算出來的 rank 會插在錯的地方，看起來「拖對了但排序亂了」。
+   * targetId 為 null 代表拖到欄位最後面（或欄位本來是空的）。
+   */
+  function moveToSection(
+    id: string,
+    sectionId: string | null,
+    targetId: string | null,
+    position: 'before' | 'after' = 'after',
+  ): void {
+    const moving = items.value.find((t) => t.id === id)
+    if (!moving) return
+
+    const previousSectionId = moving.sectionId
+    const previousRank = moving.rank
+
+    const columnTasks = sortByRank(
+      items.value.filter((t) => t.projectId === moving.projectId && t.sectionId === sectionId && t.id !== id),
+    )
+
+    let nextRankValue: string
+    const targetIndex = targetId === null ? -1 : columnTasks.findIndex((t) => t.id === targetId)
+    if (targetIndex === -1) {
+      nextRankValue = nextRank(columnTasks)
+    } else {
+      const target = columnTasks[targetIndex] as StoredTask
+      const neighbour = columnTasks[position === 'before' ? targetIndex - 1 : targetIndex + 1] ?? null
+      try {
+        nextRankValue = withJitter(
+          position === 'before'
+            ? between(neighbour?.rank ?? null, target.rank)
+            : between(target.rank, neighbour?.rank ?? null),
+        )
+      } catch {
+        return
+      }
+    }
+
+    moving.sectionId = sectionId
+    moving.rank = nextRankValue
+    moving.updatedAt = Date.now()
+
+    history.record({
+      label: `移動「${moving.taskName}」`,
+      undo: () => {
+        const t = items.value.find((x) => x.id === id)
+        if (t) {
+          t.sectionId = previousSectionId
+          t.rank = previousRank
+        }
       },
     })
   }
@@ -798,6 +861,33 @@ export const useTasksStore = defineStore('tasks', () => {
     })
   }
 
+  /**
+   * 刪除一個看板欄——一律只是把裡面的卡片移出來（section_id 清成
+   * null），不連帶刪除任務。跟 removeProject() 的「deleteTasks 選項」
+   * 不同：專案刪除有「這批任務也不要了」的合理情境，區段只是任務的
+   * 分類標籤，刪掉標籤不該連任務一起消失。
+   */
+  function removeSection(id: string): void {
+    const section = sections.removeSection(id)
+    if (!section) return
+
+    const affected = items.value.filter((t) => t.sectionId === id).map((t) => ({ ...t }))
+    for (const task of items.value) {
+      if (task.sectionId === id) task.sectionId = null
+    }
+
+    history.record({
+      label: `刪除區段「${section.name}」，${affected.length} 項任務移出看板欄`,
+      undo: () => {
+        sections.restoreSection(section)
+        const ids = new Set(affected.map((a) => a.id))
+        for (const task of items.value) {
+          if (ids.has(task.id)) task.sectionId = id
+        }
+      },
+    })
+  }
+
   return {
     items,
     visibleItems,
@@ -822,6 +912,7 @@ export const useTasksStore = defineStore('tasks', () => {
     clearCompleted,
     toggle,
     move,
+    moveToSection,
     setPriority,
     reschedule,
     batchUpdate,
@@ -834,5 +925,6 @@ export const useTasksStore = defineStore('tasks', () => {
     toggleTag,
     removeProject,
     removeTag,
+    removeSection,
   }
 })

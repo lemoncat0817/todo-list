@@ -23,7 +23,14 @@ describe('prefs store', () => {
     const prefs = setup()
     expect(prefs.sortBy).toBe('manual')
     expect(prefs.groupBy).toBe('none')
+    expect(prefs.projectViewMode, '預設清單，不無故換成看板').toBe('list')
     expect(prefs.sidebarCollapsed, '預設展開，不無故收合導覽').toBe(false)
+  })
+
+  it('專案檢視模式（清單／看板）會被記住', async () => {
+    setup().setProjectViewMode('board')
+    await nextTick()
+    expect(setup().projectViewMode, '重新建立後仍是看板').toBe('board')
   })
 
   it('側邊導覽收合狀態會被記住', async () => {
@@ -53,6 +60,7 @@ describe('prefs store', () => {
       const prefs = setup()
       expect(prefs.sortBy, bad).toBe('manual')
       expect(prefs.groupBy, bad).toBe('none')
+      expect(prefs.projectViewMode, bad).toBe('list')
       expect(prefs.sidebarCollapsed, bad).toBe(false)
     }
   })

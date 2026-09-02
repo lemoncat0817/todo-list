@@ -11,6 +11,7 @@ import {
   STORE_NOTIFICATIONS,
   STORE_OUTBOX,
   STORE_PROJECTS,
+  STORE_SECTIONS,
   STORE_TAGS,
   STORE_TASKS,
   type Op,
@@ -20,6 +21,7 @@ import {
   type StoredFilter,
   type StoredNotification,
   type StoredProject,
+  type StoredSection,
   type StoredTag,
   type StoredTask,
 } from './schema'
@@ -31,10 +33,11 @@ import {
   normalizeNotification,
   normalizeOp,
   normalizeProject,
+  normalizeSection,
   normalizeTag,
   normalizeTask,
 } from '@/domain/task'
-import { nextRank } from '@/domain/rank'
+import { compareRankValues, nextRank } from '@/domain/rank'
 
 /**
  * IndexedDB 的存取層。
@@ -153,6 +156,15 @@ export function getDB(): Promise<IDBPDatabase> {
           // 同上，全新的 store，沒有既有資料要搬。
           if (!db.objectStoreNames.contains(STORE_NOTIFICATIONS)) {
             db.createObjectStore(STORE_NOTIFICATIONS, { keyPath: 'id' })
+          }
+        }
+
+        if (oldVersion < 10) {
+          // 同上，全新的 store。索引依 projectId：看板頁面只會一次讀
+          // 「這個專案的區段」，不會整表掃描。
+          if (!db.objectStoreNames.contains(STORE_SECTIONS)) {
+            const sections = db.createObjectStore(STORE_SECTIONS, { keyPath: 'id' })
+            sections.createIndex('by-projectId', 'projectId')
           }
         }
       },
@@ -339,6 +351,26 @@ export async function loadNotifications(): Promise<StoredNotification[]> {
 
 export function saveNotifications(notifications: readonly StoredNotification[]): Promise<void> {
   return replaceAll(STORE_NOTIFICATIONS, notifications)
+}
+
+// ------------------------------------------------------------------ sections
+
+/**
+ * rank 的排序範圍是「同一個專案內」，不是全域——這裡仍然排一次序純粹是
+ * 為了讀取結果穩定（同一份資料每次讀出來順序一致），看板頁面實際渲染
+ * 時還是會依 projectId 再篩一次、依 rank 再排一次。
+ */
+export async function loadSections(): Promise<StoredSection[]> {
+  const db = await getDB()
+  const rows = await db.getAll(STORE_SECTIONS)
+  return rows
+    .map((row) => normalizeSection(row))
+    .filter((s): s is StoredSection => s !== null)
+    .sort((a, b) => compareRankValues(a.rank, b.rank))
+}
+
+export function saveSections(sections: readonly StoredSection[]): Promise<void> {
+  return replaceAll(STORE_SECTIONS, sections)
 }
 
 // ----------------------------------------------------------------- meta
