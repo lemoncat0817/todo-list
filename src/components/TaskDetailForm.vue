@@ -1,43 +1,63 @@
 <template>
   <form v-if="draft" class="flex flex-col gap-4" @submit.prevent="save">
+    <!--
+      同時檢視者（補做計畫書第 08 節）：只在有其他人也開著這筆任務時
+      才佔位置，平常（只有自己在看）不留一條空的列。名字而非真的頭像
+      ——這個 app 從沒實際渲染過 profiles.avatar_url，跟其餘線上狀態
+      （MembersDialog.vue 的圓點）走同一種輕量表示法。
+    -->
+    <p v-if="presence.viewers.value.length > 0" class="-mb-1 flex items-center gap-1.5 text-xs text-ink-faint">
+      <span>同時檢視：</span>
+      <span v-for="v in presence.viewers.value" :key="v.userId"
+        class="rounded-full bg-accent-soft px-2 py-0.5 font-medium text-accent-ink">
+        {{ memberName(v.userId) }}
+      </span>
+    </p>
+
     <label class="flex flex-col gap-1.5 text-sm font-medium text-ink-soft">
       名稱
-      <input v-model.trim="draft.taskName" required
-        class="h-9 rounded-lg border border-line bg-surface px-2.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none">
+      <input v-model.trim="draft.taskName" required :class="fieldClass('taskName')"
+        class="h-9 rounded-lg border border-line bg-surface px-2.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none"
+        @focus="presence.reportFocus('taskName')" @blur="presence.reportFocus(null)">
     </label>
 
     <label class="flex flex-col gap-1.5 text-sm font-medium text-ink-soft">
       備註
-      <textarea v-model="draft.notes" rows="2"
-        class="min-h-16 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none" />
+      <textarea v-model="draft.notes" rows="2" :class="fieldClass('notes')"
+        class="min-h-16 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none"
+        @focus="presence.reportFocus('notes')" @blur="presence.reportFocus(null)" />
     </label>
 
     <div class="flex flex-wrap gap-3">
       <label class="flex flex-col gap-1.5 text-sm font-medium text-ink-soft">
         優先度
-        <select v-model.number="draft.priority"
-          class="h-9 rounded-lg border border-line bg-surface px-2.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none">
+        <select v-model.number="draft.priority" :class="fieldClass('priority')"
+          class="h-9 rounded-lg border border-line bg-surface px-2.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none"
+          @focus="presence.reportFocus('priority')" @blur="presence.reportFocus(null)">
           <option v-for="p in PRIORITY_ORDER" :key="p" :value="p">{{ PRIORITY_DESCRIPTIONS[p] }}</option>
         </select>
       </label>
 
       <label class="flex flex-col gap-1.5 text-sm font-medium text-ink-soft">
         到期日
-        <input v-model="dueDateInput" type="date"
-          class="h-9 rounded-lg border border-line bg-surface px-2.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none">
+        <input v-model="dueDateInput" type="date" :class="fieldClass('dueDate')"
+          class="h-9 rounded-lg border border-line bg-surface px-2.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none"
+          @focus="presence.reportFocus('dueDate')" @blur="presence.reportFocus(null)">
       </label>
 
       <label class="flex flex-col gap-1.5 text-sm font-medium text-ink-soft">
         時間
-        <input v-model="dueTimeInput" type="time" :disabled="!dueDateInput"
-          class="h-9 rounded-lg border border-line bg-surface px-2.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none disabled:bg-sunken disabled:text-ink-faint">
+        <input v-model="dueTimeInput" type="time" :disabled="!dueDateInput" :class="fieldClass('dueDate')"
+          class="h-9 rounded-lg border border-line bg-surface px-2.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none disabled:bg-sunken disabled:text-ink-faint"
+          @focus="presence.reportFocus('dueDate')" @blur="presence.reportFocus(null)">
       </label>
     </div>
 
     <label class="flex flex-col gap-1.5 text-sm font-medium text-ink-soft">
       專案
-      <select v-model="projectInput"
-        class="h-9 rounded-lg border border-line bg-surface px-2.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none">
+      <select v-model="projectInput" :class="fieldClass('projectId')"
+        class="h-9 rounded-lg border border-line bg-surface px-2.5 text-[15px] font-normal text-ink focus:border-accent focus:outline-none"
+        @focus="presence.reportFocus('projectId')" @blur="presence.reportFocus(null)">
         <option value="">未分類</option>
         <option v-for="p in collections.visibleProjects" :key="p.id" :value="p.id">{{ p.name }}</option>
       </select>
@@ -172,6 +192,8 @@ import { isValidISODate, isValidTime } from '@/domain/dates'
 import { findByNormalizedName } from '@/domain/filtering'
 import { isSyncConfigured } from '@/sync/config'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useTaskPresence } from '@/composables/useTaskPresence'
+import { useMemberName } from '@/composables/useMemberName'
 import TaskComments from './TaskComments.vue'
 import TaskActivity from './TaskActivity.vue'
 import TaskAttachments from './TaskAttachments.vue'
@@ -193,6 +215,15 @@ const tasks = useTasksStore()
 const collections = useCollectionsStore()
 const auth = useAuthStore()
 const workspace = useWorkspaceStore()
+const memberName = useMemberName()
+
+const taskId = computed(() => props.task?.id ?? null)
+const presence = useTaskPresence(taskId)
+
+/** 有其他檢視者正聚焦在這個欄位時，畫一圈柔和的邊框——不上鎖，純提示。 */
+function fieldClass(field: string): string {
+  return presence.isFieldFocusedByOther(field) ? 'ring-2 ring-accent/50' : ''
+}
 
 const draft = ref<StoredTask | null>(null)
 const dueDateInput = ref('')

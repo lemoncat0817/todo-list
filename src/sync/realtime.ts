@@ -131,6 +131,76 @@ export function subscribeToWorkspace(opts: SubscribeOptions): WorkspaceSubscript
   }
 }
 
+// ------------------------------------------------------ 任務層級的線上狀態
+
+/**
+ * 補做：計畫書要的是「任務詳情面板顯示同時檢視者的頭像；有人正在編輯
+ * 某欄位時，該欄位顯示柔和的邊框提示」——上面的 subscribeToWorkspace()
+ * 只做到工作區層級（誰現在開著這個工作區），沒有做到「誰正在看這一筆
+ * 任務」這一層，這裡補上。
+ *
+ * 跟工作區頻道是同一個 client、不同頻道（`task:${taskId}`），一樣用
+ * presence.key = userId 讓同一個人開兩個分頁疊成同一份線上狀態。
+ * focused_field 是額外的 track() payload，不是 Realtime 內建概念——
+ * 純粹是「這個使用者現在焦點在哪個欄位」的自由格式字串，跟
+ * TaskDetailForm.vue 的欄位識別碼對應，不做鎖定，只做提示（見計畫書
+ * 「但不上鎖」那句——鎖會在斷線時留下無法解除的殘留狀態）。
+ */
+export interface TaskPresenceEntry {
+  userId: string
+  focusedField: string | null
+}
+
+export interface TaskPresenceSubscription {
+  /** 回報／更新自己目前聚焦的欄位；傳 null 代表沒有聚焦在任何欄位。 */
+  updateFocus: (focusedField: string | null) => void
+  stop: () => void
+}
+
+export interface TaskPresenceOptions {
+  taskId: string
+  userId: string
+  getAccessToken: () => Promise<string | null>
+  /** 這個任務目前的檢視者集合有變動時觸發（不含自己）。 */
+  onChange: (viewers: readonly TaskPresenceEntry[]) => void
+}
+
+export function subscribeToTaskPresence(opts: TaskPresenceOptions): TaskPresenceSubscription {
+  const rt = getClient(opts.getAccessToken)
+  const channel: RealtimeChannel = rt.channel(`task:${opts.taskId}`, {
+    config: { presence: { key: opts.userId } },
+  })
+
+  function currentViewers(): TaskPresenceEntry[] {
+    const state = channel.presenceState<{ user_id: string; focused_field: string | null }>()
+    return Object.entries(state)
+      .filter(([userId]) => userId !== opts.userId)
+      .map(([userId, entries]) => ({ userId, focusedField: entries[0]?.focused_field ?? null }))
+  }
+
+  channel.on('presence', { event: 'sync' }, () => {
+    opts.onChange(currentViewers())
+  })
+
+  let focusedField: string | null = null
+  channel.subscribe((status) => {
+    if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
+      void channel.track({ user_id: opts.userId, focused_field: focusedField })
+    }
+  })
+
+  return {
+    updateFocus: (nextFocusedField) => {
+      focusedField = nextFocusedField
+      void channel.track({ user_id: opts.userId, focused_field: focusedField })
+    },
+    stop: () => {
+      void channel.untrack()
+      void channel.unsubscribe()
+    },
+  }
+}
+
 /** 測試與登出時用：關掉共用連線，讓下次呼叫重新建立。 */
 export function resetRealtimeClient(): void {
   void client?.disconnect()

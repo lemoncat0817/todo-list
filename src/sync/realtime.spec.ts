@@ -86,7 +86,7 @@ vi.mock('@supabase/realtime-js', async (importOriginal) => {
   }
 })
 
-const { subscribeToWorkspace, resetRealtimeClient } = await import('./realtime')
+const { subscribeToWorkspace, subscribeToTaskPresence, resetRealtimeClient } = await import('./realtime')
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -292,5 +292,66 @@ describe('subscribeToWorkspace', () => {
 
       expect(lastChannel?.untrackCalls).toBe(1)
     })
+  })
+})
+
+describe('subscribeToTaskPresence', () => {
+  it('連上時用自己的 user id、目前聚焦欄位（一開始是 null）呼叫 track()', () => {
+    subscribeToTaskPresence({
+      taskId: 't1',
+      userId: 'u1',
+      getAccessToken: async () => 'token',
+      onChange: vi.fn(),
+    })
+
+    lastChannel?.emitStatus(REALTIME_SUBSCRIBE_STATES.SUBSCRIBED)
+
+    expect(lastChannel?.trackCalls).toHaveLength(1)
+    expect(lastChannel?.trackCalls[0]).toEqual({ user_id: 'u1', focused_field: null })
+  })
+
+  it('updateFocus() 用新的聚焦欄位重新 track()', () => {
+    const sub = subscribeToTaskPresence({
+      taskId: 't1',
+      userId: 'u1',
+      getAccessToken: async () => 'token',
+      onChange: vi.fn(),
+    })
+    lastChannel?.emitStatus(REALTIME_SUBSCRIBE_STATES.SUBSCRIBED)
+
+    sub.updateFocus('taskName')
+
+    expect(lastChannel?.trackCalls.at(-1)).toEqual({ user_id: 'u1', focused_field: 'taskName' })
+  })
+
+  it('presence 同步事件送達時，onChange 收到除了自己以外的檢視者', () => {
+    const onChange = vi.fn()
+    subscribeToTaskPresence({
+      taskId: 't1',
+      userId: 'me',
+      getAccessToken: async () => 'token',
+      onChange,
+    })
+
+    lastChannel?.emitPresenceSync({
+      me: [{ presence_ref: 'ref1', user_id: 'me', focused_field: null }],
+      bob: [{ presence_ref: 'ref2', user_id: 'bob', focused_field: 'notes' }],
+    })
+
+    expect(onChange).toHaveBeenCalledWith([{ userId: 'bob', focusedField: 'notes' }])
+  })
+
+  it('stop() 會 untrack 並取消訂閱', () => {
+    const sub = subscribeToTaskPresence({
+      taskId: 't1',
+      userId: 'u1',
+      getAccessToken: async () => 'token',
+      onChange: vi.fn(),
+    })
+
+    sub.stop()
+
+    expect(lastChannel?.untrackCalls).toBe(1)
+    expect(lastChannel?.unsubscribed).toBe(true)
   })
 })
