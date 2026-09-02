@@ -8,6 +8,7 @@ import {
   fetchWorkspaceMembers,
   removeMember,
   revokeInvitation,
+  sendInvitationEmail,
   updateMemberRole,
   type InvitationRow,
   type MemberRole,
@@ -138,8 +139,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return loadMembers()
   }
 
-  /** 回傳一次性邀請連結的 token（明文，只有這裡拿得到一次），失敗時回傳 null 並設定 error。 */
-  async function invite(email: string, role: Exclude<MemberRole, 'owner'>): Promise<string | null> {
+  /**
+   * 建立邀請連結，並盡量把信寄出去（M2 補做）。回傳的連結永遠是可靠的
+   * ——不管信有沒有寄出，複製連結都要能用；`emailSent` 只是給畫面決定
+   * 要不要多顯示一句「已寄出邀請信」，不是唯一的成功指標。
+   *
+   * 連結在這裡組（不是留給 MembersDialog.vue），因為寄信跟複製連結
+   * 用的必須是同一個字串，兩邊各自組一次容易兜不起來。
+   */
+  async function invite(
+    email: string,
+    role: Exclude<MemberRole, 'owner'>,
+  ): Promise<{ link: string; emailSent: boolean } | null> {
     const token = accessToken()
     const workspaceId = currentWorkspaceId.value
     if (!token || !workspaceId) return null
@@ -147,7 +158,30 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     try {
       const inviteToken = await createInvitation(workspaceId, email, role, token)
       await loadMembers()
-      return inviteToken
+      const link = `${location.origin}${location.pathname}#/accept-invite?token=${inviteToken}`
+
+      let emailSent = false
+      try {
+        const myUserId = auth.session?.user.id
+        const inviterName = members.value.find((m) => m.user_id === myUserId)?.profiles?.display_name ?? ''
+        emailSent = await sendInvitationEmail(
+          {
+            workspaceId,
+            workspaceName: currentWorkspace.value?.name ?? '',
+            email,
+            role,
+            inviteLink: link,
+            inviterName,
+          },
+          token,
+        )
+      } catch (e) {
+        // 寄信失敗不影響邀請本身——連結已經建立好了，使用者永遠可以
+        // 自己複製傳送，不用因為寄信這一步失敗就讓整個邀請動作跟著報錯。
+        console.error('[workspace] 寄送邀請信失敗，改用複製連結', e)
+      }
+
+      return { link, emailSent }
     } catch (e) {
       console.error('[workspace] 建立邀請失敗', e)
       error.value = '邀請沒有送出，請稍後再試一次'

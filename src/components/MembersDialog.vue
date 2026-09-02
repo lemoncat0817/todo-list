@@ -64,7 +64,8 @@
         <section class="flex flex-col gap-2 border-t border-line pt-3">
           <h3 class="text-sm font-medium text-ink-soft">邀請新成員</h3>
           <p class="text-xs text-ink-faint">
-            這裡不會自動寄信——建立邀請後複製連結，自行透過任何管道傳給對方即可。
+            建立後會嘗試寄一封邀請信；不管信有沒有寄成功，都會給你一個連結，
+            可以自行透過任何管道傳給對方。
           </p>
 
           <form class="flex gap-2" @submit.prevent="submitInvite">
@@ -85,17 +86,26 @@
             </button>
           </form>
 
-          <div v-if="inviteLink" class="flex items-center gap-2 rounded-lg bg-sunken px-2.5 py-2">
-            <label class="sr-only" for="invite-link">邀請連結</label>
-            <input id="invite-link" :value="inviteLink" readonly
-              class="h-7 min-w-0 grow rounded border border-transparent bg-transparent px-1 text-xs text-ink-soft focus:border-accent focus:outline-none"
-              @focus="($event.target as HTMLInputElement).select()">
-            <button type="button"
-              class="shrink-0 rounded-md border border-line px-2 py-1 text-xs font-medium text-ink-soft transition-colors hover:bg-surface hover:text-ink"
-              @click="copyInviteLink">
-              {{ copied ? '已複製' : '複製' }}
-            </button>
-          </div>
+          <template v-if="inviteLink">
+            <p v-if="emailSent" role="status" class="text-xs text-success-ink">
+              邀請信已寄出。對方也可以直接用下面這個連結加入：
+            </p>
+            <p v-else class="text-xs text-ink-faint">
+              邀請信沒有寄出（可能是這個部署還沒接寄信服務，或對方信箱暫時收不到）——
+              用下面這個連結，自行傳給對方一樣可以加入：
+            </p>
+            <div class="flex items-center gap-2 rounded-lg bg-sunken px-2.5 py-2">
+              <label class="sr-only" for="invite-link">邀請連結</label>
+              <input id="invite-link" :value="inviteLink" readonly
+                class="h-7 min-w-0 grow rounded border border-transparent bg-transparent px-1 text-xs text-ink-soft focus:border-accent focus:outline-none"
+                @focus="($event.target as HTMLInputElement).select()">
+              <button type="button"
+                class="shrink-0 rounded-md border border-line px-2 py-1 text-xs font-medium text-ink-soft transition-colors hover:bg-surface hover:text-ink"
+                @click="copyInviteLink">
+                {{ copied ? '已複製' : '複製' }}
+              </button>
+            </div>
+          </template>
         </section>
 
         <section v-if="workspace.pendingInvitations.length > 0" class="flex flex-col gap-2 border-t border-line pt-3">
@@ -170,6 +180,7 @@ const inviteEmail = ref('')
 const inviteRole = ref<Exclude<MemberRole, 'owner'>>('member')
 const inviting = ref(false)
 const inviteLink = ref<string | null>(null)
+const emailSent = ref(false)
 const copied = ref(false)
 
 watch(
@@ -193,6 +204,7 @@ function changeRole(userId: string, event: Event): void {
 function switchWorkspace(event: Event): void {
   const id = (event.target as HTMLSelectElement).value
   inviteLink.value = null
+  emailSent.value = false
   copied.value = false
   void workspace.selectWorkspace(id)
 }
@@ -202,10 +214,12 @@ async function submitInvite(): Promise<void> {
   inviting.value = true
   copied.value = false
   inviteLink.value = null
+  emailSent.value = false
   try {
-    const token = await workspace.invite(inviteEmail.value, inviteRole.value)
-    if (token !== null) {
-      inviteLink.value = `${location.origin}${location.pathname}#/accept-invite?token=${token}`
+    const result = await workspace.invite(inviteEmail.value, inviteRole.value)
+    if (result !== null) {
+      inviteLink.value = result.link
+      emailSent.value = result.emailSent
       inviteEmail.value = ''
     }
   } finally {

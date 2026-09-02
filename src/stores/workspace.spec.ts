@@ -148,22 +148,61 @@ describe('線上狀態（presence）', () => {
 })
 
 describe('invite', () => {
-  it('成功時回傳 token 並重新載入成員／邀請清單', async () => {
+  it('成功時回傳連結並重新載入成員／邀請清單；信有寄出時 emailSent 為 true', async () => {
     const { workspace, auth } = setup()
     auth.session = fakeSession()
     workspace.currentWorkspaceId = 'w1'
     mockFetch((url) => {
       if (url.includes('/rpc/create_invitation')) return 'raw-token'
+      if (url.includes('/functions/v1/send-invitation-email')) return { sent: true }
       return []
     })
 
     const result = await workspace.invite('bob@example.com', 'member')
 
-    expect(result).toBe('raw-token')
+    expect(result?.link).toContain('raw-token')
+    expect(result?.emailSent).toBe(true)
     expect(workspace.error).toBeNull()
   })
 
-  it('失敗時回傳 null 並設定友善的錯誤訊息', async () => {
+  it('寄信服務沒設定（回報 sent:false）時，連結仍然正常回傳', async () => {
+    const { workspace, auth } = setup()
+    auth.session = fakeSession()
+    workspace.currentWorkspaceId = 'w1'
+    mockFetch((url) => {
+      if (url.includes('/rpc/create_invitation')) return 'raw-token'
+      if (url.includes('/functions/v1/send-invitation-email')) return { sent: false, reason: 'not_configured' }
+      return []
+    })
+
+    const result = await workspace.invite('bob@example.com', 'member')
+
+    expect(result?.link).toContain('raw-token')
+    expect(result?.emailSent).toBe(false)
+    expect(workspace.error).toBeNull()
+  })
+
+  it('寄信這一步本身出錯時不影響邀請本身——連結照樣回傳，只是 emailSent 是 false', async () => {
+    const { workspace, auth } = setup()
+    auth.session = fakeSession()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    workspace.currentWorkspaceId = 'w1'
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (String(url).includes('/rpc/create_invitation')) return { ok: true, json: async () => 'raw-token' } as Response
+      if (String(url).includes('/functions/v1/send-invitation-email')) {
+        return { ok: false, status: 500, text: async () => 'boom' } as Response
+      }
+      return { ok: true, json: async () => [] } as Response
+    })
+
+    const result = await workspace.invite('bob@example.com', 'member')
+
+    expect(result?.link).toContain('raw-token')
+    expect(result?.emailSent).toBe(false)
+    expect(workspace.error).toBeNull()
+  })
+
+  it('建立邀請本身失敗時回傳 null 並設定友善的錯誤訊息', async () => {
     const { workspace, auth } = setup()
     auth.session = fakeSession()
     workspace.currentWorkspaceId = 'w1'

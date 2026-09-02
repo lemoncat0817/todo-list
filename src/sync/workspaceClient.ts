@@ -96,6 +96,40 @@ export async function revokeInvitation(invitationId: string, accessToken: string
   await rpc('revoke_invitation', { p_invitation_id: invitationId }, accessToken)
 }
 
+/**
+ * 呼叫 send-invitation-email edge function（M2 補做，見該函式開頭的
+ * 說明）。回傳的 `sent` 反映實際有沒有寄出——RESEND_API_KEY 沒設定時
+ * 函式本身安靜跳過，回傳 sent:false，不是拋錯。呼叫端據此決定要不要
+ * 提示「已寄出邀請信」，複製連結那個按鈕不管有沒有寄信都要留著。
+ */
+export async function sendInvitationEmail(
+  params: {
+    workspaceId: string
+    workspaceName: string
+    email: string
+    role: Exclude<MemberRole, 'owner'>
+    inviteLink: string
+    inviterName: string
+  },
+  accessToken: string,
+): Promise<boolean> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/send-invitation-email`, {
+    method: 'POST',
+    headers: headers(accessToken),
+    body: JSON.stringify({
+      workspace_id: params.workspaceId,
+      workspace_name: params.workspaceName,
+      email: params.email,
+      role: params.role,
+      invite_link: params.inviteLink,
+      inviter_name: params.inviterName,
+    }),
+  })
+  if (!res.ok) throw new SyncHttpError('send-invitation-email', 'rpc', res.status, await safeText(res))
+  const body = (await res.json()) as { sent: boolean }
+  return body.sent
+}
+
 /** 接受邀請，回傳加入的工作區 id。 */
 export function acceptInvitation(token: string, accessToken: string): Promise<string> {
   return rpc('accept_invitation', { p_token: token }, accessToken)
