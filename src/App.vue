@@ -32,7 +32,7 @@
         </button>
       </div>
       <AppSidebar :collapsed="prefs.sidebarCollapsed" @manage="isManaging = true" @data="isDataOpen = true"
-        @account="isAccountOpen = true" />
+        @account="isAccountOpen = true" @members="isMembersOpen = true" />
     </aside>
 
     <!--
@@ -55,7 +55,7 @@
           </button>
         </div>
         <AppSidebar @navigate="ui.closeSidebar()" @manage="openManage" @data="openData"
-          @account="openAccount" />
+          @account="openAccount" @members="openMembers" />
       </div>
     </dialog>
 
@@ -71,6 +71,7 @@
     <CollectionsDialog :open="isManaging" @close="isManaging = false" />
     <DataDialog :open="isDataOpen" @close="isDataOpen = false" />
     <AccountDialog v-if="isSyncConfigured" :open="isAccountOpen" @close="isAccountOpen = false" />
+    <MembersDialog v-if="isSyncConfigured" :open="isMembersOpen" @close="isMembersOpen = false" />
     <CommandPalette :open="ui.isPaletteOpen" @close="ui.closePalette()" />
     <ShortcutsDialog :open="isHelpOpen" @close="isHelpOpen = false" />
   </div>
@@ -87,6 +88,7 @@ import TaskDetailPanel from './components/TaskDetailPanel.vue'
 import CollectionsDialog from './components/CollectionsDialog.vue'
 import DataDialog from './components/DataDialog.vue'
 import AccountDialog from './components/AccountDialog.vue'
+import MembersDialog from './components/MembersDialog.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import { useHistoryStore } from '@/stores/history'
@@ -119,6 +121,7 @@ const isManaging = ref(false)
 const isHelpOpen = ref(false)
 const isDataOpen = ref(false)
 const isAccountOpen = ref(false)
+const isMembersOpen = ref(false)
 const drawerEl = ref<HTMLDialogElement | null>(null)
 
 const detailTask = computed(
@@ -151,6 +154,11 @@ function openData(): void {
 function openAccount(): void {
   ui.closeSidebar()
   isAccountOpen.value = true
+}
+
+function openMembers(): void {
+  ui.closeSidebar()
+  isMembersOpen.value = true
 }
 
 function focus(selector: string): void {

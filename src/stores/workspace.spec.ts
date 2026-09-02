@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createApp } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import type { Session } from '@supabase/auth-js'
-import { useWorkspaceStore } from '@/stores/workspace'
+import { useWorkspaceStore, storePendingInviteToken } from '@/stores/workspace'
 import { useAuthStore } from '@/stores/auth'
 
 /**
@@ -153,6 +153,36 @@ describe('removeMemberFromWorkspace', () => {
   })
 })
 
+describe('pending invite token（邀請連結點開時還沒登入的情境）', () => {
+  it('登入完成時自動消費 localStorage 裡待處理的邀請 token，並清掉它', async () => {
+    storePendingInviteToken('stored-token')
+    const { workspace, auth } = setup()
+    const fetchMock = mockFetch((url) => {
+      if (url.includes('/rpc/accept_invitation')) return 'joined-ws'
+      if (url.includes('/workspaces?')) return [{ id: 'joined-ws', name: '團隊', is_personal: false, created_by: 'u2', updated_at: 1 }]
+      return []
+    })
+
+    auth.session = fakeSession()
+    auth.status = 'signed-in'
+
+    await vi.waitFor(() => expect(workspace.currentWorkspaceId).toBe('joined-ws'))
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/rpc/accept_invitation'))).toBe(true)
+    expect(localStorage.getItem('todoTask:pendingInvite')).toBeNull()
+  })
+
+  it('沒有待處理 token 時登入照常，不會多打 accept_invitation', async () => {
+    const { workspace, auth } = setup()
+    const fetchMock = mockFetch((url) => (url.includes('/workspaces?') ? [{ id: 'w1', name: 'x', is_personal: true, created_by: 'u1', updated_at: 1 }] : []))
+
+    auth.session = fakeSession()
+    auth.status = 'signed-in'
+
+    await vi.waitFor(() => expect(workspace.workspaces.length).toBe(1))
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/rpc/accept_invitation'))).toBe(false)
+  })
+})
+
 describe('acceptInvite', () => {
   it('成功時重新載入工作區並切到新加入的那個', async () => {
     const { workspace, auth } = setup()
@@ -167,6 +197,28 @@ describe('acceptInvite', () => {
 
     expect(ok).toBe(true)
     expect(workspace.currentWorkspaceId).toBe('new-ws')
+  })
+
+  /**
+   * 釘住 AcceptInviteView.vue 自己的 watcher 跟 auth.status 的 watcher
+   * 幾乎同時各呼叫一次 acceptInvite（同一個 token）時可能發生的問題：
+   * accept_invitation 不是能重送去重的 RPC，同一個 token 打兩次，第二次
+   * 會撞到「已經被使用過」而回報失敗，即使第一次其實成功了。
+   */
+  it('同一個 token 幾乎同時呼叫兩次，只會真的打一次 RPC', async () => {
+    const { workspace, auth } = setup()
+    auth.session = fakeSession()
+    const fetchMock = mockFetch((url) => {
+      if (url.includes('/rpc/accept_invitation')) return 'joined-ws'
+      if (url.includes('/workspaces?')) return [{ id: 'joined-ws', name: '團隊', is_personal: false, created_by: 'u2', updated_at: 1 }]
+      return []
+    })
+
+    const [first, second] = await Promise.all([workspace.acceptInvite('same-token'), workspace.acceptInvite('same-token')])
+
+    expect(first).toBe(true)
+    expect(second).toBe(true)
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/rpc/accept_invitation'))).toHaveLength(1)
   })
 
   it('失敗時回傳 false 並顯示友善訊息，不點名技術細節', async () => {

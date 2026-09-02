@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
 import TaskListView from '@/components/TaskListView.vue'
 import StatsView from '@/components/StatsView.vue'
+import AcceptInviteView from '@/components/AcceptInviteView.vue'
 import type { ViewKind } from '@/domain/views'
 
 /**
@@ -77,6 +78,14 @@ export const routes: RouteRecordRaw[] = [
     name: 'stats',
     component: StatsView,
     meta: { title: '統計' },
+  },
+
+  {
+    // 邀請連結的落地頁，見 AcceptInviteView.vue 開頭的說明。
+    path: '/accept-invite',
+    name: 'accept-invite',
+    component: AcceptInviteView,
+    meta: { title: '接受邀請' },
   },
 
   // 未知路徑退回今天，而不是留下空白畫面
