@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@supabase/auth-js": "^2.112.4",
+    "@supabase/realtime-js": "^2.112.4",
     "idb": "8.0.3",
     "pinia": "^4.0.3",
     "vue": "^3.5.41",
