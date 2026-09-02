@@ -2,7 +2,7 @@
 -- 跟 rpc_patch_test.sql 對 tasks 做的事同一套邏輯，這裡只驗證
 -- 「這四張表現在真的走同一種規則」，不重複整套權限矩陣。
 begin;
-select plan(6);
+select plan(9);
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password,
   email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
@@ -58,6 +58,44 @@ select throws_ok(
   $$ select public.apply_tag_patch('20000000-0000-0000-0000-000000000006',
        '00000000-0000-0000-0000-000000000102', jsonb_build_object('color', '#000000')) $$,
   null, null, '非成員呼叫 apply_tag_patch 被 RLS 擋下');
+reset role;
+
+-- 0010：create_project／create_tag／create_filter 補上 workspace_id
+-- 之後，「在共享工作區底下建立」這條路徑要真的能用，也要真的被擋在
+-- 不該通過的人身上——不是只補了欄位，權限矩陣還是原本那一套。
+insert into public.workspaces (id, name, is_personal, created_by, updated_at)
+values ('30000000-0000-0000-0000-000000000001', '共享工作區', false, '00000000-0000-0000-0000-00000000a11c', 1);
+insert into public.workspace_members (workspace_id, user_id, role) values
+  ('30000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000a11c', 'owner'),
+  ('30000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000ca20', 'member');
+
+-- 7) owner 明確帶 workspace_id 建立專案：真的落在那個共享工作區，不是個人工作區。
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000a11c","role":"authenticated"}';
+select results_eq(
+  $$ select workspace_id from public.create_project('20000000-0000-0000-0000-000000000007',
+       jsonb_build_object('id', '00000000-0000-0000-0000-000000000104', 'name', '共享專案', 'rank', 'A',
+         'workspace_id', '30000000-0000-0000-0000-000000000001')) $$,
+  $$ values ('30000000-0000-0000-0000-000000000001'::uuid) $$,
+  'create_project() 帶明確 workspace_id 時，專案真的落在那個工作區');
+
+-- 8) 不帶 workspace_id：回歸測試，仍照舊落在呼叫者的個人工作區。
+select is(
+  (select workspace_id from public.create_project('20000000-0000-0000-0000-000000000008',
+     jsonb_build_object('id', '00000000-0000-0000-0000-000000000105', 'name', '個人專案', 'rank', 'A'))),
+  public.personal_workspace_id('00000000-0000-0000-0000-00000000a11c'),
+  '不帶 workspace_id 時，create_project() 仍落在個人工作區');
+reset role;
+
+-- 9) Carol 只是共享工作區的 member（can_manage_project 要求 admin 以上），
+-- 想用同一條路徑在裡面建專案要被 RLS 擋下，而不是因為多了這個欄位就放行。
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000ca20","role":"authenticated"}';
+select throws_ok(
+  $$ select public.create_project('20000000-0000-0000-0000-000000000009',
+       jsonb_build_object('id', '00000000-0000-0000-0000-000000000106', 'name', 'Carol 想建的', 'rank', 'A',
+         'workspace_id', '30000000-0000-0000-0000-000000000001')) $$,
+  null, null, 'member 角色的 Carol 帶 workspace_id 建專案仍被 RLS 擋下');
 reset role;
 
 select * from finish();
