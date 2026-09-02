@@ -3,6 +3,8 @@ import {
   createTask,
   groupByParent,
   isEffectivelyComplete,
+  monotonicNow,
+  normalizeOp,
   normalizeProject,
   normalizeTag,
   normalizeTask,
@@ -171,5 +173,47 @@ describe('isEffectivelyComplete', () => {
     const parent = makeTask('父', false)
     expect(isEffectivelyComplete(parent, [makeTask('a', true), makeTask('b', true)])).toBe(true)
     expect(isEffectivelyComplete(parent, [makeTask('a', true), makeTask('b', false)])).toBe(false)
+  })
+})
+
+describe('monotonicNow', () => {
+  it('連續呼叫嚴格遞增，即使系統時間解析度不夠細（同一毫秒內連續呼叫）', () => {
+    const values = Array.from({ length: 500 }, () => monotonicNow())
+    for (let i = 1; i < values.length; i++) {
+      expect(values[i]).toBeGreaterThan(values[i - 1] as number)
+    }
+  })
+
+  it('回傳值不會比真實時間倒退太多——只在系統時間沒推進時才靠計數器墊上去', () => {
+    const before = Date.now()
+    const value = monotonicNow()
+    expect(value).toBeGreaterThanOrEqual(before)
+  })
+})
+
+describe('normalizeOp', () => {
+  it('合法的 op 原樣通過', () => {
+    const op = {
+      id: 'op-1',
+      kind: 'task.patch' as const,
+      targetId: 'task-1',
+      payload: { notes: 'x' },
+      createdAt: 100,
+      attempts: 0,
+    }
+    expect(normalizeOp(op)).toEqual(op)
+  })
+
+  it('缺 id／targetId，或 kind 不合法時回傳 null', () => {
+    expect(normalizeOp({ kind: 'task.patch', targetId: 't', payload: {}, createdAt: 1, attempts: 0 })).toBeNull()
+    expect(normalizeOp({ id: 'o', kind: 'task.patch', payload: {}, createdAt: 1, attempts: 0 })).toBeNull()
+    expect(normalizeOp({ id: 'o', kind: 'not-a-real-kind', targetId: 't', payload: {}, createdAt: 1, attempts: 0 })).toBeNull()
+  })
+
+  it('payload 不是物件、createdAt／attempts 缺漏時補上安全預設值', () => {
+    const result = normalizeOp({ id: 'o', kind: 'task.delete', targetId: 't', payload: 'not-an-object' })
+    expect(result?.payload).toEqual({})
+    expect(result?.attempts).toBe(0)
+    expect(typeof result?.createdAt).toBe('number')
   })
 })

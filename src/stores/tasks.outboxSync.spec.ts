@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { createApp } from 'vue'
+import { createApp, nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useTasksStore } from '@/stores/tasks'
 import { loadOutbox } from '@/db'
@@ -14,6 +14,16 @@ import { makeTask } from '@/test/helpers'
  * 不需要另外驗證。
  */
 vi.mock('@/sync/config', () => ({ isSyncConfigured: true }))
+
+/**
+ * 每次同步變更 items.value 之後、呼叫 flush() 之前都要 await nextTick()：
+ * 變更本身會觸發 store 內部的 deep watcher 排一次非同步 flush()，跟
+ * 這裡手動呼叫的 flush() 是兩個獨立的呼叫，中間沒有 nextTick 銜接的話，
+ * 兩者可能交錯搶跑（watcher 排的那次先跑一半、手動呼叫的那次緊接著
+ * 又跑一次），多出一次非預期的 flush pass，讓斷言在少數情況下抓到
+ * 中間態而不是最終態——是這份測試本身間歇性失敗過才發現的，不是
+ * flush() 邏輯本身的問題。
+ */
 
 function setup() {
   const pinia = createPinia()
@@ -31,6 +41,7 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
     await store.init()
 
     const task = store.add('買牛奶')
+    await nextTick()
     await store.flush()
 
     const ops = await loadOutbox()
@@ -47,6 +58,7 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
     await store.flush()
 
     store.update(task.id, { notes: '只改備註' })
+    await nextTick()
     await store.flush()
 
     const ops = await loadOutbox()
@@ -62,6 +74,7 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
     await store.flush()
 
     store.remove(task.id)
+    await nextTick()
     await store.flush()
 
     const ops = await loadOutbox()
@@ -88,12 +101,20 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
     const store = setup()
     await store.init()
     const task = store.add('原始')
+    await nextTick()
     await store.flush()
     store.update(task.id, { notes: '改過的備註' })
+    await nextTick()
     await store.flush()
 
     const history = (await import('@/stores/history')).useHistoryStore()
-    history.undo()
+    // history.undo() 本身是 async（UndoStack.undo() 內部 await
+    // command.undo()），一定要 await 它，不能只 await 後面的 nextTick()——
+    // 兩者都是微任務排隊，順序不保證，沒等 undo 真的完成就呼叫
+    // flush() 會抓到還沒復原完的中間態，這是這份測試曾經間歇性失敗
+    // 的真正原因。
+    await history.undo()
+    await nextTick()
     await store.flush()
 
     const ops = await loadOutbox()
@@ -109,6 +130,7 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
     await store.flush()
 
     store.batchUpdate([a.id, b.id], { priority: 3 }, '批次調整優先度')
+    await nextTick()
     await store.flush()
 
     const ops = await loadOutbox()
@@ -129,6 +151,7 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
     await store.init()
 
     store.mergeRemote([makeTask('遠端來的', false, { id: 'remote-1' })])
+    await nextTick()
     await store.flush()
 
     const ops = await loadOutbox()
@@ -145,6 +168,7 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
     // 模擬 stores/sync.ts 拉回來的結果：這一列在遠端已經被刪除，
     // mergeRemote 收到的陣列裡不會再有它。
     store.mergeRemote([])
+    await nextTick()
     await store.flush()
 
     const ops = await loadOutbox()
@@ -156,9 +180,11 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
     await store.init()
 
     store.mergeRemote([makeTask('遠端來的', false, { id: 'remote-1' })])
+    await nextTick()
     await store.flush()
 
     store.update('remote-1', { notes: '使用者後來加的備註' })
+    await nextTick()
     await store.flush()
 
     const ops = await loadOutbox()

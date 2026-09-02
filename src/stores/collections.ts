@@ -14,6 +14,7 @@ import {
 import { diffAgainstFingerprint, diffFields } from '@/domain/diff'
 import { findByNormalizedName } from '@/domain/filtering'
 import { nextOrder } from '@/domain/ordering'
+import { monotonicNow } from '@/domain/task'
 import { isSyncConfigured } from '@/sync/config'
 import { toRemoteFilter, toRemoteProject, toRemoteTag } from '@/sync/rowMapping'
 import { useHistoryStore } from './history'
@@ -37,7 +38,10 @@ async function enqueueCollectionOps<T extends { id: string; updatedAt: number }>
   excludeIds: ReadonlySet<string>,
 ): Promise<Map<string, string>> {
   const { upserts, deletes, nextFingerprint } = diffAgainstFingerprint(current, previousIndex)
-  const now = Date.now()
+  // 單調時鐘，理由跟 stores/tasks.ts 的 enqueueSyncOps 一致：避免同一
+  // 毫秒內排出的兩筆 op 因為 createdAt 相同，讓 outbox 的排序落在
+  // 隨機的 id tie-break 上。
+  const now = monotonicNow()
   const ops: Op[] = []
 
   for (const row of upserts) {
