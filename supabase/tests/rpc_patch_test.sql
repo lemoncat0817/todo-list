@@ -1,7 +1,7 @@
 -- M1 的欄位補丁 RPC 驗證：只改動補丁裡出現的欄位、op_id 去重、
 -- null 清空跟「完全沒送」要能區分、tag_ids 清空不能違反 not null。
 begin;
-select plan(10);
+select plan(15);
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password,
   email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
@@ -87,6 +87,13 @@ select results_eq(
 reset role;
 
 -- 7) 非成員直接呼叫 RPC：底層 UPDATE 被 RLS 擋下，函式回報「不存在或沒有寫入權限」。
+-- errcode 明確指定 PT003（權限不足）：這是 0020_task_patch_errors.sql
+-- 新增的分類，跟「任務不存在」「已被刪除」用不同的 SQLSTATE 區分，
+-- 前端才有辦法顯示不同的說法（見 stores/sync.ts 的 describeSyncError()）。
+-- throws_ok 3 個參數的形式比對的是「錯誤訊息」不是 SQLSTATE（pgTAP 沒有
+-- (sql, errcode, description) 這個多載）——要驗證 errcode 必須用 4 個
+-- 參數的完整形式 (sql, errcode, errmsg, description)，親自對照
+-- pg_temp 函式的實測結果才確認，不是憑文件猜的。
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password,
   email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
 values ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-00000000ca20', 'authenticated', 'authenticated', 'carol@rpc-test.local', 'x', now(), now(), now(), '{}', '{}');
@@ -96,16 +103,16 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000ca20","r
 select throws_ok(
   $$ select public.apply_task_patch('10000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000001',
        jsonb_build_object('notes', 'Carol 想改')) $$,
-  null, null, '非成員呼叫 apply_task_patch 被 RLS 擋下，函式丟出例外而不是靜默成功');
+  'PT003', '沒有權限編輯這筆任務', '非成員呼叫 apply_task_patch 被 RLS 擋下，回報 PT003（權限不足）');
 reset role;
 
--- 8) viewer 的 Bob 一樣被擋下。
+-- 8) viewer 的 Bob 一樣被擋下，同樣是 PT003。
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000b0b0","role":"authenticated"}';
 select throws_ok(
   $$ select public.apply_task_patch('10000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000001',
        jsonb_build_object('notes', 'Bob 想改')) $$,
-  null, null, 'viewer 的 Bob 呼叫 apply_task_patch 也被擋下');
+  'PT003', '沒有權限編輯這筆任務', 'viewer 的 Bob 呼叫 apply_task_patch 也被擋下，回報 PT003');
 reset role;
 
 -- 9) processed_ops 不會把別人的紀錄洩漏出去。
@@ -114,6 +121,45 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000b0b0","r
 select is(
   (select count(*)::int from public.processed_ops where op_id = '10000000-0000-0000-0000-000000000001'),
   0, 'Bob 看不到 Alice 的 processed_ops 紀錄');
+reset role;
+
+-- 10) M6 補做：Alice（有寫入權限）刪除自己這筆任務——task.delete 也是走
+-- apply_task_patch，補丁本身在動 deleted_at，即使之後目標已經是刪除
+-- 狀態，這一類補丁仍然放行（見 0020_task_patch_errors.sql 的 WHERE
+-- 子句：`t.deleted_at is null or p_patch ? 'deleted_at'`）。
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000a11c","role":"authenticated"}';
+select lives_ok(
+  $$ select public.apply_task_patch('10000000-0000-0000-0000-000000000009', '00000000-0000-0000-0000-000000000001',
+       jsonb_build_object('deleted_at', 1700000000000)) $$,
+  'Alice 可以刪除自己有寫入權限的任務');
+
+-- 11) 任務已經被刪除之後，再送一個不含 deleted_at 的一般欄位補丁——
+-- 不該被靜默套用到一具墓碑上，應該回報 PT001（已被刪除）。
+select throws_ok(
+  $$ select public.apply_task_patch('10000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-000000000001',
+       jsonb_build_object('notes', '想改已刪除的任務')) $$,
+  'PT001', '任務已經被其他成員刪除', '編輯已被刪除的任務回報 PT001，不是靜默套用補丁');
+
+-- 12) 冪等刪除：對已經是刪除狀態的任務再送一次 deleted_at 補丁仍然放行
+-- ——只有「一般欄位編輯」才會被已刪除狀態擋下，刪除動作本身不會。
+select lives_ok(
+  $$ select public.apply_task_patch('10000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-000000000001',
+       jsonb_build_object('deleted_at', 1700000001000)) $$,
+  '對已刪除的任務重複送刪除補丁仍然放行（冪等）');
+
+-- 13) 還原：補丁明確把 deleted_at 設回 null，應該成功，且欄位真的清空。
+select is(
+  (select deleted_at from public.apply_task_patch('10000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-000000000001',
+     jsonb_build_object('deleted_at', null))),
+  null,
+  '補丁明確把 deleted_at 設回 null 可以還原已刪除的任務');
+
+-- 14) 根本不存在的 task_id 回報 PT002，不是跟「權限不足」混在一起。
+select throws_ok(
+  $$ select public.apply_task_patch('10000000-0000-0000-0000-00000000000d', '00000000-0000-0000-0000-00000000ffff',
+       jsonb_build_object('notes', '目標不存在')) $$,
+  'PT002', '任務 00000000-0000-0000-0000-00000000ffff 不存在或沒有寫入權限', '不存在的 task_id 回報 PT002');
 reset role;
 
 select * from finish();

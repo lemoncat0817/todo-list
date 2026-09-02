@@ -15,7 +15,31 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from './config'
  * @supabase/auth-js）的責任，這裡只管「帶著一個有效的 token 打一次 API」。
  */
 
+/**
+ * PostgREST／PostgreSQL 錯誤回應是 JSON（`{code, details, hint, message}`），
+ * `code` 是 SQLSTATE——資料庫那邊用 `raise exception ... using errcode = 'PT001'`
+ * 之類的自訂代碼區分「權限不足」「已被刪除」「成員已滿」這幾種失敗類型時
+ * （見 supabase/migrations/0020_task_patch_errors.sql、
+ * 0021_workspace_member_cap.sql），前端要能讀到這個代碼才能對應到不同的
+ * 使用者說法，不能只看 HTTP 狀態碼（多半都是同一個 400）。
+ *
+ * `detail` 已經被 safeText() 截到 300 字元，理論上有極端狀況會截斷 JSON
+ * 導致 parse 失敗——這裡的錯誤訊息都很短（一兩句中文），實務上不會碰到；
+ * parse 失敗就當作沒有代碼，不影響既有的「顯示通用說法」行為。
+ */
+function parsePostgrestErrorCode(detail: string): string | null {
+  try {
+    const parsed = JSON.parse(detail) as { code?: unknown }
+    return typeof parsed.code === 'string' ? parsed.code : null
+  } catch {
+    return null
+  }
+}
+
 export class SyncHttpError extends Error {
+  /** PostgREST 錯誤回應裡的 SQLSTATE，parse 不出來就是 null（例如非 JSON 的錯誤內文）。 */
+  readonly code: string | null
+
   constructor(
     readonly table: string,
     readonly operation: 'fetch' | 'upsert' | 'delete' | 'rpc',
@@ -24,6 +48,7 @@ export class SyncHttpError extends Error {
   ) {
     super(`[sync] ${operation} ${table} 失敗（HTTP ${status}）：${detail}`)
     this.name = 'SyncHttpError'
+    this.code = parsePostgrestErrorCode(detail)
   }
 }
 

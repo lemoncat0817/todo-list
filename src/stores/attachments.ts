@@ -83,6 +83,14 @@ export const useAttachmentsStore = defineStore('attachments', () => {
     if (e instanceof SyncHttpError && e.message.includes('容量已滿')) {
       return '這個工作區的附件容量已滿（上限 500MB），請先刪除不需要的附件'
     }
+    // 單檔超過 storage.buckets.file_size_limit（見
+    // supabase/migrations/0014_attachments.sql，目前 10MB）時，
+    // Supabase Storage 自己（不是 PostgREST）用 413 回應——不是
+    // SyncHttpError.code 讀得到的 PostgREST JSON 形狀（{code,...}），
+    // 這裡改認 HTTP 狀態碼本身，不必依賴回應內文格式。
+    if (e instanceof SyncHttpError && e.status === 413) {
+      return '這個檔案超過單檔大小上限（10MB），請壓縮或分割後再上傳'
+    }
     if (e instanceof SyncHttpError) return '伺服器暫時無法處理，請稍後再試一次'
     return '發生未預期的問題，請再試一次'
   }
