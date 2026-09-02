@@ -60,10 +60,10 @@
       <section class="flex flex-col gap-2">
         <h3 class="text-sm font-medium text-ink-soft">標籤</h3>
 
-        <p v-if="collections.tags.length === 0" class="text-sm text-ink-faint">還沒有標籤。</p>
+        <p v-if="collections.visibleTags.length === 0" class="text-sm text-ink-faint">還沒有標籤。</p>
 
         <ul v-else class="flex flex-col gap-1.5">
-          <li v-for="tag in collections.tags" :key="tag.id"
+          <li v-for="tag in collections.visibleTags" :key="tag.id"
             class="flex items-center gap-2 rounded-lg border border-line px-2 py-1.5">
             <span class="size-3 shrink-0 rounded-full" :style="{ backgroundColor: tag.color }"
               aria-hidden="true" />
@@ -108,8 +108,8 @@
       <section class="flex flex-col gap-2">
         <h3 class="text-sm font-medium text-ink-soft">篩選器</h3>
 
-        <ul v-if="collections.filters.length > 0" class="flex flex-col gap-1.5">
-          <li v-for="filter in collections.filters" :key="filter.id"
+        <ul v-if="collections.visibleFilters.length > 0" class="flex flex-col gap-1.5">
+          <li v-for="filter in collections.visibleFilters" :key="filter.id"
             class="flex items-center gap-2 rounded-lg border border-line px-2 py-1.5">
             <span class="size-3 shrink-0 rounded-full" :style="{ backgroundColor: filter.color }"
               aria-hidden="true" />
@@ -262,15 +262,16 @@ const suggestionsOpen = ref(false)
  * 不說明原因會誤以為是壞掉了。
  */
 const projectNameError = computed(() =>
-  // 用未過濾的 projects：跟收件匣同名一樣要擋，理由見上方註解——
-  // store 那道防線比對的也是全量，這裡要跟它認定一致，不能只比對看得到的。
-  newProjectName.value !== '' && findByNormalizedName(collections.projects, newProjectName.value)
+  // 用 projectsInCurrentWorkspace：跟收件匣同名要擋，但別的工作區同名
+  // 不算——store 的 addProject 現在也是同一個比對範圍，這裡要跟它一致。
+  newProjectName.value !== '' &&
+  findByNormalizedName(collections.projectsInCurrentWorkspace, newProjectName.value)
     ? '已有相同名稱的專案'
     : null,
 )
 
 const tagNameError = computed(() =>
-  newTagName.value !== '' && findByNormalizedName(collections.tags, newTagName.value)
+  newTagName.value !== '' && findByNormalizedName(collections.visibleTags, newTagName.value)
     ? '已有相同名稱的標籤'
     : null,
 )
@@ -299,7 +300,7 @@ const matchCount = computed(() =>
 const unresolvedNames = computed(() => {
   const parsed = parsedQuery.value
   if (!parsed.ok) return { projects: [], labels: [] }
-  return findUnresolvedNames(parsed.node, { projects: collections.visibleProjects, tags: collections.tags })
+  return findUnresolvedNames(parsed.node, { projects: collections.visibleProjects, tags: collections.visibleTags })
 })
 
 const unresolvedMessage = computed(() => {
@@ -321,7 +322,7 @@ const suggestionResult = computed(() =>
   suggestionsOpen.value
     ? suggestFilterTokens(newFilterQuery.value, queryCursor.value, {
         projects: collections.visibleProjects,
-        tags: collections.tags,
+        tags: collections.visibleTags,
       })
     : { range: { start: 0, end: 0 }, suggestions: [] },
 )

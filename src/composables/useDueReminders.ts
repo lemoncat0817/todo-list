@@ -47,6 +47,9 @@ export function useDueReminders(): DueReminders {
     const todayISO = today()
     const currentTime = nowHHmm()
 
+    // 刻意用 items（全量），不是 visibleItems：提醒是背景通知，不是
+    // 「目前這份清單」的一部分——切到別的工作區不該讓另一個工作區裡
+    // 快到期的任務停止提醒使用者。
     for (const task of tasks.items) {
       if (task.isCompleted || notified.has(task.id)) continue
       if (task.dueDate !== todayISO || task.dueTime === null) continue

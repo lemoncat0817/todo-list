@@ -65,7 +65,7 @@ const RECENT_LIMIT = 10
 
 const tasks = useTasksStore()
 
-const stats = computed(() => computeStats(tasks.items))
+const stats = computed(() => computeStats(tasks.visibleItems))
 
 const tiles = computed(() => [
   { label: '今天完成', value: stats.value.todayCount },
@@ -75,7 +75,7 @@ const tiles = computed(() => [
 ])
 
 const recent = computed(() =>
-  tasks.items
+  tasks.visibleItems
     .filter((t) => t.isCompleted && t.completedAt !== null)
     .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
     .slice(0, RECENT_LIMIT),

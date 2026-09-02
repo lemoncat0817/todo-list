@@ -4,6 +4,7 @@ import type { Router } from 'vue-router'
 import AppSidebar from '@/components/AppSidebar.vue'
 import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { freshPinia, mountWith, makeTask, testRouter, type Wrapper } from '@/test/helpers'
 import { today, addDays } from '@/domain/dates'
 
@@ -159,6 +160,51 @@ describe('AppSidebar.vue', () => {
       expect(w.find('button[aria-label="管理專案與標籤"]').exists()).toBe(false)
       expect(w.text()).not.toContain('統計')
       expect(w.text()).not.toContain('資料與提醒')
+    })
+  })
+
+  describe('工作區切換器', () => {
+    it('只有一個工作區（或還沒登入）時不顯示切換器，不打擾多數人', () => {
+      const w = mountSidebar()
+      expect(w.find('select').exists()).toBe(false)
+    })
+
+    it('不只一個工作區時顯示切換器，選項是使用者所屬的每個工作區', () => {
+      const workspace = useWorkspaceStore()
+      workspace.workspaces = [
+        { id: 'w1', name: '個人工作區', is_personal: true, created_by: 'me', updated_at: 1 },
+        { id: 'w2', name: '共享工作區', is_personal: false, created_by: 'someone', updated_at: 1 },
+      ]
+      workspace.currentWorkspaceId = 'w1'
+      const w = mountSidebar()
+
+      const select = w.find('select')
+      expect(select.exists()).toBe(true)
+      expect(select.findAll('option').map((o) => o.text())).toEqual(['個人工作區', '共享工作區'])
+      expect((select.element as HTMLSelectElement).value).toBe('w1')
+    })
+
+    it('切換後真的換掉看得到的任務數——不只是換 MembersDialog 在管理誰', async () => {
+      const workspace = useWorkspaceStore()
+      workspace.workspaces = [
+        { id: 'w1', name: '個人工作區', is_personal: true, created_by: 'me', updated_at: 1 },
+        { id: 'w2', name: '共享工作區', is_personal: false, created_by: 'someone', updated_at: 1 },
+      ]
+      workspace.currentWorkspaceId = 'w1'
+      tasks.items = [
+        makeTask('工作區1的任務甲', false, { id: '1', workspaceId: 'w1' }),
+        makeTask('工作區1的任務乙', false, { id: '2', workspaceId: 'w1' }),
+        makeTask('工作區2的任務', false, { id: '3', workspaceId: 'w2' }),
+      ]
+      const w = mountSidebar()
+      await w.vm.$nextTick()
+
+      const allLink = () => links(w).find((a) => a.attributes('href') === '/all')
+      expect(allLink()?.text()).toContain('2')
+
+      await w.find('select').setValue('w2')
+      await w.vm.$nextTick()
+      expect(allLink()?.text()).toContain('1')
     })
   })
 })

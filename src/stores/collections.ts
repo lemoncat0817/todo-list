@@ -15,6 +15,7 @@ import { diffAgainstFingerprint, diffFields } from '@/domain/diff'
 import { findByNormalizedName } from '@/domain/filtering'
 import { compareRankValues, nextRank } from '@/domain/rank'
 import { monotonicNow } from '@/domain/task'
+import { inCurrentWorkspace } from '@/domain/workspaceScope'
 import { isSyncConfigured } from '@/sync/config'
 import { toRemoteFilter, toRemoteProject, toRemoteTag } from '@/sync/rowMapping'
 import { useHistoryStore } from './history'
@@ -92,15 +93,32 @@ export const useCollectionsStore = defineStore('collections', () => {
   const workspace = useWorkspaceStore()
 
   /**
-   * 排除收件匣的專案清單，給所有「使用者看得到、挑得到」的畫面用
-   * （側邊欄、專案選單、搜尋、篩選器解析……）。`projects` 本身維持原始
-   * 全量——本地持久化與同步都得原封不動地存取推送收件匣專案，只有
-   * UI 層不該把它當成一個使用者自建、可選、可刪的一般專案。
+   * 排除收件匣、且屬於目前所在工作區的專案清單，給所有「使用者看得到、
+   * 挑得到」的畫面用（側邊欄、專案選單、搜尋、篩選器解析……）。
+   * `projects` 本身維持原始全量——本地持久化與同步都得原封不動地存取
+   * 每個工作區的每一筆專案（含收件匣），只有 UI 層要依目前脈絡收窄。
    */
-  const visibleProjects = computed(() => projects.value.filter((p) => !p.isInbox))
+  const visibleProjects = computed(() =>
+    projects.value.filter((p) => !p.isInbox && inCurrentWorkspace(p, workspace.currentWorkspaceId)),
+  )
+  /**
+   * 跟 visibleProjects 幾乎一樣，差別是不排除收件匣——只給重名檢查用：
+   * 使用者在自己工作區底下新建一個叫「收件匣」的專案一樣要被擋，
+   * 但 visibleProjects 特意把收件匣藏起來，不能拿來做這個比對。
+   */
+  const projectsInCurrentWorkspace = computed(() =>
+    projects.value.filter((p) => inCurrentWorkspace(p, workspace.currentWorkspaceId)),
+  )
   /** `resolveView`／`matchesView` 用來把「專案是收件匣」跟「沒有專案」視為同一件事。 */
   const inboxProjectIds = computed(
     () => new Set(projects.value.filter((p) => p.isInbox).map((p) => p.id)),
+  )
+  /** 理由同 visibleProjects：標籤／篩選器也是依工作區分的容器（見 0005_rls.sql 的說明）。 */
+  const visibleTags = computed(() =>
+    tags.value.filter((t) => inCurrentWorkspace(t, workspace.currentWorkspaceId)),
+  )
+  const visibleFilters = computed(() =>
+    filters.value.filter((f) => inCurrentWorkspace(f, workspace.currentWorkspaceId)),
   )
 
   /** 純粹用來推導 outbox 補丁的內容指紋，跟本地 IndexedDB 寫入無關（見上方 enqueueCollectionOps 的說明）。 */
@@ -152,9 +170,12 @@ export const useCollectionsStore = defineStore('collections', () => {
    * 建立前先找同名（忽略大小寫／全形半形）專案——UI 端已經會擋掉這個情形並提示使用者，
    * 這裡是最後一道防線：即使呼叫端漏擋，也不會因此產生兩個同名專案。
    * 找到既有的就直接回傳它，不新增、不記錄復原（因為根本沒有變動發生）。
+   *
+   * 重名比對只看目前所在工作區：工作區 A 的「工作」跟工作區 B 的「工作」
+   * 是兩個不相干的專案，不能因為同名就把使用者導去另一個工作區的專案。
    */
   function addProject(name: string, color = DEFAULT_PROJECT_COLOR): StoredProject {
-    const existing = findByNormalizedName(projects.value, name)
+    const existing = findByNormalizedName(projectsInCurrentWorkspace.value, name)
     if (existing) return existing
     const project: StoredProject = {
       id: crypto.randomUUID(),
@@ -219,9 +240,12 @@ export const useCollectionsStore = defineStore('collections', () => {
 
   // ------------------------------------------------------------- 標籤
 
-  /** 同 addProject：先找同名標籤，找到就重用既有的，不建立重複項目。 */
+  /**
+   * 同 addProject：先找同名標籤，找到就重用既有的，不建立重複項目；
+   * 重名比對一樣只看目前所在工作區。
+   */
   function addTag(name: string, color = DEFAULT_TAG_COLOR): StoredTag {
-    const existingTag = findByNormalizedName(tags.value, name)
+    const existingTag = findByNormalizedName(visibleTags.value, name)
     if (existingTag) return existingTag
     const tag: StoredTag = {
       id: crypto.randomUUID(),
@@ -408,9 +432,12 @@ export const useCollectionsStore = defineStore('collections', () => {
   return {
     projects,
     visibleProjects,
+    projectsInCurrentWorkspace,
     inboxProjectIds,
     tags,
+    visibleTags,
     filters,
+    visibleFilters,
     snapshot,
     restoreSnapshot,
     applyImport,

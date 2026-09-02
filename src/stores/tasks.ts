@@ -11,6 +11,7 @@ import type {
   StoredTask,
 } from '@/db/schema'
 import { createTask, groupByParent, monotonicNow } from '@/domain/task'
+import { inCurrentWorkspace } from '@/domain/workspaceScope'
 import { diffAgainstFingerprint, diffFields } from '@/domain/diff'
 import { mergeById } from '@/db/backup'
 import { nextOccurrence } from '@/domain/recurrence'
@@ -30,6 +31,7 @@ import { toRemoteTask } from '@/sync/rowMapping'
 import { usePrefsStore } from './prefs'
 import { useHistoryStore } from './history'
 import { useCollectionsStore } from './collections'
+import { useWorkspaceStore } from './workspace'
 import { useUiStore } from './ui'
 
 /**
@@ -122,17 +124,29 @@ export const useTasksStore = defineStore('tasks', () => {
 
   const history = useHistoryStore()
   const collections = useCollectionsStore()
+  const workspace = useWorkspaceStore()
   const ui = useUiStore()
   const prefs = usePrefsStore()
 
   // ------------------------------------------------------------ 查詢
 
-  /** 目前搜尋條件下的可見任務，供畫面與計數共用同一條路徑。 */
-  const visible = computed(() => (filter: TaskFilter) =>
-    queryTasks(items.value, { keyword: ui.keyword, filter }),
+  /**
+   * 目前所在工作區看得到的任務——畫面（清單、計數、搜尋）一律讀這個，
+   * 不是 items 本身。items 維持原始全量：本地持久化與同步都得原封不動地
+   * 存取每個工作區的每一筆任務，只有 UI 層要依目前脈絡收窄，跟
+   * collections.ts 的 visibleProjects／visibleTags／visibleFilters 是
+   * 同一套規則（見 domain/workspaceScope.ts）。
+   */
+  const visibleItems = computed(() =>
+    items.value.filter((t) => inCurrentWorkspace(t, workspace.currentWorkspaceId)),
   )
 
-  const counts = computed(() => countByFilter(items.value, { keyword: ui.keyword }))
+  /** 目前搜尋條件下的可見任務，供畫面與計數共用同一條路徑。 */
+  const visible = computed(() => (filter: TaskFilter) =>
+    queryTasks(visibleItems.value, { keyword: ui.keyword, filter }),
+  )
+
+  const counts = computed(() => countByFilter(visibleItems.value, { keyword: ui.keyword }))
 
   /**
    * 組出 resolveView 的選項。
@@ -148,7 +162,7 @@ export const useTasksStore = defineStore('tasks', () => {
     if (spec.kind === 'filter') {
       base.predicate = compileFilter(spec.id ?? '', {
         projects: collections.visibleProjects,
-        tags: collections.tags,
+        tags: collections.visibleTags,
       })
     }
     return base
@@ -162,7 +176,7 @@ export const useTasksStore = defineStore('tasks', () => {
     () =>
       (spec: ViewSpec): TaskGroup[] =>
         resolveView(
-          items.value,
+          visibleItems.value,
           spec,
           viewOptions(spec, {
             keyword: ui.keyword,
@@ -177,10 +191,10 @@ export const useTasksStore = defineStore('tasks', () => {
   const countOf = computed(
     () =>
       (spec: ViewSpec): number =>
-        viewCount(items.value, spec, viewOptions(spec)),
+        viewCount(visibleItems.value, spec, viewOptions(spec)),
   )
 
-  const overdue = computed(() => overdueCount(items.value))
+  const overdue = computed(() => overdueCount(visibleItems.value))
 
   /**
    * 子任務索引：parentId → 依序排好的子項。
@@ -193,10 +207,10 @@ export const useTasksStore = defineStore('tasks', () => {
     return childrenByParent.value.get(parentId) ?? []
   }
 
-  const remaining = computed(() => items.value.filter((t) => !t.isCompleted).length)
+  const remaining = computed(() => visibleItems.value.filter((t) => !t.isCompleted).length)
 
   function query(q: TaskQuery = {}): StoredTask[] {
-    return queryTasks(items.value, { keyword: ui.keyword, ...q })
+    return queryTasks(visibleItems.value, { keyword: ui.keyword, ...q })
   }
 
   // ------------------------------------------------------------ 持久化
@@ -760,6 +774,7 @@ export const useTasksStore = defineStore('tasks', () => {
 
   return {
     items,
+    visibleItems,
     isLoading,
     loadError,
     writeError,

@@ -98,3 +98,41 @@ describe('建立時落在目前所在的工作區', () => {
     expect(collections.addProject('工作').workspaceId).toBeNull()
   })
 })
+
+describe('依工作區篩選看得到的專案／標籤／篩選器', () => {
+  function seedTwoWorkspaces() {
+    const collections = setup()
+    collections.mergeRemote({
+      projects: [
+        { id: 'p1', name: '工作區1的專案', color: '#000', rank: 'A', updatedAt: 1, isInbox: false, workspaceId: 'w1' },
+        { id: 'p2', name: '工作區2的專案', color: '#000', rank: 'B', updatedAt: 1, isInbox: false, workspaceId: 'w2' },
+      ],
+      tags: [],
+      filters: [],
+    })
+    return collections
+  }
+
+  it('沒有工作區脈絡時看得到全部（純本機模式／尚未登入不受影響）', () => {
+    const collections = seedTwoWorkspaces()
+    expect(collections.visibleProjects.map((p) => p.id).sort()).toEqual(['p1', 'p2'])
+  })
+
+  it('切到某個工作區後，只看得到那個工作區的專案', () => {
+    const collections = seedTwoWorkspaces()
+    useWorkspaceStore().currentWorkspaceId = 'w1'
+    expect(collections.visibleProjects.map((p) => p.id)).toEqual(['p1'])
+  })
+
+  it('重名檢查只比對目前所在的工作區：別的工作區同名不算重複', () => {
+    const collections = seedTwoWorkspaces()
+    const workspace = useWorkspaceStore()
+    workspace.currentWorkspaceId = 'w1'
+
+    // w2 已經有一個「工作區2的專案」，但目前在 w1，應該真的新建一筆，
+    // 不是被靜默重用成 w2 那筆。
+    const created = collections.addProject('工作區2的專案')
+    expect(created.id).not.toBe('p2')
+    expect(created.workspaceId).toBe('w1')
+  })
+})
