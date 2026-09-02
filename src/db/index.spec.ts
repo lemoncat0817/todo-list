@@ -9,9 +9,13 @@ import {
   getMeta,
   setMeta,
   migrateFromLocalStorage,
+  loadOutbox,
+  enqueueOp,
+  removeOp,
+  markOpAttempt,
 } from '@/db'
 import { nextOrder, orderBetween } from '@/domain/ordering'
-import { META_MIGRATED_FROM_LOCALSTORAGE, STORE_TASKS, type StoredTask } from '@/db/schema'
+import { META_MIGRATED_FROM_LOCALSTORAGE, STORE_TASKS, type Op, type StoredTask } from '@/db/schema'
 import { makeTask } from '@/test/helpers'
 
 /** 每個測試都用全新的 IndexedDB，避免互相汙染。 */
@@ -25,11 +29,12 @@ const task = (id: string, name: string, done = false, order = 0): StoredTask =>
   makeTask(name, done, { id, order })
 
 describe('IndexedDB 資料層', () => {
-  it('建立時就備妥五個 object store 與排序索引', async () => {
+  it('建立時就備妥六個 object store 與排序索引', async () => {
     const db = await getDB()
     expect([...db.objectStoreNames].sort()).toEqual([
       'filters',
       'meta',
+      'outbox',
       'projects',
       'tags',
       'tasks',
@@ -105,6 +110,55 @@ describe('IndexedDB 資料層', () => {
         expect(mid).toBeLessThan(hi)
         lo = mid
       }
+    })
+  })
+
+  describe('outbox —— 離線操作佇列', () => {
+    const op = (id: string, createdAt: number, attempts = 0): Op => ({
+      id,
+      kind: 'task.patch',
+      targetId: 'task-1',
+      payload: { notes: id },
+      createdAt,
+      attempts,
+    })
+
+    it('依 createdAt 依序讀出，不是插入順序', async () => {
+      await enqueueOp(op('c', 30))
+      await enqueueOp(op('a', 10))
+      await enqueueOp(op('b', 20))
+
+      expect((await loadOutbox()).map((o) => o.id)).toEqual(['a', 'b', 'c'])
+    })
+
+    it('removeOp 送達後從佇列移除，其餘不受影響', async () => {
+      await enqueueOp(op('a', 10))
+      await enqueueOp(op('b', 20))
+      await removeOp('a')
+
+      expect((await loadOutbox()).map((o) => o.id)).toEqual(['b'])
+    })
+
+    it('markOpAttempt 只累加次數，不動其他欄位', async () => {
+      await enqueueOp(op('a', 10))
+      await markOpAttempt('a')
+      await markOpAttempt('a')
+
+      const [row] = await loadOutbox()
+      expect(row?.attempts).toBe(2)
+      expect(row?.payload).toEqual({ notes: 'a' })
+    })
+
+    it('對不存在的 id 呼叫 markOpAttempt 不會拋出', async () => {
+      await expect(markOpAttempt('missing')).resolves.toBeUndefined()
+    })
+
+    it('略過形狀壞掉的列，不讓上傳器整批卡住', async () => {
+      const db = await getDB()
+      await db.put('outbox', op('good', 10))
+      await db.put('outbox', { id: 'bad', createdAt: 20 } as never) // 缺 kind/targetId
+
+      expect((await loadOutbox()).map((o) => o.id)).toEqual(['good'])
     })
   })
 

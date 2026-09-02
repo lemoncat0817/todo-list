@@ -23,6 +23,10 @@ export {
   saveFilters,
   getMeta,
   setMeta,
+  loadOutbox,
+  enqueueOp,
+  removeOp,
+  markOpAttempt,
 } from './repositories'
 
 export { migrateFromLocalStorage, type MigrationResult } from './migrate'
