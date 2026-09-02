@@ -7,6 +7,7 @@ import router from '@/router'
 import { useTasksStore } from '@/stores/tasks'
 import { useAuthStore } from '@/stores/auth'
 import { useSyncStore } from '@/stores/sync'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { isSyncConfigured } from '@/sync/config'
 
 const app = createApp(App)
@@ -28,8 +29,11 @@ void store.init()
  * （例如使用者點的是信件裡的連結，登入在另一個分頁完成，透過
  * stores/auth.ts 的跨分頁廣播反映回這個分頁）。
  *
- * 這裡先呼叫一次 useSyncStore()，只是要讓它的 watcher 在 restore() 的
- * 非同步結果回來之前就已經掛上去，不需要在意呼叫順序。
+ * 這裡先呼叫一次 useSyncStore()／useWorkspaceStore()，只是要讓它們的
+ * watcher 在 restore() 的非同步結果回來之前就已經掛上去，不需要在意
+ * 呼叫順序——workspace store 還多一個理由：邀請連結（#/accept-invite）
+ * 存進 localStorage 的 pending token 要靠它的 auth.status watcher 撿起來
+ * 處理，這個 watcher 沒掛上去，登入完成後那個 token 就沒人消費。
  *
  * auth.restore() 內部會先檢查有沒有 `todoTask:auth` 這把 localStorage key，
  * 沒有登入過的使用者不會觸發任何 import()，也不會打任何 API——
@@ -38,6 +42,7 @@ void store.init()
  */
 if (isSyncConfigured) {
   useSyncStore()
+  useWorkspaceStore()
   void useAuthStore().restore()
 }
 

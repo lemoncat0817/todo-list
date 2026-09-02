@@ -184,6 +184,16 @@
             aria-hidden="true" />
         </button>
       </li>
+      <!--
+        工作區成員只在已登入時有意義（工作區本身是登入後才會有的概念）——
+        跟「帳號與同步」的顯示條件比照，但多一個 signed-in 判斷，不是
+        isSyncConfigured 就夠。
+      -->
+      <li v-if="isSyncConfigured && auth.status === 'signed-in'">
+        <button type="button" :class="`${linkClass} w-full text-left`" @click="emit('members')">
+          <span class="min-w-0 grow truncate">工作區成員</span>
+        </button>
+      </li>
     </ul>
   </nav>
 </template>
@@ -220,6 +230,8 @@ const emit = defineEmits<{
   data: []
   /** 開啟帳號與同步設定 */
   account: []
+  /** 開啟工作區成員管理 */
+  members: []
 }>()
 
 const tasks = useTasksStore()

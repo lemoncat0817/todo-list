@@ -16,6 +16,35 @@ import {
 } from '@/sync/workspaceClient'
 import { useAuthStore } from './auth'
 
+const PENDING_INVITE_KEY = 'todoTask:pendingInvite'
+
+/**
+ * 邀請連結被點開時，使用者不一定已經登入——OAuth 的登入流程會整頁導去
+ * 供應商再導回來，中途沒有機制讓網址上的 `?token=` query 原封不動存活
+ * （PKCE 流程回來時網址會換成 `?code=`，見 AGENTS.md 對 sync/authClient.ts
+ * 的說明）。所以邀請連結的畫面（AcceptInviteView.vue）看到還沒登入時，
+ * 先把 token 存進 localStorage 再引導登入；登入完成後，不管使用者最後
+ * 回到哪個路由，都靠下面 auth.status 的 watcher 自動撿起來處理，不需要
+ * 邀請連結那個路由本身在登入完成時還活著。
+ */
+export function storePendingInviteToken(token: string): void {
+  try {
+    localStorage.setItem(PENDING_INVITE_KEY, token)
+  } catch {
+    // 存取被擋時（無痕模式、Cookie 停用）就只能要求使用者登入後重新點一次連結
+  }
+}
+
+function consumePendingInviteToken(): string | null {
+  try {
+    const token = localStorage.getItem(PENDING_INVITE_KEY)
+    if (token !== null) localStorage.removeItem(PENDING_INVITE_KEY)
+    return token
+  } catch {
+    return null
+  }
+}
+
 /**
  * 工作區、成員、待處理邀請。
  *
@@ -148,21 +177,42 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   /** 接受邀請連結裡的 token，成功後重新載入工作區清單並切到新加入的那個。 */
-  async function acceptInvite(inviteToken: string): Promise<boolean> {
+  /**
+   * 同一個 token 可能被兩個地方幾乎同時呼叫：AcceptInviteView.vue 自己
+   * 的 watcher，跟下面 auth.status 的 watcher（consumePendingInviteToken
+   * 撿到 localStorage 裡剛存的 token）——使用者開連結時剛好卡在
+   * auth.restore() 還沒跑完的那個瞬間就會兩邊都觸發。accept_invitation
+   * 本身不是 op_id 那種能重送的去重（那是 outbox 專用的機制），同一個
+   * token 呼叫兩次，第二次會撞到「已經被使用過」而回報失敗，即使第一次
+   * 其實成功了。用跟 tasks.ts 的 flush()／sync.ts 的 syncOnce() 一樣的
+   * in-flight 寫法：同一個 token 的第二次呼叫直接共用第一次的 promise。
+   */
+  let acceptInFlight: { token: string; promise: Promise<boolean> } | null = null
+
+  function acceptInvite(inviteToken: string): Promise<boolean> {
+    if (acceptInFlight && acceptInFlight.token === inviteToken) return acceptInFlight.promise
+
     const token = accessToken()
-    if (!token) return false
+    if (!token) return Promise.resolve(false)
     error.value = null
-    try {
-      const joinedWorkspaceId = await acceptInvitation(inviteToken, token)
-      await load()
-      currentWorkspaceId.value = joinedWorkspaceId
-      await loadMembers()
-      return true
-    } catch (e) {
-      console.error('[workspace] 接受邀請失敗', e)
-      error.value = '這個邀請連結無法使用，可能已經過期或被撤銷'
-      return false
-    }
+
+    const promise = (async () => {
+      try {
+        const joinedWorkspaceId = await acceptInvitation(inviteToken, token)
+        await load()
+        currentWorkspaceId.value = joinedWorkspaceId
+        await loadMembers()
+        return true
+      } catch (e) {
+        console.error('[workspace] 接受邀請失敗', e)
+        error.value = '這個邀請連結無法使用，可能已經過期或被撤銷'
+        return false
+      } finally {
+        acceptInFlight = null
+      }
+    })()
+    acceptInFlight = { token: inviteToken, promise }
+    return promise
   }
 
   function clear(): void {
@@ -178,8 +228,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   watch(
     () => auth.status,
     (status) => {
-      if (status === 'signed-in') void load()
-      else clear()
+      if (status === 'signed-in') {
+        void load()
+        const pendingToken = consumePendingInviteToken()
+        if (pendingToken) void acceptInvite(pendingToken)
+      } else {
+        clear()
+      }
     },
     { immediate: true },
   )
