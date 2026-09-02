@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { enqueueOp, loadFilters, loadProjects, loadTags, saveFilters, saveProjects, saveTags } from '@/db'
 import {
   DEFAULT_FILTER_COLOR,
@@ -89,6 +89,18 @@ export const useCollectionsStore = defineStore('collections', () => {
   const filters = ref<StoredFilter[]>([])
   const history = useHistoryStore()
 
+  /**
+   * 排除收件匣的專案清單，給所有「使用者看得到、挑得到」的畫面用
+   * （側邊欄、專案選單、搜尋、篩選器解析……）。`projects` 本身維持原始
+   * 全量——本地持久化與同步都得原封不動地存取推送收件匣專案，只有
+   * UI 層不該把它當成一個使用者自建、可選、可刪的一般專案。
+   */
+  const visibleProjects = computed(() => projects.value.filter((p) => !p.isInbox))
+  /** `resolveView`／`matchesView` 用來把「專案是收件匣」跟「沒有專案」視為同一件事。 */
+  const inboxProjectIds = computed(
+    () => new Set(projects.value.filter((p) => p.isInbox).map((p) => p.id)),
+  )
+
   /** 純粹用來推導 outbox 補丁的內容指紋，跟本地 IndexedDB 寫入無關（見上方 enqueueCollectionOps 的說明）。 */
   let persistedProjectsIndex = new Map<string, string>()
   let persistedTagsIndex = new Map<string, string>()
@@ -148,6 +160,7 @@ export const useCollectionsStore = defineStore('collections', () => {
       color,
       rank: nextRank(projects.value),
       updatedAt: Date.now(),
+      isInbox: false,
     }
     projects.value.push(project)
     history.record({
@@ -380,6 +393,8 @@ export const useCollectionsStore = defineStore('collections', () => {
 
   return {
     projects,
+    visibleProjects,
+    inboxProjectIds,
     tags,
     filters,
     snapshot,

@@ -329,7 +329,9 @@ describe('帳號隔離：換了不同的人登入時，本地快取不能繼續�
     await setMeta(META_SYNC_ACCOUNT_ID, 'userA')
     tasks.isLoading = false
     tasks.items = [makeTask('A 的任務', false, { id: 'a-task' })]
-    collections.projects = [{ id: 'a-proj', name: 'A 的專案', color: '#000', rank: 'A', updatedAt: 1 }]
+    collections.projects = [
+      { id: 'a-proj', name: 'A 的專案', color: '#000', rank: 'A', updatedAt: 1, isInbox: false },
+    ]
     collections.tags = [{ id: 'a-tag', name: 'A 的標籤', color: '#000', updatedAt: 1 }]
     collections.filters = [{ id: 'a-filter', name: 'A 的篩選', query: '', color: '#000', rank: 'A', updatedAt: 1 }]
     const fetchMock = mockFetch()

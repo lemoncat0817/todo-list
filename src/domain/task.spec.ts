@@ -145,6 +145,12 @@ describe('normalizeProject / normalizeTag', () => {
     expect(normalizeProject({ id: 'p', name: 'x' })?.color).toBeTruthy()
     expect(normalizeTag({ id: 't', name: 'x' })?.color).toBeTruthy()
   })
+
+  it('isInbox 缺值時預設 false，只有明確為 true 才視為收件匣', () => {
+    expect(normalizeProject({ id: 'p', name: 'x' })?.isInbox).toBe(false)
+    expect(normalizeProject({ id: 'p', name: 'x', isInbox: 'true' })?.isInbox).toBe(false)
+    expect(normalizeProject({ id: 'p', name: 'x', isInbox: true })?.isInbox).toBe(true)
+  })
 })
 
 describe('groupByParent', () => {

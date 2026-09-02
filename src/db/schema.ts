@@ -200,6 +200,20 @@ export interface StoredProject {
   rank: string
   /** v4 新增，供跨裝置同步判斷衝突時哪一邊較新（見 sync/merge.ts）。 */
   updatedAt: number
+  /**
+   * 這個工作區的收件匣專案——伺服器端建立（handle_new_user()／既有帳號的
+   * 補建遷移），client 端唯讀，永遠不會自己建立或改動這個欄位。
+   *
+   * 存在的理由：`create_task` RPC 對「沒帶 project_id」的任務，回傳的
+   * project_id 是這個工作區真正的收件匣 UUID，不是 null（實測驗證，見
+   * supabase/migrations/0004 的 derive_task_workspace()）。task 從遠端
+   * 拉回來、合併進本地之後，若直接採信這個真實 UUID，「收件匣」檢視
+   * （domain/views.ts 認的是 task.projectId === null）跟拖著它走的側邊欄
+   * 專案清單就會同時壞掉：任務從收件匣消失，同時冒出一個看起來像使用者
+   * 自建、卻刪不掉的「收件匣」專案。用這個欄位讓兩層各自認得「這其實是
+   * 收件匣」，而不是讓收件匣的意義本身分裂成兩種。
+   */
+  isInbox: boolean
 }
 
 export interface StoredTag {

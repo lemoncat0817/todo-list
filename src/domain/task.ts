@@ -116,6 +116,9 @@ export function normalizeProject(raw: unknown, fallbackRank = ''): StoredProject
     // v4 之前的資料沒有這個欄位，補上現在的時間——比讓它是 0 更安全：
     // 0 會讓一筆舊資料在跟任何遠端版本比較時永遠「看起來最舊」而被覆蓋。
     updatedAt: finiteNumber(raw.updatedAt, Date.now()),
+    // 這個欄位加入之前落地的資料一律不是收件匣（本地從未有過這個概念），
+    // 缺值時當作 false 是唯一合理的預設。
+    isInbox: raw.isInbox === true,
   }
 }
 

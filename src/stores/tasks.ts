@@ -144,10 +144,10 @@ export const useTasksStore = defineStore('tasks', () => {
    * 「不設這個屬性」與「設成 undefined」是兩件事。
    */
   function viewOptions(spec: ViewSpec, extra: ViewOptions = {}): ViewOptions {
-    const base: ViewOptions = { ...extra }
+    const base: ViewOptions = { ...extra, inboxProjectIds: collections.inboxProjectIds }
     if (spec.kind === 'filter') {
       base.predicate = compileFilter(spec.id ?? '', {
-        projects: collections.projects,
+        projects: collections.visibleProjects,
         tags: collections.tags,
       })
     }
@@ -168,7 +168,7 @@ export const useTasksStore = defineStore('tasks', () => {
             keyword: ui.keyword,
             sort: prefs.sortBy,
             groupBy: prefs.groupBy,
-            projects: collections.projects,
+            projects: collections.visibleProjects,
           }),
         ),
   )

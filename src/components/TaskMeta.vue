@@ -69,7 +69,7 @@ const priorityClass = computed(
 
 const overdue = computed(() => isOverdue(props.task.dueDate) && !props.task.isCompleted)
 const project = computed(
-  () => collections.projects.find((p) => p.id === props.task.projectId) ?? null,
+  () => collections.visibleProjects.find((p) => p.id === props.task.projectId) ?? null,
 )
 const tags = computed(() => collections.tags.filter((t) => props.task.tagIds.includes(t.id)))
 </script>

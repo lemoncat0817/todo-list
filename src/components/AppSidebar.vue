@@ -38,8 +38,8 @@
       </li>
     </ul>
 
-    <ul v-if="collections.projects.length > 0" class="flex flex-col gap-1 border-t border-line pt-3">
-      <li v-for="project in collections.projects" :key="project.id">
+    <ul v-if="collections.visibleProjects.length > 0" class="flex flex-col gap-1 border-t border-line pt-3">
+      <li v-for="project in collections.visibleProjects" :key="project.id">
         <RouterLink :to="`/project/${project.id}`" :class="collapsedLinkClass" :title="project.name"
           @click="emit('navigate')">
           <span class="size-2.5 shrink-0 rounded-full" :style="{ backgroundColor: project.color }"
@@ -103,11 +103,11 @@
         </button>
       </div>
 
-      <p v-if="collections.projects.length === 0" class="px-2.5 text-sm text-ink-faint">
+      <p v-if="collections.visibleProjects.length === 0" class="px-2.5 text-sm text-ink-faint">
         還沒有專案
       </p>
       <ul v-else class="flex flex-col gap-0.5">
-        <li v-for="project in collections.projects" :key="project.id">
+        <li v-for="project in collections.visibleProjects" :key="project.id">
           <RouterLink :to="`/project/${project.id}`" :class="linkClass" @click="emit('navigate')">
             <span class="size-2.5 shrink-0 rounded-full" :style="{ backgroundColor: project.color }"
               aria-hidden="true" />
