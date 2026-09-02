@@ -42,26 +42,65 @@ describe('rowMapping — tasks', () => {
 })
 
 describe('rowMapping — projects／tags／filters', () => {
-  it('專案往返等價', () => {
-    const project = { id: 'p1', name: '工作', color: '#1d4ed8', rank: 'C', updatedAt: 1000, isInbox: false }
+  it('專案往返等價（含 workspaceId）', () => {
+    const project = {
+      id: 'p1',
+      name: '工作',
+      color: '#1d4ed8',
+      rank: 'C',
+      updatedAt: 1000,
+      isInbox: false,
+      workspaceId: 'w1',
+    }
     expect(normalizeProject(fromRemoteProject(toRemoteProject(project)))).toEqual(project)
   })
 
   it('is_inbox 只拉不推：伺服器回傳的收件匣旗標會被讀進來，但 toRemoteProject 不會送出這個欄位', () => {
-    expect(toRemoteProject({ id: 'p1', name: '收件匣', color: '#6b7280', rank: 'A', updatedAt: 1000, isInbox: true }))
-      .not.toHaveProperty('is_inbox')
+    expect(
+      toRemoteProject({
+        id: 'p1',
+        name: '收件匣',
+        color: '#6b7280',
+        rank: 'A',
+        updatedAt: 1000,
+        isInbox: true,
+        workspaceId: 'w1',
+      }),
+    ).not.toHaveProperty('is_inbox')
 
     const remoteRow = { id: 'p1', name: '收件匣', color: '#6b7280', rank: 'A', updated_at: 1000, is_inbox: true }
     expect(normalizeProject(fromRemoteProject(remoteRow))?.isInbox).toBe(true)
   })
 
-  it('標籤往返等價', () => {
-    const tag = { id: 'g1', name: '緊急', color: '#15803d', updatedAt: 1000 }
+  it('workspace_id 建立時明確送出：共享工作區底下新建專案唯一的路徑', () => {
+    expect(
+      toRemoteProject({
+        id: 'p1',
+        name: '共享專案',
+        color: '#1d4ed8',
+        rank: 'A',
+        updatedAt: 1000,
+        isInbox: false,
+        workspaceId: 'shared-ws',
+      }),
+    ).toMatchObject({ workspace_id: 'shared-ws' })
+  })
+
+  it('標籤往返等價（含 workspaceId）', () => {
+    const tag = { id: 'g1', name: '緊急', color: '#15803d', updatedAt: 1000, workspaceId: 'w1' }
     expect(normalizeTag(fromRemoteTag(toRemoteTag(tag)))).toEqual(tag)
   })
 
-  it('篩選器往返等價', () => {
-    const filter = { id: 'f1', name: '要事', query: 'today & p1', color: '#7c3aed', rank: 'A', updatedAt: 1000 }
+  it('篩選器往返等價（含 workspaceId）', () => {
+    const filter = {
+      id: 'f1',
+      name: '要事',
+      query: 'today & p1',
+      color: '#7c3aed',
+      rank: 'A',
+      updatedAt: 1000,
+      workspaceId: 'w1',
+    }
     expect(normalizeFilter(fromRemoteFilter(toRemoteFilter(filter)))).toEqual(filter)
   })
 })

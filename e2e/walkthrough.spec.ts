@@ -176,7 +176,7 @@ test('P1 已修正：編輯狀態不落地，儲存形狀乾淨', async ({ page 
   expect(Object.keys(rows[0] ?? {}).sort()).toEqual([
     'completedAt', 'createdAt', 'dueDate', 'dueTime', 'id', 'isCompleted',
     'notes', 'parentId', 'priority', 'projectId', 'rank', 'recurrence',
-    'tagIds', 'taskName', 'updatedAt',
+    'tagIds', 'taskName', 'updatedAt', 'workspaceId',
   ])
 })
 

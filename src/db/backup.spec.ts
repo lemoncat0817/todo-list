@@ -12,9 +12,13 @@ import { makeTask } from '@/test/helpers'
 
 const payload = {
   tasks: [makeTask('買牛奶', false, { id: 't1' })],
-  projects: [{ id: 'p1', name: '工作', color: '#1d4ed8', rank: 'A', updatedAt: 1000, isInbox: false }],
-  tags: [{ id: 'g1', name: '緊急', color: '#15803d', updatedAt: 1000 }],
-  filters: [{ id: 'f1', name: '要事', query: 'today & p1', color: '#7c3aed', rank: 'A', updatedAt: 1000 }],
+  projects: [
+    { id: 'p1', name: '工作', color: '#1d4ed8', rank: 'A', updatedAt: 1000, isInbox: false, workspaceId: null },
+  ],
+  tags: [{ id: 'g1', name: '緊急', color: '#15803d', updatedAt: 1000, workspaceId: null }],
+  filters: [
+    { id: 'f1', name: '要事', query: 'today & p1', color: '#7c3aed', rank: 'A', updatedAt: 1000, workspaceId: null },
+  ],
 }
 
 describe('createBackup', () => {

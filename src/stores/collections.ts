@@ -18,6 +18,7 @@ import { monotonicNow } from '@/domain/task'
 import { isSyncConfigured } from '@/sync/config'
 import { toRemoteFilter, toRemoteProject, toRemoteTag } from '@/sync/rowMapping'
 import { useHistoryStore } from './history'
+import { useWorkspaceStore } from './workspace'
 
 /**
  * 跟 stores/tasks.ts 的 enqueueSyncOps 同一套邏輯，套用在
@@ -88,6 +89,7 @@ export const useCollectionsStore = defineStore('collections', () => {
   const tags = ref<StoredTag[]>([])
   const filters = ref<StoredFilter[]>([])
   const history = useHistoryStore()
+  const workspace = useWorkspaceStore()
 
   /**
    * 排除收件匣的專案清單，給所有「使用者看得到、挑得到」的畫面用
@@ -161,6 +163,11 @@ export const useCollectionsStore = defineStore('collections', () => {
       rank: nextRank(projects.value),
       updatedAt: Date.now(),
       isInbox: false,
+      // 新建立的專案落在使用者目前所在的工作區——這是在共享工作區底下
+      // 建立專案唯一的路徑（見 sync/rowMapping.ts 的 toRemoteProject 註解）。
+      // currentWorkspaceId 在沒有設定同步／尚未登入時是 null，此時純本機
+      // 模式下建立的專案本來就沒有工作區可言。
+      workspaceId: workspace.currentWorkspaceId,
     }
     projects.value.push(project)
     history.record({
@@ -216,7 +223,13 @@ export const useCollectionsStore = defineStore('collections', () => {
   function addTag(name: string, color = DEFAULT_TAG_COLOR): StoredTag {
     const existingTag = findByNormalizedName(tags.value, name)
     if (existingTag) return existingTag
-    const tag: StoredTag = { id: crypto.randomUUID(), name, color, updatedAt: Date.now() }
+    const tag: StoredTag = {
+      id: crypto.randomUUID(),
+      name,
+      color,
+      updatedAt: Date.now(),
+      workspaceId: workspace.currentWorkspaceId,
+    }
     tags.value.push(tag)
     history.record({
       label: `新增標籤「${name}」`,
@@ -273,6 +286,7 @@ export const useCollectionsStore = defineStore('collections', () => {
       color,
       rank: nextRank(filters.value),
       updatedAt: Date.now(),
+      workspaceId: workspace.currentWorkspaceId,
     }
     filters.value.push(filter)
     history.record({

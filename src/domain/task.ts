@@ -85,6 +85,7 @@ export function normalizeTask(raw: unknown, fallbackRank = ''): StoredTask | nul
     completedAt: raw.isCompleted === true ? finiteNumber(raw.completedAt, now) : null,
     createdAt: finiteNumber(raw.createdAt, now),
     updatedAt: finiteNumber(raw.updatedAt, now),
+    workspaceId: nullableId(raw.workspaceId),
   }
 }
 
@@ -119,6 +120,7 @@ export function normalizeProject(raw: unknown, fallbackRank = ''): StoredProject
     // 這個欄位加入之前落地的資料一律不是收件匣（本地從未有過這個概念），
     // 缺值時當作 false 是唯一合理的預設。
     isInbox: raw.isInbox === true,
+    workspaceId: nullableId(raw.workspaceId),
   }
 }
 
@@ -132,6 +134,7 @@ export function normalizeTag(raw: unknown): StoredTag | null {
     name,
     color: str(raw.color, '#15803d'),
     updatedAt: finiteNumber(raw.updatedAt, Date.now()),
+    workspaceId: nullableId(raw.workspaceId),
   }
 }
 
@@ -149,6 +152,7 @@ export function normalizeFilter(raw: unknown, fallbackRank = ''): StoredFilter |
     color: str(raw.color, '#7c3aed'),
     rank: str(raw.rank, fallbackRank),
     updatedAt: finiteNumber(raw.updatedAt, Date.now()),
+    workspaceId: nullableId(raw.workspaceId),
   }
 }
 

@@ -61,6 +61,9 @@ export function toRemoteTask(task: StoredTask): Record<string, unknown> {
     created_at: task.createdAt,
     updated_at: task.updatedAt,
     deleted_at: null,
+    // workspace_id 刻意不送：derive_task_workspace() trigger 永遠依
+    // project_id 反推、不採信 client 送的值（見 supabase/migrations/0004），
+    // client 端永遠是唯讀。
   }
 }
 
@@ -82,6 +85,7 @@ export function fromRemoteTask(row: Record<string, unknown>): unknown {
     completedAt: row.completed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    workspaceId: row.workspace_id,
   }
 }
 
@@ -95,6 +99,12 @@ export function toRemoteProject(project: StoredProject): Record<string, unknown>
     rank: project.rank,
     updated_at: project.updatedAt,
     deleted_at: null,
+    // 建立時明確帶 workspace_id，是在共享工作區底下新建專案唯一的路徑
+    // （create_project 的 derive_workspace_id() trigger：沒帶才落個人
+    // 工作區，帶了就尊重，見 supabase/migrations/0004／0010）。之後的
+    // patch 不會改到這個值（沒有「搬到別的工作區」這個操作），
+    // diffFields 產生補丁時自然不會把它送進 apply_project_patch。
+    workspace_id: project.workspaceId,
     // is_inbox 刻意不送：這欄位完全由伺服器決定（handle_new_user() 與
     // 既有帳號的補建遷移），create_project／apply_project_patch 這兩支
     // RPC 也不讀 payload 裡的這個鍵——client 端永遠是唯讀。
@@ -109,17 +119,32 @@ export function fromRemoteProject(row: Record<string, unknown>): unknown {
     rank: row.rank,
     updatedAt: row.updated_at,
     isInbox: row.is_inbox,
+    workspaceId: row.workspace_id,
   }
 }
 
 // -------------------------------------------------------------------- tags
 
 export function toRemoteTag(tag: StoredTag): Record<string, unknown> {
-  return { id: tag.id, name: tag.name, color: tag.color, updated_at: tag.updatedAt, deleted_at: null }
+  return {
+    id: tag.id,
+    name: tag.name,
+    color: tag.color,
+    updated_at: tag.updatedAt,
+    deleted_at: null,
+    // 理由同 toRemoteProject 的 workspace_id 註解。
+    workspace_id: tag.workspaceId,
+  }
 }
 
 export function fromRemoteTag(row: Record<string, unknown>): unknown {
-  return { id: row.id, name: row.name, color: row.color, updatedAt: row.updated_at }
+  return {
+    id: row.id,
+    name: row.name,
+    color: row.color,
+    updatedAt: row.updated_at,
+    workspaceId: row.workspace_id,
+  }
 }
 
 // ----------------------------------------------------------------- filters
@@ -133,6 +158,8 @@ export function toRemoteFilter(filter: StoredFilter): Record<string, unknown> {
     rank: filter.rank,
     updated_at: filter.updatedAt,
     deleted_at: null,
+    // 理由同 toRemoteProject 的 workspace_id 註解。
+    workspace_id: filter.workspaceId,
   }
 }
 
@@ -144,5 +171,6 @@ export function fromRemoteFilter(row: Record<string, unknown>): unknown {
     color: row.color,
     rank: row.rank,
     updatedAt: row.updated_at,
+    workspaceId: row.workspace_id,
   }
 }
