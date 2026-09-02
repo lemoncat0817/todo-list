@@ -29,6 +29,17 @@
               <option v-for="c in COLLECTION_COLORS" :key="c.value" :value="c.value">{{ c.name }}</option>
             </select>
 
+            <button type="button" :aria-label="`複製專案「${project.name}」`"
+              data-tooltip="複製成新專案，只帶結構，不含已完成任務與留言"
+              class="grid size-8 shrink-0 place-items-center rounded-md text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
+              @click="duplicateProject(project.id)">
+              <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true" fill="none" stroke="currentColor"
+                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="6" y="6" width="7" height="7" rx="1" />
+                <path d="M10 6V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h2" />
+              </svg>
+            </button>
+
             <button type="button" :aria-label="`刪除專案「${project.name}」`"
               class="grid size-8 shrink-0 place-items-center rounded-md text-ink-faint transition-colors hover:bg-danger-soft hover:text-danger-ink"
               @click="removeProject(project.id)">
@@ -385,6 +396,12 @@ function removeProject(id: string): void {
 function removeTag(id: string): void {
   tasks.removeTag(id)
   if (route.name === 'label' && route.params.id === id) void router.push('/today')
+}
+
+/** 複製完直接帶使用者去看新專案——留在原地的話，複製了什麼、去哪裡都得自己找。 */
+function duplicateProject(id: string): void {
+  const copy = tasks.duplicateProject(id)
+  if (copy) void router.push(`/project/${copy.id}`)
 }
 
 function createProject(): void {
