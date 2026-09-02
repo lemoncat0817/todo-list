@@ -104,6 +104,47 @@ describe('auth.status 變成 signed-out 時', () => {
     expect(workspace.currentWorkspaceId).toBeNull()
     expect(workspace.members).toEqual([])
   })
+
+  it('也清空線上狀態——上一個帳號的線上名單不該留給下一個登入的人看', async () => {
+    const { workspace, auth } = setup()
+    mockFetch((url) => (url.includes('/workspaces?') ? [{ id: 'w1', name: 'x', is_personal: true, created_by: 'u1', updated_at: 1 }] : []))
+
+    auth.session = fakeSession()
+    auth.status = 'signed-in'
+    await vi.waitFor(() => expect(workspace.workspaces.length).toBe(1))
+    workspace.setOnlineUsers('w1', ['u1', 'u2'])
+    expect(workspace.onlineUserIds).toEqual(new Set(['u1', 'u2']))
+
+    auth.session = null
+    auth.status = 'signed-out'
+
+    await vi.waitFor(() => expect(workspace.workspaces).toEqual([]))
+    expect(workspace.onlineUserIds).toEqual(new Set())
+  })
+})
+
+describe('線上狀態（presence）', () => {
+  it('setOnlineUsers 只影響對應的工作區，onlineUserIds 只反映目前所在工作區', () => {
+    const { workspace } = setup()
+    workspace.workspaces = [
+      { id: 'w1', name: 'A', is_personal: true, created_by: 'u1', updated_at: 1 },
+      { id: 'w2', name: 'B', is_personal: false, created_by: 'u1', updated_at: 1 },
+    ]
+    workspace.currentWorkspaceId = 'w1'
+
+    workspace.setOnlineUsers('w1', ['u1'])
+    workspace.setOnlineUsers('w2', ['u1', 'u2', 'u3'])
+
+    expect(workspace.onlineUserIds).toEqual(new Set(['u1']))
+
+    workspace.currentWorkspaceId = 'w2'
+    expect(workspace.onlineUserIds).toEqual(new Set(['u1', 'u2', 'u3']))
+  })
+
+  it('沒有目前所在工作區時 onlineUserIds 是空集合', () => {
+    const { workspace } = setup()
+    expect(workspace.onlineUserIds).toEqual(new Set())
+  })
 })
 
 describe('invite', () => {

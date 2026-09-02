@@ -3,15 +3,25 @@ import { REALTIME_SUBSCRIBE_STATES } from '@supabase/realtime-js'
 
 /**
  * 假的 RealtimeChannel／RealtimeClient：只還原這個模組實際用到的介面
- * （channel/on/subscribe/unsubscribe/disconnect），不是整個套件的行為。
+ * （channel/on/subscribe/unsubscribe/disconnect/track/untrack/
+ * presenceState），不是整個套件的行為。
  */
 class FakeChannel {
   handlers: Array<{ table: string; cb: () => void }> = []
+  presenceHandlers: Array<() => void> = []
   subscribeCb: ((status: REALTIME_SUBSCRIBE_STATES) => void) | undefined
   unsubscribed = false
+  trackCalls: Record<string, unknown>[] = []
+  untrackCalls = 0
+  /** 測試用：下一次 emitPresenceSync() 要讓 presenceState() 回傳的內容。 */
+  fakePresenceState: Record<string, unknown> = {}
 
-  on(_type: string, filter: { table: string }, cb: () => void) {
-    this.handlers.push({ table: filter.table, cb })
+  on(type: string, filter: { table?: string; event?: string }, cb: () => void) {
+    if (type === 'presence') {
+      this.presenceHandlers.push(cb)
+    } else {
+      this.handlers.push({ table: filter.table ?? '', cb })
+    }
     return this
   }
 
@@ -25,6 +35,20 @@ class FakeChannel {
     return Promise.resolve('ok')
   }
 
+  track(payload: Record<string, unknown>) {
+    this.trackCalls.push(payload)
+    return Promise.resolve('ok')
+  }
+
+  untrack() {
+    this.untrackCalls++
+    return Promise.resolve('ok')
+  }
+
+  presenceState() {
+    return this.fakePresenceState
+  }
+
   /** 測試用：模擬伺服器推來的狀態變化。 */
   emitStatus(status: REALTIME_SUBSCRIBE_STATES) {
     this.subscribeCb?.(status)
@@ -33,6 +57,12 @@ class FakeChannel {
   /** 測試用：模擬某張表有一筆變更事件送達。 */
   emitChange(table: string) {
     for (const h of this.handlers) if (h.table === table) h.cb()
+  }
+
+  /** 測試用：模擬 presence 同步事件送達，presenceState() 之後回傳 nextState。 */
+  emitPresenceSync(nextState: Record<string, unknown>) {
+    this.fakePresenceState = nextState
+    for (const h of this.presenceHandlers) h()
   }
 }
 
@@ -77,6 +107,7 @@ describe('subscribeToWorkspace', () => {
     const onSubscribed = vi.fn()
     subscribeToWorkspace({
       workspaceId: 'w1',
+      userId: 'u1',
       getAccessToken: async () => 'token',
       onChange: vi.fn(),
       onSubscribed,
@@ -96,6 +127,7 @@ describe('subscribeToWorkspace', () => {
     const onStatusChange = vi.fn()
     subscribeToWorkspace({
       workspaceId: 'w1',
+      userId: 'u1',
       getAccessToken: async () => 'token',
       onChange: vi.fn(),
       onSubscribed: vi.fn(),
@@ -112,6 +144,7 @@ describe('subscribeToWorkspace', () => {
   it('訂閱目前已知的四張表，且帶上 workspace_id 的過濾條件', () => {
     subscribeToWorkspace({
       workspaceId: 'w1',
+      userId: 'u1',
       getAccessToken: async () => 'token',
       onChange: vi.fn(),
       onSubscribed: vi.fn(),
@@ -124,6 +157,7 @@ describe('subscribeToWorkspace', () => {
     const onChange = vi.fn()
     subscribeToWorkspace({
       workspaceId: 'w1',
+      userId: 'u1',
       getAccessToken: async () => 'token',
       onChange,
       onSubscribed: vi.fn(),
@@ -142,6 +176,7 @@ describe('subscribeToWorkspace', () => {
     const onChange = vi.fn()
     subscribeToWorkspace({
       workspaceId: 'w1',
+      userId: 'u1',
       getAccessToken: async () => 'token',
       onChange,
       onSubscribed: vi.fn(),
@@ -160,6 +195,7 @@ describe('subscribeToWorkspace', () => {
     const onChange = vi.fn()
     const sub = subscribeToWorkspace({
       workspaceId: 'w1',
+      userId: 'u1',
       getAccessToken: async () => 'token',
       onChange,
       onSubscribed: vi.fn(),
@@ -176,6 +212,7 @@ describe('subscribeToWorkspace', () => {
   it('resetRealtimeClient() 會斷線並讓下次訂閱重新建立連線', () => {
     subscribeToWorkspace({
       workspaceId: 'w1',
+      userId: 'u1',
       getAccessToken: async () => 'token',
       onChange: vi.fn(),
       onSubscribed: vi.fn(),
@@ -187,10 +224,73 @@ describe('subscribeToWorkspace', () => {
 
     subscribeToWorkspace({
       workspaceId: 'w2',
+      userId: 'u1',
       getAccessToken: async () => 'token',
       onChange: vi.fn(),
       onSubscribed: vi.fn(),
     })
     expect(lastChannel).not.toBe(first)
+  })
+
+  describe('線上狀態（presence）', () => {
+    it('連上時用自己的 user id 呼叫 track()，讓其他訂閱者看得到自己在線上', () => {
+      subscribeToWorkspace({
+        workspaceId: 'w1',
+        userId: 'u1',
+        getAccessToken: async () => 'token',
+        onChange: vi.fn(),
+        onSubscribed: vi.fn(),
+      })
+
+      lastChannel?.emitStatus(REALTIME_SUBSCRIBE_STATES.SUBSCRIBED)
+
+      expect(lastChannel?.trackCalls).toHaveLength(1)
+      expect(lastChannel?.trackCalls[0]).toMatchObject({ user_id: 'u1' })
+    })
+
+    it('presence 同步事件送達時，onPresenceChange 收到目前線上的 user id 清單', () => {
+      const onPresenceChange = vi.fn()
+      subscribeToWorkspace({
+        workspaceId: 'w1',
+        userId: 'u1',
+        getAccessToken: async () => 'token',
+        onChange: vi.fn(),
+        onSubscribed: vi.fn(),
+        onPresenceChange,
+      })
+
+      lastChannel?.emitPresenceSync({
+        u1: [{ presence_ref: 'ref1', user_id: 'u1' }],
+        u2: [{ presence_ref: 'ref2', user_id: 'u2' }],
+      })
+
+      expect(onPresenceChange).toHaveBeenCalledWith(['u1', 'u2'])
+    })
+
+    it('沒有傳 onPresenceChange 時不註冊 presence 監聽——不需要的呼叫端不用付這個成本', () => {
+      subscribeToWorkspace({
+        workspaceId: 'w1',
+        userId: 'u1',
+        getAccessToken: async () => 'token',
+        onChange: vi.fn(),
+        onSubscribed: vi.fn(),
+      })
+
+      expect(lastChannel?.presenceHandlers).toHaveLength(0)
+    })
+
+    it('stop() 會呼叫 untrack()，讓自己從其他訂閱者的線上清單消失', () => {
+      const sub = subscribeToWorkspace({
+        workspaceId: 'w1',
+        userId: 'u1',
+        getAccessToken: async () => 'token',
+        onChange: vi.fn(),
+        onSubscribed: vi.fn(),
+      })
+
+      sub.stop()
+
+      expect(lastChannel?.untrackCalls).toBe(1)
+    })
   })
 })
