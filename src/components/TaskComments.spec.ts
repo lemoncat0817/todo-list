@@ -39,8 +39,8 @@ describe('TaskComments.vue', () => {
   it('顯示留言內容、作者名稱（自己是「我」，別人查 workspace.members）', () => {
     const comments = useCommentsStore()
     comments.mergeRemote([
-      { id: 'c1', taskId: 'task-1', authorId: 'me', body: '我的留言', createdAt: 1, updatedAt: 1 },
-      { id: 'c2', taskId: 'task-1', authorId: 'bob', body: 'Bob 的留言', createdAt: 2, updatedAt: 2 },
+      { id: 'c1', taskId: 'task-1', authorId: 'me', body: '我的留言', mentionedUserIds: [], createdAt: 1, updatedAt: 1 },
+      { id: 'c2', taskId: 'task-1', authorId: 'bob', body: 'Bob 的留言', mentionedUserIds: [], createdAt: 2, updatedAt: 2 },
     ])
     const w = mountComments()
 
@@ -53,7 +53,7 @@ describe('TaskComments.vue', () => {
   it('作者已經不在 workspace.members 裡時顯示「已離開的成員」', () => {
     const comments = useCommentsStore()
     comments.mergeRemote([
-      { id: 'c1', taskId: 'task-1', authorId: 'gone', body: '舊留言', createdAt: 1, updatedAt: 1 },
+      { id: 'c1', taskId: 'task-1', authorId: 'gone', body: '舊留言', mentionedUserIds: [], createdAt: 1, updatedAt: 1 },
     ])
     const w = mountComments()
     expect(w.text()).toContain('已離開的成員')
@@ -62,8 +62,8 @@ describe('TaskComments.vue', () => {
   it('只在自己的留言底下顯示編輯／刪除', () => {
     const comments = useCommentsStore()
     comments.mergeRemote([
-      { id: 'c1', taskId: 'task-1', authorId: 'me', body: '我的留言', createdAt: 1, updatedAt: 1 },
-      { id: 'c2', taskId: 'task-1', authorId: 'bob', body: 'Bob 的留言', createdAt: 2, updatedAt: 2 },
+      { id: 'c1', taskId: 'task-1', authorId: 'me', body: '我的留言', mentionedUserIds: [], createdAt: 1, updatedAt: 1 },
+      { id: 'c2', taskId: 'task-1', authorId: 'bob', body: 'Bob 的留言', mentionedUserIds: [], createdAt: 2, updatedAt: 2 },
     ])
     const w = mountComments()
     const items = w.findAll('li')
@@ -87,7 +87,7 @@ describe('TaskComments.vue', () => {
   it('編輯自己的留言：點編輯出現輸入框，儲存後呼叫 comments.update', async () => {
     const comments = useCommentsStore()
     comments.mergeRemote([
-      { id: 'c1', taskId: 'task-1', authorId: 'me', body: '原始內容', createdAt: 1, updatedAt: 1 },
+      { id: 'c1', taskId: 'task-1', authorId: 'me', body: '原始內容', mentionedUserIds: [], createdAt: 1, updatedAt: 1 },
     ])
     const w = mountComments()
 
@@ -107,7 +107,7 @@ describe('TaskComments.vue', () => {
   it('刪除自己的留言：點刪除呼叫 comments.remove', async () => {
     const comments = useCommentsStore()
     comments.mergeRemote([
-      { id: 'c1', taskId: 'task-1', authorId: 'me', body: '要刪掉的', createdAt: 1, updatedAt: 1 },
+      { id: 'c1', taskId: 'task-1', authorId: 'me', body: '要刪掉的', mentionedUserIds: [], createdAt: 1, updatedAt: 1 },
     ])
     const w: Wrapper = mountComments()
 
@@ -115,5 +115,28 @@ describe('TaskComments.vue', () => {
     await deleteButton?.trigger('click')
 
     expect(comments.forTask('task-1')).toEqual([])
+  })
+
+  it('留言內容裡的 @提及會標示成醒目樣式', () => {
+    const comments = useCommentsStore()
+    comments.mergeRemote([
+      { id: 'c1', taskId: 'task-1', authorId: 'me', body: '@Bob 麻煩看一下', mentionedUserIds: ['bob'], createdAt: 1, updatedAt: 1 },
+    ])
+    const w = mountComments()
+
+    const mention = w.find('.bg-accent-soft')
+    expect(mention.exists()).toBe(true)
+    expect(mention.text()).toBe('@Bob')
+  })
+
+  it('送出的留言帶 @提及時，comments.add 收到的內容會解析出 mentionedUserIds', async () => {
+    const w = mountComments()
+    await w.find('#new-comment-task-1').setValue('@Bob 麻煩確認')
+
+    const submit = w.findAll('button').find((b) => b.text() === '留言')
+    await submit?.trigger('click')
+
+    const comments = useCommentsStore()
+    expect(comments.forTask('task-1')[0]?.mentionedUserIds).toEqual(['bob'])
   })
 })

@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, toRaw } from 'vue'
 import { loadComments, saveComments } from '@/db'
 import type { StoredComment } from '@/db/schema'
+import { parseMentions } from '@/domain/mentions'
 import { isSyncConfigured } from '@/sync/config'
 import { toRemoteComment } from '@/sync/rowMapping'
 import { useHistoryStore } from './history'
 import { useAuthStore } from './auth'
+import { useWorkspaceStore } from './workspace'
 import { enqueueCollectionOps } from './outboxSync'
 
 /**
@@ -22,6 +24,12 @@ export const useCommentsStore = defineStore('comments', () => {
   const items = ref<StoredComment[]>([])
   const history = useHistoryStore()
   const auth = useAuthStore()
+  const workspace = useWorkspaceStore()
+
+  /** @提及要比對的成員名單，跟 TaskComments.vue 顯示作者名稱是同一份資料。 */
+  function mentionableMembers() {
+    return workspace.members.map((m) => ({ userId: m.user_id, displayName: m.profiles?.display_name ?? '' }))
+  }
 
   /** taskId → 依 createdAt 排序好的留言，畫面一次算好整張表，不是每次都重新 filter+sort。 */
   const byTask = computed(() => {
@@ -48,10 +56,25 @@ export const useCommentsStore = defineStore('comments', () => {
     persistedIndex = new Map(items.value.map((c) => [c.id, JSON.stringify(c)]))
   }
 
+  /**
+   * toRaw + 明確淺拷貝 mentionedUserIds：跟 stores/tasks.ts 的 snapshot()
+   * 是同一個坑——structured clone（IndexedDB 的 put() 底層用的）認不得
+   * Vue 的 reactive Proxy，陣列欄位不 toRaw 就丟給 put() 會直接炸掉
+   * DataCloneError，不是本地測試才會踩到，瀏覽器裡一樣會發生。toRaw()
+   * 只解開最外層代理，巢狀的陣列／物件還是要自己再展開一次。
+   *
+   * enqueueCollectionOps() 最終也會把這裡的每一列送進 enqueueOp()（同一個
+   * put()），所以 flush() 存本地跟排 outbox op 都要用這份，不能只顧其中一邊。
+   */
+  function snapshot(): StoredComment[] {
+    return items.value.map((c) => ({ ...toRaw(c), mentionedUserIds: [...c.mentionedUserIds] }))
+  }
+
   async function flush(): Promise<void> {
-    await saveComments(items.value.map((c) => ({ ...c })))
+    const rows = snapshot()
+    await saveComments(rows)
     if (isSyncConfigured) {
-      persistedIndex = await enqueueCollectionOps('comment', items.value, persistedIndex, toRemoteComment, remoteMergedIds)
+      persistedIndex = await enqueueCollectionOps('comment', rows, persistedIndex, toRemoteComment, remoteMergedIds)
       remoteMergedIds = new Set()
     }
   }
@@ -65,6 +88,7 @@ export const useCommentsStore = defineStore('comments', () => {
       // defensive fallback，不是預期會走到的分支。
       authorId: auth.session?.user.id ?? '',
       body,
+      mentionedUserIds: parseMentions(body, mentionableMembers()),
       createdAt: now,
       updatedAt: now,
     }
@@ -81,12 +105,12 @@ export const useCommentsStore = defineStore('comments', () => {
     return comment
   }
 
-  /** 留言唯一可編輯的欄位就是內容本身——沒有標題、顏色、優先度這些。 */
+  /** 留言唯一可編輯的欄位就是內容本身——沒有標題、顏色、優先度這些；提及重新解析一次，編輯時改了對象也會反映。 */
   function update(id: string, body: string): void {
     const index = items.value.findIndex((c) => c.id === id)
     if (index === -1) return
     const before = { ...(items.value[index] as StoredComment) }
-    const after = { ...before, body, updatedAt: Date.now() }
+    const after = { ...before, body, mentionedUserIds: parseMentions(body, mentionableMembers()), updatedAt: Date.now() }
     items.value[index] = after
     history.record({
       label: '編輯留言',

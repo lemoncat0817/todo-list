@@ -175,6 +175,9 @@ export function normalizeComment(raw: unknown): StoredComment | null {
     taskId,
     authorId,
     body,
+    mentionedUserIds: Array.isArray(raw.mentionedUserIds)
+      ? [...new Set(raw.mentionedUserIds.filter((m): m is string => typeof m === 'string' && m.length > 0))]
+      : [],
     createdAt: finiteNumber(raw.createdAt, now),
     updatedAt: finiteNumber(raw.updatedAt, now),
   }

@@ -183,6 +183,7 @@ export function toRemoteComment(comment: StoredComment): Record<string, unknown>
     id: comment.id,
     task_id: comment.taskId,
     body: comment.body,
+    mentioned_user_ids: comment.mentionedUserIds,
     created_at: comment.createdAt,
     updated_at: comment.updatedAt,
     deleted_at: null,
@@ -197,6 +198,7 @@ export function fromRemoteComment(row: Record<string, unknown>): unknown {
     taskId: row.task_id,
     authorId: row.author_id,
     body: row.body,
+    mentionedUserIds: row.mentioned_user_ids,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

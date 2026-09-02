@@ -127,15 +127,15 @@ describe('墓碑', () => {
 
 describe('rowMapping — comments', () => {
   it('其餘欄位往返等價（author_id 只拉不推，見下一案）', () => {
-    const remoteRow = toRemoteComment({ id: 'c1', taskId: 't1', authorId: 'u1', body: '討論一下', createdAt: 1000, updatedAt: 1000 })
+    const remoteRow = toRemoteComment({ id: 'c1', taskId: 't1', authorId: 'u1', body: '討論一下', mentionedUserIds: [], createdAt: 1000, updatedAt: 1000 })
     // author_id 由資料庫的 default auth.uid() 決定，模擬伺服器補上這個欄位再拉回來。
     const roundTripped = normalizeComment(fromRemoteComment({ ...remoteRow, author_id: 'u1' }))
-    expect(roundTripped).toEqual({ id: 'c1', taskId: 't1', authorId: 'u1', body: '討論一下', createdAt: 1000, updatedAt: 1000 })
+    expect(roundTripped).toEqual({ id: 'c1', taskId: 't1', authorId: 'u1', body: '討論一下', mentionedUserIds: [], createdAt: 1000, updatedAt: 1000 })
   })
 
   it('author_id 只拉不推：toRemoteComment 不會送出這個欄位，由伺服器的 auth.uid() 決定', () => {
     expect(
-      toRemoteComment({ id: 'c1', taskId: 't1', authorId: 'u1', body: 'x', createdAt: 1, updatedAt: 1 }),
+      toRemoteComment({ id: 'c1', taskId: 't1', authorId: 'u1', body: 'x', mentionedUserIds: [], createdAt: 1, updatedAt: 1 }),
     ).not.toHaveProperty('author_id')
 
     const remoteRow = { id: 'c1', task_id: 't1', author_id: 'u1', body: 'x', created_at: 1, updated_at: 1 }
