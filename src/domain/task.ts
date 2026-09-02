@@ -163,6 +163,26 @@ function isOpKind(v: unknown): v is OpKind {
   return typeof v === 'string' && (OP_KINDS as readonly string[]).includes(v)
 }
 
+let lastOpTimestamp = 0
+
+/**
+ * outbox 上傳器依 op 的 createdAt 排序送出，同一列的兩筆補丁一旦排錯
+ * 順序，較舊的那筆反而在伺服器上蓋過較新的。`Date.now()` 只有毫秒
+ * 精度，同一毫秒內排進兩個 op（例如程式化的批次操作，或使用者手速夠快
+ * 連續做兩個動作）時，兩者的 createdAt 會完全相同——IndexedDB 對相同
+ * 索引值的 tie-break 落在主鍵（op 自己的 uuid），跟真正的時間順序毫無
+ * 關係，等於排序結果隨機。這裡確保同一個分頁的呼叫序列裡 createdAt
+ * 嚴格遞增，不管系統時間解析度多粗。
+ *
+ * 只需要在單一分頁的執行期間單調遞增——跨重新整理／裝置的排序本來就
+ * 是靠伺服器的 updated_at 判斷，不依賴這個值。
+ */
+export function monotonicNow(): number {
+  const now = Date.now()
+  lastOpTimestamp = now > lastOpTimestamp ? now : lastOpTimestamp + 1
+  return lastOpTimestamp
+}
+
 /** 佇列裡的操作是這個版本的 app 自己寫進去的，仍然正規化——
  * 未來欄位演進時，舊版本留下的列不該讓上傳器整批掛掉。 */
 export function normalizeOp(raw: unknown): Op | null {

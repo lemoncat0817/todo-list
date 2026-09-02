@@ -10,7 +10,7 @@ import type {
   StoredTag,
   StoredTask,
 } from '@/db/schema'
-import { createTask, groupByParent } from '@/domain/task'
+import { createTask, groupByParent, monotonicNow } from '@/domain/task'
 import { diffAgainstFingerprint, diffFields } from '@/domain/diff'
 import { mergeById } from '@/db/backup'
 import { nextOccurrence } from '@/domain/recurrence'
@@ -59,7 +59,11 @@ async function enqueueSyncOps(
   previousIndex: ReadonlyMap<string, string>,
   excludeIds: ReadonlySet<string>,
 ): Promise<void> {
-  const now = Date.now()
+  // 用單調時鐘不是 Date.now()：同一毫秒內排出的兩筆 op（例如批次操作，
+  // 或使用者連續兩個動作剛好落在同一毫秒）如果 createdAt 相同，
+  // outbox 依 createdAt 排序時的 tie-break 會落在互不相關的隨機 id 上，
+  // 等於順序隨機——見 domain/task.ts 的 monotonicNow() 說明。
+  const now = monotonicNow()
   const ops: Op[] = []
 
   for (const row of upserts) {
