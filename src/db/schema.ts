@@ -12,6 +12,7 @@ export const DB_NAME = 'todolist'
  *     就能矇混過去——沒有 upgrade() 搬資料的話，既有使用者的排序會
  *     整個垮掉。
  * v6: 新增 comments（任務留言，M3）——又是真的新 store，不是補欄位。
+ * v7: 新增 activity（活動記錄，M3）——同上，全新 store。
  *
  * projects／tags／filters 後來補上的 updatedAt（跨裝置同步要用它判斷哪一邊
  * 較新，見 sync/merge.ts）不需要新的版號：IndexedDB 的 object store 本來就
@@ -20,7 +21,7 @@ export const DB_NAME = 'todolist'
  * 視為現在）即可，跟其他任何邊界正規化走同一條路。只有新增／變動 store
  * 或 index 結構、或既有資料需要真的換算才需要動版號。
  */
-export const DB_VERSION = 6
+export const DB_VERSION = 7
 
 export const STORE_TASKS = 'tasks'
 export const STORE_META = 'meta'
@@ -29,6 +30,7 @@ export const STORE_TAGS = 'tags'
 export const STORE_FILTERS = 'filters'
 export const STORE_OUTBOX = 'outbox'
 export const STORE_COMMENTS = 'comments'
+export const STORE_ACTIVITY = 'activity'
 
 /** meta 用來記錄一次性遷移是否已完成，避免重複執行。 */
 export const META_MIGRATED_FROM_LOCALSTORAGE = 'migratedFromLocalStorage'
@@ -287,6 +289,29 @@ export interface StoredComment {
    */
   mentionedUserIds: string[]
   createdAt: number
+  updatedAt: number
+}
+
+/**
+ * 活動記錄的種類——只涵蓋資料庫 trigger 真的會記的幾種「事件」
+ * （見 supabase/migrations/0013_activity_log.sql 的說明）。
+ */
+export type ActivityKind = 'created' | 'completed' | 'reopened' | 'moved'
+
+/**
+ * 任務活動記錄（M3）。純粹是拉取進來的唯讀資料——完全由伺服器端的
+ * trigger 產生，本地端沒有 add/update/remove，也不會有對應的 outbox
+ * op（sync/rpc.ts 沒有、也不需要 activity.create 這種 op kind）。
+ */
+export interface StoredActivity {
+  id: string
+  taskId: string
+  /** 觸發這筆事件的人；null 代表不是透過一般使用者請求寫入的（測試、遷移、伺服器端批次作業）。 */
+  actorId: string | null
+  kind: ActivityKind
+  detail: Record<string, unknown>
+  createdAt: number
+  /** 恆等於 createdAt——活動記錄不可變，這個欄位只是為了跟其餘表共用同一套依 updatedAt 判斷新舊的拉取機制。 */
   updatedAt: number
 }
 

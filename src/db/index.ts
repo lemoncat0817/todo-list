@@ -23,6 +23,8 @@ export {
   saveFilters,
   loadComments,
   saveComments,
+  loadActivity,
+  saveActivity,
   getMeta,
   setMeta,
   loadOutbox,

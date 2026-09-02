@@ -9,8 +9,10 @@ import {
   loadProjects,
   loadFilters,
   loadComments,
+  loadActivity,
   saveTasks,
   saveComments,
+  saveActivity,
   getMeta,
   setMeta,
   migrateFromLocalStorage,
@@ -47,9 +49,10 @@ const task = (id: string, name: string, done = false, order = 0): StoredTask =>
   makeTask(name, done, { id, order })
 
 describe('IndexedDB 資料層', () => {
-  it('建立時就備妥七個 object store 與排序索引', async () => {
+  it('建立時就備妥八個 object store 與排序索引', async () => {
     const db = await getDB()
     expect([...db.objectStoreNames].sort()).toEqual([
+      'activity',
       'comments',
       'filters',
       'meta',
@@ -76,6 +79,15 @@ describe('IndexedDB 資料層', () => {
     ]
     await saveComments(rows)
     expect((await loadComments()).map((c) => c.id)).toEqual(['c1', 'c2'])
+  })
+
+  it('活動記錄存進去再讀出來，依 createdAt 排序', async () => {
+    const rows = [
+      { id: 'a2', taskId: 't1', actorId: 'u1', kind: 'completed' as const, detail: {}, createdAt: 200, updatedAt: 200 },
+      { id: 'a1', taskId: 't1', actorId: 'u1', kind: 'created' as const, detail: {}, createdAt: 100, updatedAt: 100 },
+    ]
+    await saveActivity(rows)
+    expect((await loadActivity()).map((a) => a.id)).toEqual(['a1', 'a2'])
   })
 
   it('讀出時依 order 排序，而非插入順序', async () => {

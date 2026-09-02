@@ -17,6 +17,7 @@ export const TABLE_PROJECTS = 'projects'
 export const TABLE_TAGS = 'tags'
 export const TABLE_FILTERS = 'filters'
 export const TABLE_COMMENTS = 'comments'
+export const TABLE_ACTIVITY = 'activity_log'
 
 /** 墓碑：REST 輪詢沒有天生的刪除事件，用這個欄位標記「這筆已經不存在了」。 */
 export interface Tombstone {
@@ -199,6 +200,23 @@ export function fromRemoteComment(row: Record<string, unknown>): unknown {
     authorId: row.author_id,
     body: row.body,
     mentionedUserIds: row.mentioned_user_ids,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+// ---------------------------------------------------------------- activity
+
+// 沒有 toRemoteActivity：活動記錄完全由伺服器端的 trigger 產生
+// （supabase/migrations/0013_activity_log.sql），client 端只拉不推，
+// 也沒有對應的 create/patch RPC 可以送。
+export function fromRemoteActivity(row: Record<string, unknown>): unknown {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    actorId: row.actor_id,
+    kind: row.kind,
+    detail: row.detail,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

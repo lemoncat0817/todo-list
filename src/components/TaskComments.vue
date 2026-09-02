@@ -6,7 +6,7 @@
     <ul v-else class="flex flex-col gap-3">
       <li v-for="comment in list" :key="comment.id" class="flex flex-col gap-1">
         <div class="flex items-baseline gap-2">
-          <span class="text-sm font-medium text-ink">{{ authorName(comment.authorId) }}</span>
+          <span class="text-sm font-medium text-ink">{{ memberName(comment.authorId) }}</span>
           <span class="text-xs text-ink-faint">{{ formatTimestamp(comment.createdAt) }}</span>
           <span v-if="comment.updatedAt > comment.createdAt" class="text-xs text-ink-faint">（已編輯）</span>
         </div>
@@ -53,6 +53,7 @@ import { computed, ref } from 'vue'
 import { useCommentsStore } from '@/stores/comments'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useMemberName } from '@/composables/useMemberName'
 import { splitMentionSegments } from '@/domain/mentions'
 import type { StoredComment } from '@/db/schema'
 import MentionTextarea from './MentionTextarea.vue'
@@ -67,32 +68,18 @@ const props = defineProps<{ taskId: string }>()
 const comments = useCommentsStore()
 const auth = useAuthStore()
 const workspace = useWorkspaceStore()
+const memberName = useMemberName()
 
 const list = computed(() => comments.forTask(props.taskId))
 const myUserId = computed(() => auth.session?.user.id ?? null)
 
-/** @提及要比對／建議的成員名單，跟 authorName() 用的是同一份 workspace.members。 */
+/** @提及要比對／建議的成員名單，跟 memberName() 用的是同一份 workspace.members。 */
 const members = computed(() =>
   workspace.members.map((m) => ({ userId: m.user_id, displayName: m.profiles?.display_name ?? '' })),
 )
 
 function bodySegments(body: string) {
   return splitMentionSegments(body, members.value)
-}
-
-/**
- * 作者名稱靠 workspace.members 解析——跟 MembersDialog.vue 同一份資料，
- * 不另外打 API：那份清單本來就會在登入、以及切換工作區時載入目前
- * 工作區的成員列表，留言的作者只可能是「這個任務所屬工作區的成員」
- * （can_comment() 就是這樣把關的），不需要為了留言另外查一次。
- * 成員清單裡找不到時，代表對方已經離開這個工作區——留言仍然留著
- * （不因為作者退出就消失），只是顯示不出目前的名字。
- */
-function authorName(authorId: string): string {
-  if (authorId === myUserId.value) return '我'
-  const member = workspace.members.find((m) => m.user_id === authorId)
-  if (!member) return '已離開的成員'
-  return member.profiles?.display_name || '（未命名）'
 }
 
 function formatTimestamp(ms: number): string {

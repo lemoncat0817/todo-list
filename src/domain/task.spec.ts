@@ -4,6 +4,7 @@ import {
   groupByParent,
   isEffectivelyComplete,
   monotonicNow,
+  normalizeActivity,
   normalizeComment,
   normalizeOp,
   normalizeProject,
@@ -251,5 +252,35 @@ describe('normalizeComment', () => {
     const comment = normalizeComment({ id: 'c1', taskId: 't1', authorId: 'u1', body: 'x' })
     expect(comment?.createdAt).toBeGreaterThanOrEqual(before)
     expect(comment?.updatedAt).toBeGreaterThanOrEqual(before)
+  })
+})
+
+describe('normalizeActivity', () => {
+  it('合法輸入通過', () => {
+    expect(normalizeActivity({ id: 'a1', taskId: 't1', actorId: 'u1', kind: 'created', detail: {} })).toMatchObject({
+      id: 'a1',
+      taskId: 't1',
+      actorId: 'u1',
+      kind: 'created',
+    })
+  })
+
+  it('actorId 缺值時是 null，不是無效輸入——代表系統／非請求路徑寫入的', () => {
+    expect(normalizeActivity({ id: 'a1', taskId: 't1', kind: 'created' })?.actorId).toBeNull()
+  })
+
+  it('detail 缺值或形狀不對時補上空物件', () => {
+    expect(normalizeActivity({ id: 'a1', taskId: 't1', kind: 'created' })?.detail).toEqual({})
+    expect(normalizeActivity({ id: 'a1', taskId: 't1', kind: 'created', detail: 'not-an-object' })?.detail).toEqual({})
+  })
+
+  it.each([
+    null,
+    {},
+    { id: 'a1' },
+    { id: 'a1', taskId: 't1' },
+    { id: 'a1', taskId: 't1', kind: 'not-a-real-kind' },
+  ])('無效輸入回傳 null：%s', (bad) => {
+    expect(normalizeActivity(bad)).toBeNull()
   })
 })

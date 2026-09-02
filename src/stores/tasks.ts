@@ -32,6 +32,7 @@ import { usePrefsStore } from './prefs'
 import { useHistoryStore } from './history'
 import { useCollectionsStore } from './collections'
 import { useCommentsStore } from './comments'
+import { useActivityStore } from './activity'
 import { useWorkspaceStore } from './workspace'
 import { useUiStore } from './ui'
 
@@ -126,6 +127,7 @@ export const useTasksStore = defineStore('tasks', () => {
   const history = useHistoryStore()
   const collections = useCollectionsStore()
   const comments = useCommentsStore()
+  const activity = useActivityStore()
   const workspace = useWorkspaceStore()
   const ui = useUiStore()
   const prefs = usePrefsStore()
@@ -315,6 +317,9 @@ export const useTasksStore = defineStore('tasks', () => {
       persistedIndex = new Map(snapshot().map((t) => [t.id, JSON.stringify(t)]))
       await collections.load()
       await comments.load()
+      // activity 不需要跟 flush() 的 watcher 掛勾——它完全唯讀，唯一的
+      // 寫入路徑是 stores/sync.ts 拉到新資料後直接呼叫 activity.persist()。
+      await activity.load()
     } catch (error) {
       loadError.value = error
     } finally {

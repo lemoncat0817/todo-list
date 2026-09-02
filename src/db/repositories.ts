@@ -3,6 +3,7 @@ import {
   DB_NAME,
   DB_VERSION,
   DEFAULT_TASK_FIELDS,
+  STORE_ACTIVITY,
   STORE_COMMENTS,
   STORE_FILTERS,
   STORE_META,
@@ -11,6 +12,7 @@ import {
   STORE_TAGS,
   STORE_TASKS,
   type Op,
+  type StoredActivity,
   type StoredComment,
   type StoredFilter,
   type StoredProject,
@@ -18,6 +20,7 @@ import {
   type StoredTask,
 } from './schema'
 import {
+  normalizeActivity,
   normalizeComment,
   normalizeFilter,
   normalizeOp,
@@ -122,6 +125,14 @@ export function getDB(): Promise<IDBPDatabase> {
             comments.createIndex('by-taskId', 'taskId')
           }
         }
+
+        if (oldVersion < 7) {
+          // 同上，全新的 store，沒有既有資料要搬。
+          if (!db.objectStoreNames.contains(STORE_ACTIVITY)) {
+            const activity = db.createObjectStore(STORE_ACTIVITY, { keyPath: 'id' })
+            activity.createIndex('by-taskId', 'taskId')
+          }
+        }
       },
     })
   }
@@ -137,11 +148,32 @@ export function resetDBCache(): void {
  * 以單一交易覆寫整個 store。
  * 覆寫而非逐筆更新，是為了避免「刪除」在多分頁情境下漏掉。
  */
+/**
+ * IndexedDB 的 put() 底層用 structured clone，認不得 Vue 的 reactive
+ * Proxy——巢狀的陣列／物件欄位（tagIds、recurrence、mentionedUserIds、
+ * detail……）一旦被 push 進某個 store 的 reactive ref，就會變成 Proxy，
+ * 直接丟給 put() 會丟 DataCloneError。呼叫端已經各自在自己的
+ * snapshot()／flush() 裡 toRaw 過一次，這裡是最後一道防線：同一個坑
+ * 在這個專案裡至少踩過三次（tasks 的 tagIds／recurrence、comments 的
+ * mentionedUserIds、activity 的 detail），每次都要在新 store 裡重新
+ * 記得處理，不如在真正寫入 IndexedDB 的這一個出口統一擋下來。
+ *
+ * 用 JSON 往返而不是 structuredClone()：structuredClone 走的是同一套
+ * 底層引擎演算法，一樣不認得 reactive Proxy，會踩到一模一樣的錯誤——
+ * 這裡要的是「透過一般的屬性存取讀過一輪」，JSON.stringify 的物件遍歷
+ * 正是這種讀法，Proxy 的 get trap 會被正常觸發。這個專案的資料形狀
+ * 全部是純量／陣列／物件（沒有 Date、Map 這類 JSON 不保真的型別，
+ * 見 domain/dates.ts 對日期一律存字串的說明），JSON 往返不會遺失資訊。
+ */
+function toPlain<T>(row: T): T {
+  return JSON.parse(JSON.stringify(row)) as T
+}
+
 async function replaceAll<T>(storeName: string, rows: readonly T[]): Promise<void> {
   const db = await getDB()
   const tx = db.transaction(storeName, 'readwrite')
   await tx.store.clear()
-  for (const row of rows) await tx.store.put(row)
+  for (const row of rows) await tx.store.put(toPlain(row))
   await tx.done
 }
 
@@ -178,7 +210,7 @@ export async function applyTaskChanges(changes: TaskChanges): Promise<void> {
   const db = await getDB()
   const tx = db.transaction(STORE_TASKS, 'readwrite')
   for (const id of changes.deletes) await tx.store.delete(id)
-  for (const row of changes.upserts) await tx.store.put(row)
+  for (const row of changes.upserts) await tx.store.put(toPlain(row))
   await tx.done
 }
 
@@ -239,6 +271,22 @@ export function saveComments(comments: readonly StoredComment[]): Promise<void> 
   return replaceAll(STORE_COMMENTS, comments)
 }
 
+// ---------------------------------------------------------------- activity
+
+/** 純粹是拉取進來的快取，見 db/schema.ts 的 StoredActivity 說明——這裡沒有對應的寫入方法給使用者操作。 */
+export async function loadActivity(): Promise<StoredActivity[]> {
+  const db = await getDB()
+  const rows = await db.getAll(STORE_ACTIVITY)
+  return rows
+    .map((row) => normalizeActivity(row))
+    .filter((a): a is StoredActivity => a !== null)
+    .sort((a, b) => a.createdAt - b.createdAt)
+}
+
+export function saveActivity(activity: readonly StoredActivity[]): Promise<void> {
+  return replaceAll(STORE_ACTIVITY, activity)
+}
+
 // ----------------------------------------------------------------- meta
 
 export async function getMeta<T>(key: string): Promise<T | undefined> {
@@ -263,7 +311,9 @@ export async function loadOutbox(): Promise<Op[]> {
 /** 使用者做了一個動作就呼叫一次，把操作記進佇列。 */
 export async function enqueueOp(op: Op): Promise<void> {
   const db = await getDB()
-  await db.put(STORE_OUTBOX, op)
+  // op.payload 常常是陣列／物件欄位的補丁（tag_ids、mentioned_user_ids……），
+  // 呼叫端沒記得先 toRaw 的話一樣會踩 replaceAll() 旁註解說的那個坑。
+  await db.put(STORE_OUTBOX, toPlain(op))
 }
 
 /** 操作送達伺服器後從佇列移除。 */
