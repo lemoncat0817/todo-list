@@ -118,11 +118,13 @@
     </fieldset>
 
     <!--
-      只有已設定同步且已登入時才顯示：留言是「跟別人對話」，純本機模式
-      下沒有別人可以對話，不顯示一個永遠空著的留言區（跟「帳號與同步」
-      入口在 AppSidebar.vue 的顯示條件比照）。
+      活動記錄跟留言一樣只有已設定同步且已登入時才有意義（都是伺服器端
+      的概念）；活動記錄放在留言上面，讓「發生過什麼」先於「討論了什麼」。
     -->
-    <TaskComments v-if="isSyncConfigured && auth.status === 'signed-in'" :task-id="draft.id" />
+    <template v-if="isSyncConfigured && auth.status === 'signed-in'">
+      <TaskActivity :task-id="draft.id" />
+      <TaskComments :task-id="draft.id" />
+    </template>
 
     <div class="flex justify-end gap-2 border-t border-line pt-4">
       <button type="button"
@@ -152,6 +154,7 @@ import { isValidISODate, isValidTime } from '@/domain/dates'
 import { findByNormalizedName } from '@/domain/filtering'
 import { isSyncConfigured } from '@/sync/config'
 import TaskComments from './TaskComments.vue'
+import TaskActivity from './TaskActivity.vue'
 
 /**
  * 任務詳情的表單本體。

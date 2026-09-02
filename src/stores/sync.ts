@@ -4,24 +4,34 @@ import { clearOutbox, getMeta, loadOutbox, markOpAttempt, removeOp, setMeta } fr
 import {
   META_SYNC_ACCOUNT_ID,
   META_SYNC_LAST_PULLED_AT,
+  type StoredActivity,
   type StoredComment,
   type StoredFilter,
   type StoredProject,
   type StoredTag,
   type StoredTask,
 } from '@/db/schema'
-import { normalizeComment, normalizeFilter, normalizeProject, normalizeTag, normalizeTask } from '@/domain/task'
+import {
+  normalizeActivity,
+  normalizeComment,
+  normalizeFilter,
+  normalizeProject,
+  normalizeTag,
+  normalizeTask,
+} from '@/domain/task'
 import { mergeByUpdatedAt } from '@/sync/merge'
 import { sendOp } from '@/sync/rpc'
 import { SyncHttpError } from '@/sync/restClient'
 import { pullTable, type TableBinding } from '@/sync/tableSync'
 import type { WorkspaceSubscription } from '@/sync/realtime'
 import {
+  TABLE_ACTIVITY,
   TABLE_COMMENTS,
   TABLE_FILTERS,
   TABLE_PROJECTS,
   TABLE_TAGS,
   TABLE_TASKS,
+  fromRemoteActivity,
   fromRemoteComment,
   fromRemoteFilter,
   fromRemoteProject,
@@ -30,6 +40,7 @@ import {
 } from '@/sync/rowMapping'
 import { useAuthStore } from './auth'
 import { useTasksStore } from './tasks'
+import { useActivityStore } from './activity'
 import { useCollectionsStore } from './collections'
 import { useCommentsStore } from './comments'
 import { useWorkspaceStore } from './workspace'
@@ -66,6 +77,11 @@ const commentBinding: TableBinding<StoredComment> = {
   table: TABLE_COMMENTS,
   fromRemote: fromRemoteComment,
   normalize: (raw) => normalizeComment(raw),
+}
+const activityBinding: TableBinding<StoredActivity> = {
+  table: TABLE_ACTIVITY,
+  fromRemote: fromRemoteActivity,
+  normalize: (raw) => normalizeActivity(raw),
 }
 
 /**
@@ -120,6 +136,7 @@ export const useSyncStore = defineStore('sync', () => {
   const tasks = useTasksStore()
   const collections = useCollectionsStore()
   const comments = useCommentsStore()
+  const activity = useActivityStore()
   const workspace = useWorkspaceStore()
 
   let inFlight: Promise<void> | null = null
@@ -294,6 +311,13 @@ export const useSyncStore = defineStore('sync', () => {
             (rows) => collections.mergeRemote({ projects: collections.projects, tags: collections.tags, filters: rows }),
           )
           await pullAndMerge(commentBinding, () => comments.items, cursor, token, comments.mergeRemote)
+          // activity 沒有本地編輯、沒有 outbox，applyMerge 直接把
+          // mergeRemote 跟本地快取寫入接在一起做，不像其餘幾張表要靠
+          // tasks.ts 的持久化 watcher 間接觸發。
+          await pullAndMerge(activityBinding, () => activity.items, cursor, token, (rows) => {
+            activity.mergeRemote(rows)
+            void activity.persist()
+          })
 
           lastPulledAt.value = startedAt
           await persist()
@@ -378,6 +402,11 @@ export const useSyncStore = defineStore('sync', () => {
       tasks.mergeRemote([])
       collections.mergeRemote({ projects: [], tags: [], filters: [] })
       comments.mergeRemote([])
+      activity.mergeRemote([])
+      // activity 不掛在 tasks.ts 的持久化 watcher 上（見上面 syncOnce()
+      // 的註解），這裡清空後要自己補一次本地寫入，不然清完的只是記憶體
+      // 裡的狀態，IndexedDB 裡上一個帳號的活動記錄還留著。
+      await activity.persist()
       lastPulledAt.value = 0
       await clearOutbox()
       await persist()

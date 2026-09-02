@@ -1,8 +1,10 @@
 import {
   DEFAULT_TASK_FIELDS,
+  type ActivityKind,
   type Op,
   type OpKind,
   type Priority,
+  type StoredActivity,
   type StoredComment,
   type StoredFilter,
   type StoredProject,
@@ -178,6 +180,33 @@ export function normalizeComment(raw: unknown): StoredComment | null {
     mentionedUserIds: Array.isArray(raw.mentionedUserIds)
       ? [...new Set(raw.mentionedUserIds.filter((m): m is string => typeof m === 'string' && m.length > 0))]
       : [],
+    createdAt: finiteNumber(raw.createdAt, now),
+    updatedAt: finiteNumber(raw.updatedAt, now),
+  }
+}
+
+const ACTIVITY_KINDS: readonly ActivityKind[] = ['created', 'completed', 'reopened', 'moved']
+
+/**
+ * 活動記錄純粹是拉取進來的資料（見 db/schema.ts 的 StoredActivity 說明），
+ * 但它跨過的信任邊界跟其他任何遠端資料一樣，還是要走同一套正規化——
+ * 不能因為「這是系統產生的」就假設形狀一定對。
+ */
+export function normalizeActivity(raw: unknown): StoredActivity | null {
+  if (!isRecord(raw)) return null
+  const id = nullableId(raw.id)
+  const taskId = nullableId(raw.taskId)
+  const kind = typeof raw.kind === 'string' && (ACTIVITY_KINDS as readonly string[]).includes(raw.kind)
+    ? (raw.kind as ActivityKind)
+    : null
+  if (id === null || taskId === null || kind === null) return null
+  const now = Date.now()
+  return {
+    id,
+    taskId,
+    actorId: nullableId(raw.actorId),
+    kind,
+    detail: isRecord(raw.detail) ? raw.detail : {},
     createdAt: finiteNumber(raw.createdAt, now),
     updatedAt: finiteNumber(raw.updatedAt, now),
   }

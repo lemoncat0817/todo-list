@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  fromRemoteActivity,
   fromRemoteComment,
   fromRemoteFilter,
   fromRemoteProject,
@@ -13,7 +14,14 @@ import {
   toRemoteTag,
   toRemoteTask,
 } from './rowMapping'
-import { normalizeComment, normalizeFilter, normalizeProject, normalizeTag, normalizeTask } from '@/domain/task'
+import {
+  normalizeActivity,
+  normalizeComment,
+  normalizeFilter,
+  normalizeProject,
+  normalizeTag,
+  normalizeTask,
+} from '@/domain/task'
 import { makeTask } from '@/test/helpers'
 
 /**
@@ -140,5 +148,23 @@ describe('rowMapping — comments', () => {
 
     const remoteRow = { id: 'c1', task_id: 't1', author_id: 'u1', body: 'x', created_at: 1, updated_at: 1 }
     expect(normalizeComment(fromRemoteComment(remoteRow))?.authorId).toBe('u1')
+  })
+})
+
+describe('rowMapping — activity（只拉不推）', () => {
+  it('fromRemoteActivity 正確改名，normalizeActivity 驗證形狀', () => {
+    const remoteRow = {
+      id: 'a1', task_id: 't1', actor_id: 'u1', kind: 'moved',
+      detail: { from: 'p1', to: 'p2' }, created_at: 1000, updated_at: 1000,
+    }
+    expect(normalizeActivity(fromRemoteActivity(remoteRow))).toEqual({
+      id: 'a1', taskId: 't1', actorId: 'u1', kind: 'moved',
+      detail: { from: 'p1', to: 'p2' }, createdAt: 1000, updatedAt: 1000,
+    })
+  })
+
+  it('actor_id 是 null 時（系統／非請求路徑寫入）正確帶過來', () => {
+    const remoteRow = { id: 'a1', task_id: 't1', actor_id: null, kind: 'created', detail: {}, created_at: 1, updated_at: 1 }
+    expect(normalizeActivity(fromRemoteActivity(remoteRow))?.actorId).toBeNull()
   })
 })
