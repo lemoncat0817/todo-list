@@ -96,4 +96,16 @@ describe('TaskAttachments.vue', () => {
     const w = mountAttachments()
     expect(w.text()).toContain('伺服器暫時無法處理，請稍後再試一次')
   })
+
+  /*
+   * sr-only 是 position:absolute。少了這個 relative，隱藏的檔案輸入框會以初始
+   * 包含區塊定位，不受 App shell 的 overflow-hidden 裁切，把整份文件撐高到它在
+   * 詳情面板裡的捲動位置——實測會多出一條頁面捲軸、整個版面被捲上去，下方露出
+   * 一片畫布底色。這條斷言看起來像在測樣式，實際上守的是那個版面不變量。
+   */
+  it('隱藏的檔案輸入框有已定位的祖先，才不會跳出 shell 的裁切範圍', () => {
+    const w = mountAttachments()
+    const fileLabel = w.find('input[type="file"]').element.parentElement
+    expect(fileLabel?.classList.contains('relative')).toBe(true)
+  })
 })

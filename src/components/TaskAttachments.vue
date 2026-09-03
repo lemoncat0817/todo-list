@@ -24,8 +24,15 @@
     <p v-if="attachments.error" role="alert" class="text-sm text-danger-ink">{{ attachments.error }}</p>
 
     <div v-if="workspace.canWriteTasks" class="flex items-center gap-2 pt-1">
+      <!--
+        label 要 relative：sr-only 是 position:absolute，沒有已定位的祖先時它的
+        包含區塊會是「初始包含區塊」，於是不受 App shell 的 overflow-hidden 裁切，
+        直接把整份文件撐高到這個隱藏 input 的位置（詳情面板捲到下方時可達數百 px）——
+        實測會多出一條頁面捲軸，整個三欄版面被捲上去、下方露出一片畫布底色。
+        把包含區塊拉回 label 本身，它就跟著內容捲動也跟著被裁切。
+      -->
       <label
-        class="cursor-pointer rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:bg-sunken aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
+        class="relative cursor-pointer rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:bg-sunken aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
         :aria-disabled="attachments.uploading">
         {{ attachments.uploading ? '上傳中…' : '新增附件' }}
         <input type="file" class="sr-only" :disabled="attachments.uploading" @change="handleFileSelected">

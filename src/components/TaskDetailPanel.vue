@@ -33,7 +33,13 @@
       </button>
     </div>
 
-    <div v-if="!collapsed" class="min-h-0 grow overflow-y-auto px-4 py-4">
+    <!--
+      relative 是刻意的：這裡是 shell 內唯一會捲動又塞滿表單的容器，裡面任何
+      position:absolute 的後代（sr-only 的隱藏輸入框最常見）若找不到已定位的
+      祖先，包含區塊就會落到初始包含區塊，跳出 App shell 的 overflow-hidden，
+      把整份文件撐高、長出第二條頁面捲軸。給它一個定位脈絡，這種逃逸就不可能發生。
+    -->
+    <div v-if="!collapsed" class="relative min-h-0 grow overflow-y-auto px-4 py-4">
       <p v-if="!task" class="text-sm text-ink-faint">
         選一筆代辦事項，這裡會顯示它的細節。
       </p>
