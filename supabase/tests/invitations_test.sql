@@ -1,7 +1,7 @@
 -- M2：邀請流程驗證。covers create/revoke/accept 三支 RPC 的權限邊界
 -- 與正確性，不含真正寄信（那是 Edge Function 的事，不在資料層範圍）。
 begin;
-select plan(11);
+select plan(15);
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password,
   email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
@@ -137,6 +137,52 @@ select throws_ok(
   format($fmt$ select public.accept_invitation(%L) $fmt$, current_setting('test.revoked_token', true)),
   null, null, '已撤銷的邀請不能被接受');
 reset role;
+
+-- 10) M6 補做：owner 建立一份要給別人的邀請，自己不小心點了那個連結
+-- ——不能讓自己被降級（真實案例踩到的 bug，見 0024_prevent_self_demote.sql）。
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000a11c","role":"authenticated"}';
+do $$
+declare v_token text;
+begin
+  select public.create_invitation((select id from public.workspaces where created_by = '00000000-0000-0000-0000-00000000a11c'), 'someone-else@invite-test.local', 'member') into v_token;
+  perform set_config('test.self_click_token', v_token, false);
+end $$;
+select throws_ok(
+  format($fmt$ select public.accept_invitation(%L) $fmt$, current_setting('test.self_click_token', true)),
+  null, null, 'owner 自己點了自己發的邀請連結，不會被降級');
+select is(
+  (select role::text from public.workspace_members
+    where workspace_id = (select id from public.workspaces where created_by = '00000000-0000-0000-0000-00000000a11c')
+      and user_id = '00000000-0000-0000-0000-00000000a11c'),
+  'owner', 'Alice 的角色仍然是 owner，沒有被邀請連結改掉');
+reset role;
+
+-- 11) 已經是成員的 Bob，收到（或撿到）一份信箱不是自己的邀請連結
+-- ——不能拿別人的邀請連結改自己的角色，反過來也一樣：不能讓 Bob
+-- 用這份邀請把自己的角色改成邀請裡指定的那個。
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000a11c","role":"authenticated"}';
+do $$
+declare v_token text;
+begin
+  select public.create_invitation((select id from public.workspaces where created_by = '00000000-0000-0000-0000-00000000a11c'), 'not-bob@invite-test.local', 'admin') into v_token;
+  perform set_config('test.mismatched_email_token', v_token, false);
+end $$;
+reset role;
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000b0b0","role":"authenticated"}';
+select throws_ok(
+  format($fmt$ select public.accept_invitation(%L) $fmt$, current_setting('test.mismatched_email_token', true)),
+  null, null, '邀請信箱跟目前登入帳號的信箱對不上時拒絕，不會默默換角色');
+reset role;
+
+select is(
+  (select role::text from public.workspace_members
+    where workspace_id = (select id from public.workspaces where created_by = '00000000-0000-0000-0000-00000000a11c')
+      and user_id = '00000000-0000-0000-0000-00000000b0b0'),
+  'member', 'Bob 的角色維持原本的 member，沒有被那份不是給他的邀請改掉');
 
 select * from finish();
 rollback;
