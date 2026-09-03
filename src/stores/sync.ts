@@ -362,12 +362,10 @@ export const useSyncStore = defineStore('sync', () => {
           workspaceId: id,
           userId: auth.session?.user.id ?? '',
           getAccessToken: async () => auth.session?.access_token ?? null,
-          onChange: () => {
-            // workspace_members 的角色變更不會出現在 tasks 拉取裡，
-            // 被降成僅檢視時要立刻重載成員名單，畫面才會鎖上。
-            void workspace.loadMembers()
-            void syncOnce()
-          },
+          onChange: () => void syncOnce(),
+          // 角色變更只重載成員名單，不要順便踢完整同步——否則跟使用者
+          // 切換工作區時的 loadMembers 疊在一起，容易打出 Failed to fetch。
+          onMembersChange: () => void workspace.loadMembers(),
           onSubscribed: () => void syncOnce(),
           onPresenceChange: (userIds) => workspace.setOnlineUsers(id, userIds),
         }),
@@ -462,9 +460,6 @@ export const useSyncStore = defineStore('sync', () => {
 
           lastPulledAt.value = startedAt
           await persist()
-          // 角色變更不走 tasks 拉取；定期把成員名單重載一次，
-          // 被降成僅檢視時不必等 realtime 或手動切換工作區才鎖上畫面。
-          void workspace.loadMembers()
           void reportDeviceCursor(token, startedAt)
           syncError.value = null
         } while (dirty)

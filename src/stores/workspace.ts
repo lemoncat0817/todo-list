@@ -165,12 +165,20 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (!token || !workspaceId) return
     // pendingInvitations 一律嘗試拉——RLS 已經把非管理者的查詢結果限制成
     // 空陣列，不需要在這裡先猜一次角色才決定要不要打這支請求。
-    const [memberRows, invitationRows] = await Promise.all([
-      fetchWorkspaceMembers(workspaceId, token),
-      fetchPendingInvitations(workspaceId, token),
-    ])
-    members.value = memberRows
-    pendingInvitations.value = invitationRows
+    try {
+      const [memberRows, invitationRows] = await Promise.all([
+        fetchWorkspaceMembers(workspaceId, token),
+        fetchPendingInvitations(workspaceId, token),
+      ])
+      // 快速切換時，較早那次請求回來可能已經過期——寫進去會把新工作區
+      // 的角色蓋成舊的，畫面權限閃一下甚至錯很久。
+      if (currentWorkspaceId.value !== workspaceId) return
+      members.value = memberRows
+      pendingInvitations.value = invitationRows
+    } catch (e) {
+      if (currentWorkspaceId.value !== workspaceId) return
+      throw e
+    }
   }
 
   async function load(): Promise<void> {
@@ -196,11 +204,21 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
-  function selectWorkspace(id: string): Promise<void> {
+  async function selectWorkspace(id: string): Promise<void> {
     currentWorkspaceId.value = id
     const userId = auth.session?.user.id
     if (userId) writeRememberedWorkspaceId(userId, id)
-    return loadMembers()
+    // 先清空舊工作區的成員，避免短暫套用上一區的角色（例如在 A 是僅檢視、
+    // 切回自己的區卻還被當成不能寫）。
+    members.value = []
+    pendingInvitations.value = []
+    error.value = null
+    try {
+      await loadMembers()
+    } catch (e) {
+      console.error('[workspace] 載入成員失敗', e)
+      error.value = '無法載入工作區成員，請稍後再試'
+    }
   }
 
   /**

@@ -141,6 +141,51 @@ describe('auth.status 變成 signed-in 時', () => {
     await workspace.load()
     expect(workspace.currentWorkspaceId).toBe('a-personal')
   })
+
+  it('快速切換時，較早返回的成員請求不會蓋掉新工作區的名單', async () => {
+    const { workspace, auth } = setup()
+    auth.session = fakeSession('u1')
+    workspace.workspaces = [
+      { id: 'w1', name: '一', is_personal: true, created_by: 'u1', updated_at: 1 },
+      { id: 'w2', name: '二', is_personal: false, created_by: 'u2', updated_at: 1 },
+    ]
+
+    let resolveW1: ((value: unknown) => void) | undefined
+    const w1Members = new Promise((resolve) => {
+      resolveW1 = resolve
+    })
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const u = String(url)
+      if (u.includes('workspace_id=eq.w1') && u.includes('workspace_members')) {
+        await w1Members
+        return {
+          ok: true,
+          json: async () => [{ user_id: 'u1', role: 'viewer', joined_at: '2026-01-01', profiles: null }],
+          text: async () =>
+            JSON.stringify([{ user_id: 'u1', role: 'viewer', joined_at: '2026-01-01', profiles: null }]),
+        } as Response
+      }
+      if (u.includes('workspace_id=eq.w2') && u.includes('workspace_members')) {
+        return {
+          ok: true,
+          json: async () => [{ user_id: 'u1', role: 'owner', joined_at: '2026-01-01', profiles: null }],
+          text: async () =>
+            JSON.stringify([{ user_id: 'u1', role: 'owner', joined_at: '2026-01-01', profiles: null }]),
+        } as Response
+      }
+      return { ok: true, json: async () => [], text: async () => '[]' } as Response
+    })
+
+    const first = workspace.selectWorkspace('w1')
+    const second = workspace.selectWorkspace('w2')
+    await second
+    resolveW1?.(null)
+    await first
+
+    expect(workspace.currentWorkspaceId).toBe('w2')
+    expect(workspace.myRole).toBe('owner')
+  })
 })
 
 describe('auth.status 變成 signed-out 時', () => {
