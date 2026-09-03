@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import type { Session } from '@supabase/auth-js'
 import { useWorkspaceStore, storePendingInviteToken } from '@/stores/workspace'
 import { useAuthStore } from '@/stores/auth'
+import { useFlashStore } from '@/stores/flash'
 
 /**
  * stores/workspace.ts 的協調邏輯。sync/workspaceClient.ts 本身（組出的
@@ -79,6 +80,18 @@ describe('auth.status 變成 signed-in 時', () => {
     expect(workspace.canManageMembers).toBe(true)
     expect(workspace.canWriteTasks).toBe(true)
     expect(workspace.taskWriteRestriction).toBeNull()
+  })
+
+  it('載入失敗時把友善訊息送到畫面，不只印主控台', async () => {
+    const { workspace, auth } = setup()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'))
+
+    auth.session = fakeSession()
+    auth.status = 'signed-in'
+
+    await vi.waitFor(() => expect(workspace.error).toBe('無法載入工作區資料，請稍後再試一次'))
+    expect(useFlashStore().message).toBe(workspace.error)
   })
 
   it('沒有個人工作區時退回第一筆（理論上不該發生，但不該整個掛掉）', async () => {

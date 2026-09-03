@@ -11,6 +11,7 @@ import {
   type NotificationPrefs,
 } from '@/sync/notificationsClient'
 import { useAuthStore } from './auth'
+import { useFlashStore } from './flash'
 
 /**
  * 通知中心（M4）。跟 activity.ts 同一種形狀——通知列表完全唯讀，只有
@@ -47,8 +48,10 @@ export const useNotificationsStore = defineStore('notifications', () => {
     if (!token) return
     try {
       prefs.value = await fetchNotificationPrefs(token)
+      error.value = null
     } catch (err) {
       console.error('[notifications] 讀取通知偏好失敗', err)
+      error.value = '無法讀取通知偏好，請稍後再試一次'
     }
   }
 
@@ -84,6 +87,8 @@ export const useNotificationsStore = defineStore('notifications', () => {
       // 不回滾：本地已讀狀態就算沒推上去，下一輪拉取如果伺服器仍是未讀
       // 也只是使用者看到的紅點慢一拍變化，不是資料正確性問題，不值得
       // 為此把已經點開看過的東西又標回未讀嚇使用者一跳。
+      error.value = '標記已讀沒有同步到其他裝置，請稍後再試一次'
+      useFlashStore().error(error.value)
     }
   }
 
@@ -97,6 +102,8 @@ export const useNotificationsStore = defineStore('notifications', () => {
       await markAllNotificationsRead(token)
     } catch (err) {
       console.error('[notifications] 全部標記已讀失敗', err)
+      error.value = '全部標記已讀沒有同步到其他裝置，請稍後再試一次'
+      useFlashStore().error(error.value)
     }
   }
 

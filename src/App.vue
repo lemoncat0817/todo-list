@@ -94,6 +94,7 @@ import NotificationCenterDialog from './components/NotificationCenterDialog.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import ShortcutsDialog from './components/ShortcutsDialog.vue'
 import { useHistoryStore } from '@/stores/history'
+import { useFlashStore } from '@/stores/flash'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
 import { usePrefsStore } from '@/stores/prefs'
@@ -104,6 +105,7 @@ import { useMediaQuery } from '@/composables/useMediaQuery'
 import { isSyncConfigured } from '@/sync/config'
 
 const history = useHistoryStore()
+const flash = useFlashStore()
 const tasks = useTasksStore()
 const ui = useUiStore()
 const prefs = usePrefsStore()
@@ -211,6 +213,10 @@ useShortcuts({
     // 沒有搜尋在開時才退而求其次去關 toast 提示。
     if (ui.isSearch) {
       ui.toggleSearch()
+      return
+    }
+    if (flash.message) {
+      flash.dismiss()
       return
     }
     history.dismiss()
