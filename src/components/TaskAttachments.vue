@@ -15,7 +15,7 @@
         <button type="button"
           class="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-ink-soft transition-colors hover:bg-sunken"
           @click="handleDownload(attachment)">下載</button>
-        <button type="button"
+        <button v-if="workspace.canWriteTasks" type="button"
           class="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-ink-faint transition-colors hover:bg-danger-soft hover:text-danger-ink"
           @click="handleRemove(attachment)">刪除</button>
       </li>
@@ -23,7 +23,7 @@
 
     <p v-if="attachments.error" role="alert" class="text-sm text-danger-ink">{{ attachments.error }}</p>
 
-    <div class="flex items-center gap-2 pt-1">
+    <div v-if="workspace.canWriteTasks" class="flex items-center gap-2 pt-1">
       <label
         class="cursor-pointer rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:bg-sunken aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
         :aria-disabled="attachments.uploading">
@@ -38,6 +38,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useAttachmentsStore } from '@/stores/attachments'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { useMemberName } from '@/composables/useMemberName'
 import { formatFileSize } from '@/domain/attachments'
 import type { StoredAttachment } from '@/db/schema'
@@ -54,6 +55,7 @@ import type { StoredAttachment } from '@/db/schema'
 const props = defineProps<{ taskId: string }>()
 
 const attachments = useAttachmentsStore()
+const workspace = useWorkspaceStore()
 const memberName = useMemberName()
 
 const list = computed(() => attachments.forTask(props.taskId))

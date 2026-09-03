@@ -92,6 +92,7 @@ export const useCommentsStore = defineStore('comments', () => {
       createdAt: now,
       updatedAt: now,
     }
+    if (!workspace.canComment) return comment
     items.value.push(comment)
     history.record({
       label: '新增留言',
@@ -107,6 +108,7 @@ export const useCommentsStore = defineStore('comments', () => {
 
   /** 留言唯一可編輯的欄位就是內容本身——沒有標題、顏色、優先度這些；提及重新解析一次，編輯時改了對象也會反映。 */
   function update(id: string, body: string): void {
+    if (!workspace.canComment) return
     const index = items.value.findIndex((c) => c.id === id)
     if (index === -1) return
     const before = { ...(items.value[index] as StoredComment) }
@@ -126,6 +128,7 @@ export const useCommentsStore = defineStore('comments', () => {
   }
 
   function remove(id: string): void {
+    if (!workspace.canComment) return
     const comment = items.value.find((c) => c.id === id)
     if (!comment) return
     items.value = items.value.filter((c) => c.id !== id)

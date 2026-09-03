@@ -16,6 +16,13 @@ import {
   type MemberRow,
   type WorkspaceRow,
 } from '@/sync/workspaceClient'
+import {
+  canComment as roleCanComment,
+  canManageMembers as roleCanManageMembers,
+  canManageProjects as roleCanManageProjects,
+  canWriteCollections as roleCanWriteCollections,
+  canWriteTasks as roleCanWriteTasks,
+} from '@/domain/workspaceRole'
 import { useAuthStore } from './auth'
 
 /**
@@ -99,7 +106,23 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (!userId) return null
     return members.value.find((m) => m.user_id === userId)?.role ?? null
   })
-  const canManageMembers = computed(() => myRole.value === 'owner' || myRole.value === 'admin')
+  const canWriteTasks = computed(() => roleCanWriteTasks(myRole.value, currentWorkspaceId.value))
+  const canWriteCollections = computed(() =>
+    roleCanWriteCollections(myRole.value, currentWorkspaceId.value),
+  )
+  const canComment = computed(() => roleCanComment(myRole.value, currentWorkspaceId.value))
+  const canManageProjects = computed(() =>
+    roleCanManageProjects(myRole.value, currentWorkspaceId.value),
+  )
+  const canManageMembers = computed(() =>
+    roleCanManageMembers(myRole.value, currentWorkspaceId.value),
+  )
+  /** 僅檢視／僅留言時給畫面顯示為什麼不能改任務；能寫時是 null。 */
+  const taskWriteRestriction = computed<'viewer' | 'commenter' | null>(() => {
+    if (myRole.value === 'viewer') return 'viewer'
+    if (myRole.value === 'commenter') return 'commenter'
+    return null
+  })
   /** 目前所在工作區的線上成員 id——MembersDialog.vue 顯示綠點用這個。 */
   const onlineUserIds = computed(() => {
     const workspaceId = currentWorkspaceId.value
@@ -312,12 +335,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     members,
     pendingInvitations,
     myRole,
+    canWriteTasks,
+    canWriteCollections,
+    canComment,
+    canManageProjects,
     canManageMembers,
+    taskWriteRestriction,
     onlineUserIds,
     setOnlineUsers,
     loading,
     error,
     load,
+    loadMembers,
     selectWorkspace,
     invite,
     revoke,

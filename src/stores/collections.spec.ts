@@ -3,6 +3,7 @@ import { createApp } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useCollectionsStore } from '@/stores/collections'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { becomeWorkspaceMember } from '@/test/helpers'
 
 /**
  * 專案／標籤的重名防呆。
@@ -102,8 +103,7 @@ describe('visibleProjects／inboxProjectIds', () => {
 describe('建立時落在目前所在的工作區', () => {
   it('addProject／addTag／addFilter 都用 workspace.currentWorkspaceId', () => {
     const collections = setup()
-    const workspace = useWorkspaceStore()
-    workspace.currentWorkspaceId = 'shared-ws'
+    becomeWorkspaceMember('shared-ws', 'owner')
 
     expect(collections.addProject('工作').workspaceId).toBe('shared-ws')
     expect(collections.addTag('緊急').workspaceId).toBe('shared-ws')
@@ -143,8 +143,7 @@ describe('依工作區篩選看得到的專案／標籤／篩選器', () => {
 
   it('重名檢查只比對目前所在的工作區：別的工作區同名不算重複', () => {
     const collections = seedTwoWorkspaces()
-    const workspace = useWorkspaceStore()
-    workspace.currentWorkspaceId = 'w1'
+    becomeWorkspaceMember('w1', 'owner')
 
     // w2 已經有一個「工作區2的專案」，但目前在 w1，應該真的新建一筆，
     // 不是被靜默重用成 w2 那筆。

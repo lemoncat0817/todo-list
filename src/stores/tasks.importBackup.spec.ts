@@ -5,7 +5,7 @@ import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useHistoryStore } from '@/stores/history'
-import { makeTask } from '@/test/helpers'
+import { makeTask, becomeWorkspaceMember } from '@/test/helpers'
 
 /**
  * M6 補做：備份匯出範圍改成只含目前工作區之後，「取代」模式不能再是
@@ -43,8 +43,8 @@ describe('importBackup — replace 模式（純本機，currentWorkspaceId 為 n
 
 describe('importBackup — replace 模式（有目前工作區）', () => {
   it('只清空目前工作區的任務，其他工作區的任務原封不動', () => {
-    const { tasks, workspace } = setup()
-    workspace.currentWorkspaceId = 'ws-a'
+    const { tasks } = setup()
+    becomeWorkspaceMember('ws-a')
     tasks.items = [
       makeTask('工作區 A 的舊任務', false, { id: 'a-old', workspaceId: 'ws-a' }),
       makeTask('工作區 B 的任務', false, { id: 'b-task', workspaceId: 'ws-b' }),
@@ -60,8 +60,8 @@ describe('importBackup — replace 模式（有目前工作區）', () => {
   })
 
   it('可以復原：取代前的完整狀態（含其他工作區）都回來', () => {
-    const { tasks, workspace, history } = setup()
-    workspace.currentWorkspaceId = 'ws-a'
+    const { tasks, history } = setup()
+    becomeWorkspaceMember('ws-a')
     tasks.items = [
       makeTask('工作區 A 的舊任務', false, { id: 'a-old', workspaceId: 'ws-a' }),
       makeTask('工作區 B 的任務', false, { id: 'b-task', workspaceId: 'ws-b' }),
@@ -79,8 +79,8 @@ describe('importBackup — replace 模式（有目前工作區）', () => {
   })
 
   it('合併模式不受工作區範圍調整影響——本來就不會清掉任何既有資料', () => {
-    const { tasks, workspace } = setup()
-    workspace.currentWorkspaceId = 'ws-a'
+    const { tasks } = setup()
+    becomeWorkspaceMember('ws-a')
     tasks.items = [
       makeTask('工作區 A 的任務', false, { id: 'a-1', workspaceId: 'ws-a' }),
       makeTask('工作區 B 的任務', false, { id: 'b-1', workspaceId: 'ws-b' }),
@@ -98,8 +98,8 @@ describe('importBackup — replace 模式（有目前工作區）', () => {
 
 describe('collections applyImport — replace 模式（有目前工作區）', () => {
   it('只清空目前工作區的專案／標籤／篩選器，其他工作區原封不動', () => {
-    const { tasks, collections, workspace } = setup()
-    workspace.currentWorkspaceId = 'ws-a'
+    const { tasks, collections } = setup()
+    becomeWorkspaceMember('ws-a')
     collections.projects = [
       { id: 'a-proj', name: 'A 的專案', color: '#000', rank: 'A', updatedAt: 1, isInbox: false, workspaceId: 'ws-a' },
       { id: 'b-proj', name: 'B 的專案', color: '#000', rank: 'A', updatedAt: 1, isInbox: false, workspaceId: 'ws-b' },

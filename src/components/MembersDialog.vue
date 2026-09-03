@@ -140,6 +140,7 @@ import { computed, ref, watch } from 'vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useAuthStore } from '@/stores/auth'
 import type { MemberRole } from '@/sync/workspaceClient'
+import { ROLE_LABELS } from '@/domain/workspaceRole'
 
 /**
  * 成員管理。版面比照 CollectionsDialog.vue：原生 <dialog>，showModal
@@ -152,13 +153,6 @@ const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 
 const ASSIGNABLE_ROLES: readonly Exclude<MemberRole, 'owner'>[] = ['admin', 'member', 'commenter', 'viewer']
-const ROLE_LABELS: Record<MemberRole, string> = {
-  owner: '擁有者',
-  admin: '管理者',
-  member: '成員',
-  commenter: '僅留言',
-  viewer: '僅檢視',
-}
 
 const workspace = useWorkspaceStore()
 const auth = useAuthStore()

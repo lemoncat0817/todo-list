@@ -7,7 +7,7 @@
     不在同一個元素上，規則看不出來。
   -->
   <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
-  <li draggable="true" data-test="task-row" :data-task-id="task.id" tabindex="-1"
+  <li :draggable="!readonly" data-test="task-row" :data-task-id="task.id" tabindex="-1"
     class="group animate-rise rounded-lg border bg-surface px-3 py-2.5 transition-colors focus:outline-none focus-visible:outline-2"
     :class="[
       dragging ? 'opacity-50' : '',
@@ -30,7 +30,9 @@
 
       <input :checked="task.isCompleted" type="checkbox"
         :aria-label="`標記「${task.taskName}」為已完成`"
-        class="task-complete-checkbox mt-0.5 size-5 shrink-0 cursor-pointer accent-accent"
+        :disabled="readonly"
+        class="task-complete-checkbox mt-0.5 size-5 shrink-0 accent-accent"
+        :class="readonly ? 'cursor-default' : 'cursor-pointer'"
         @change="emit('toggle')">
 
       <div class="min-w-0 grow">
@@ -68,13 +70,15 @@
             <li v-for="child in children" :key="child.id" class="flex items-center gap-2">
               <input :checked="child.isCompleted" type="checkbox"
                 :aria-label="`標記子任務「${child.taskName}」為已完成`"
-                class="task-complete-checkbox size-4 shrink-0 cursor-pointer accent-accent"
+                :disabled="readonly"
+                class="task-complete-checkbox size-4 shrink-0 accent-accent"
+                :class="readonly ? 'cursor-default' : 'cursor-pointer'"
                 @change="emit('toggle-child', child.id)">
               <span class="min-w-0 grow break-words text-[13px]"
                 :class="child.isCompleted ? 'text-ink-faint line-through' : 'text-ink-soft'">
                 {{ child.taskName }}
               </span>
-              <button type="button" :aria-label="`刪除子任務「${child.taskName}」`" data-tooltip="刪除"
+              <button v-if="!readonly" type="button" :aria-label="`刪除子任務「${child.taskName}」`" data-tooltip="刪除"
                 class="grid size-6 shrink-0 place-items-center rounded text-ink-faint transition-colors hover:bg-danger-soft hover:text-danger-ink"
                 @click="emit('remove-child', child.id)">
                 <svg viewBox="0 0 16 16" class="size-3.5" aria-hidden="true" fill="none"
@@ -86,7 +90,7 @@
           </ul>
         </div>
 
-        <div v-if="addingSub" class="mt-1.5 flex gap-2">
+        <div v-if="addingSub && !readonly" class="mt-1.5 flex gap-2">
           <input ref="subInput" v-model.trim="subDraft" :aria-label="`「${task.taskName}」的新子任務`"
             placeholder="子任務…"
             class="h-8 min-w-0 grow rounded-md border border-accent bg-surface px-2 text-[13px] text-ink focus:outline-none"
@@ -105,6 +109,7 @@
       -->
       <div
         class="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity group-focus-within:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+        <template v-if="!readonly">
         <button type="button" :disabled="isFirst" :aria-label="`將「${task.taskName}」上移`" data-tooltip="上移"
           class="grid size-7 place-items-center rounded text-ink-faint transition-colors hover:bg-sunken hover:text-ink disabled:pointer-events-none disabled:opacity-30"
           @click="emit('move-up')">↑</button>
@@ -142,6 +147,7 @@
             <path d="m3.5 8.5 3 3 6-7" />
           </svg>
         </button>
+        </template>
 
         <button type="button" :aria-label="`設定「${task.taskName}」的細節`" data-tooltip="詳情"
           class="grid size-7 place-items-center rounded text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
@@ -152,7 +158,7 @@
             <circle cx="12.5" cy="8" r="1.2" />
           </svg>
         </button>
-        <button type="button" :aria-label="`刪除「${task.taskName}」`" data-tooltip="刪除"
+        <button v-if="!readonly" type="button" :aria-label="`刪除「${task.taskName}」`" data-tooltip="刪除"
           class="grid size-7 place-items-center rounded text-ink-faint transition-colors hover:bg-danger-soft hover:text-danger-ink"
           @click="emit('remove')">
           <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true" fill="none" stroke="currentColor"
@@ -196,8 +202,9 @@ const props = withDefaults(
     isLast: boolean
     children?: StoredTask[]
     expanded?: boolean
+    readonly?: boolean
   }>(),
-  { children: () => [], expanded: false, checked: false, selecting: false },
+  { children: () => [], expanded: false, checked: false, selecting: false, readonly: false },
 )
 
 const emit = defineEmits<{
@@ -249,6 +256,7 @@ watch(
  * 使用者要的是那個控制項本身，不是選取這一列。
  */
 function onRowClick(event: MouseEvent): void {
+  if (props.readonly) return
   if (!event.ctrlKey && !event.metaKey) return
   const target = event.target as HTMLElement | null
   if (target?.closest('button, input, select, textarea, a')) return

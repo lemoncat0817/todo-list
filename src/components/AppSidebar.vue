@@ -107,7 +107,7 @@
     <section class="flex flex-col gap-1">
       <div class="flex items-center justify-between gap-1 pl-2.5 pr-1">
         <h2 class="text-xs font-semibold uppercase tracking-wide text-ink-faint">專案</h2>
-        <button type="button" aria-label="管理專案與標籤"
+        <button v-if="workspace.canWriteCollections || workspace.canManageProjects" type="button" aria-label="管理專案與標籤"
           class="grid size-6 place-items-center rounded text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
           @click="emit('manage')">
           <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true" fill="none" stroke="currentColor"

@@ -379,6 +379,9 @@ export const useTasksStore = defineStore('tasks', () => {
       projectId: overrides.projectId ?? collections.currentInboxId,
       workspaceId: overrides.workspaceId ?? workspace.currentWorkspaceId,
     })
+    // 僅檢視／僅留言時本機也不寫入：不然畫面看起來改成功了，
+    // 同步才被 RLS 擋下，出現「沒有權限編輯這筆任務」。
+    if (!workspace.canWriteTasks) return task
     items.value.push(task)
     history.record({
       label: `新增「${taskName}」`,
@@ -400,6 +403,7 @@ export const useTasksStore = defineStore('tasks', () => {
    * 子項預設繼承父項的專案——分類是父項的屬性，子項另外分類只會讓清單更難讀。
    */
   function addSubtask(parentId: string, taskName: string): StoredTask | null {
+    if (!workspace.canWriteTasks) return null
     const parent = items.value.find((t) => t.id === parentId)
     if (!parent || parent.parentId !== null) return null
 
@@ -422,6 +426,7 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   function update(id: string, patch: Partial<StoredTask>): void {
+    if (!workspace.canWriteTasks) return
     const index = indexOf(id)
     if (index === -1) return
     const before = { ...(items.value[index] as StoredTask) }
@@ -442,6 +447,7 @@ export const useTasksStore = defineStore('tasks', () => {
 
   /** 刪除任務，連同其子任務。 */
   function remove(id: string): void {
+    if (!workspace.canWriteTasks) return
     const target = items.value.find((t) => t.id === id)
     if (!target) return
     const removed = items.value.filter((t) => t.id === id || t.parentId === id).map((t) => ({ ...t }))
@@ -461,6 +467,7 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   function clearCompleted(): void {
+    if (!workspace.canWriteTasks) return
     const removed = items.value.filter((t) => t.isCompleted).map((t) => ({ ...t }))
     if (removed.length === 0) return
     items.value = items.value.filter((t) => !t.isCompleted)
@@ -483,6 +490,7 @@ export const useTasksStore = defineStore('tasks', () => {
    * 規則結束（超過 until 或 count 用盡）時才真正標記完成。
    */
   function toggle(id: string): void {
+    if (!workspace.canWriteTasks) return
     const index = indexOf(id)
     if (index === -1) return
     const before = { ...(items.value[index] as StoredTask) }
@@ -530,6 +538,7 @@ export const useTasksStore = defineStore('tasks', () => {
 
   /** 拖曳／鍵盤排序：把 id 移到 targetId 之前或之後。 */
   function move(id: string, targetId: string, position: 'before' | 'after'): void {
+    if (!workspace.canWriteTasks) return
     const moving = items.value.find((t) => t.id === id)
     const target = items.value.find((t) => t.id === targetId)
     if (!moving || !target || id === targetId) return
@@ -580,6 +589,7 @@ export const useTasksStore = defineStore('tasks', () => {
     targetId: string | null,
     position: 'before' | 'after' = 'after',
   ): void {
+    if (!workspace.canWriteTasks) return
     const moving = items.value.find((t) => t.id === id)
     if (!moving) return
 
@@ -660,6 +670,7 @@ export const useTasksStore = defineStore('tasks', () => {
    * 要按二十次 Ctrl+Z 才回得去——那等於沒有復原。
    */
   function batchUpdate(ids: readonly string[], patch: Partial<StoredTask>, label: string): number {
+    if (!workspace.canWriteTasks) return 0
     const targets = new Set(ids)
     const before = items.value.filter((t) => targets.has(t.id)).map((t) => ({ ...t }))
     if (before.length === 0) return 0
@@ -685,6 +696,7 @@ export const useTasksStore = defineStore('tasks', () => {
 
   /** 批次刪除，連同各自的子項；同樣只推一個 command。 */
   function batchRemove(ids: readonly string[]): number {
+    if (!workspace.canWriteTasks) return 0
     const targets = new Set(ids)
     const removed = items.value
       .filter((t) => targets.has(t.id) || (t.parentId !== null && targets.has(t.parentId)))
@@ -718,6 +730,7 @@ export const useTasksStore = defineStore('tasks', () => {
    * 跟 batchUpdate 一樣整批只推一個 undo command。
    */
   function batchComplete(ids: readonly string[], value: boolean): number {
+    if (!workspace.canWriteTasks) return 0
     const targets = new Set(ids)
     const before = items.value.filter((t) => targets.has(t.id)).map((t) => ({ ...t }))
     if (before.length === 0) return 0
@@ -775,6 +788,7 @@ export const useTasksStore = defineStore('tasks', () => {
     },
     mode: 'merge' | 'replace' = 'merge',
   ): void {
+    if (!workspace.canWriteTasks) return
     const beforeTasks = snapshot()
     const beforeCollections = collections.snapshot()
 
@@ -825,6 +839,7 @@ export const useTasksStore = defineStore('tasks', () => {
    * 這個動作橫跨兩個 store，放在任務這邊：它知道任務，collections 不需要知道。
    */
   function removeProject(id: string, options: { deleteTasks?: boolean } = {}): void {
+    if (!workspace.canManageProjects) return
     const project = collections.removeProject(id)
     if (!project) return
 
@@ -857,6 +872,7 @@ export const useTasksStore = defineStore('tasks', () => {
 
   /** 刪除標籤時一併從所有任務身上移除，避免留下指向不存在標籤的 id。 */
   function removeTag(id: string): void {
+    if (!workspace.canWriteCollections) return
     const tag = collections.removeTag(id)
     if (!tag) return
 
@@ -883,6 +899,7 @@ export const useTasksStore = defineStore('tasks', () => {
    * 分類標籤，刪掉標籤不該連任務一起消失。
    */
   function removeSection(id: string): void {
+    if (!workspace.canWriteTasks) return
     const section = sections.removeSection(id)
     if (!section) return
 
@@ -919,6 +936,7 @@ export const useTasksStore = defineStore('tasks', () => {
    * 屬於「這件事本身是什麼」，予以保留。
    */
   function duplicateProject(id: string): StoredProject | null {
+    if (!workspace.canManageProjects) return null
     const source = collections.projects.find((p) => p.id === id)
     if (!source) return null
 

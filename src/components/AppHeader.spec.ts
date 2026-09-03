@@ -15,6 +15,7 @@ import {
 } from '@/test/helpers'
 import type { Router } from 'vue-router'
 import { useCollectionsStore } from '@/stores/collections'
+import { becomeWorkspaceMember } from '@/test/helpers'
 import { addDays, today } from '@/domain/dates'
 
 /**
@@ -231,5 +232,12 @@ describe('AppHeader.vue', () => {
       await w.find('input[aria-label="搜尋代辦事項"]').setValue('牛奶')
       expect(ui.keyword).toBe('牛奶')
     })
+  })
+
+  it('僅檢視時不顯示新增列，改顯示權限說明', () => {
+    becomeWorkspaceMember('w1', 'viewer')
+    const w = mountWith(AppHeader, pinia, { router })
+    expect(textInput(w).exists()).toBe(false)
+    expect(w.text()).toContain('僅檢視')
   })
 })
