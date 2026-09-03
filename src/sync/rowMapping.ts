@@ -76,9 +76,10 @@ export function toRemoteTask(task: StoredTask): Record<string, unknown> {
     created_at: task.createdAt,
     updated_at: task.updatedAt,
     deleted_at: null,
-    // workspace_id 刻意不送：derive_task_workspace() trigger 永遠依
-    // project_id 反推、不採信 client 送的值（見 supabase/migrations/0004），
-    // client 端永遠是唯讀。
+    // project_id 有值時 trigger 仍依專案反推、忽略這裡；project_id 為
+    // null 時（本機還沒拉到該工作區收件匣）必須帶目前選中的工作區，
+    // 否則伺服器會落到建立者自己的個人工作區（見 0026）。
+    workspace_id: task.workspaceId,
   }
 }
 

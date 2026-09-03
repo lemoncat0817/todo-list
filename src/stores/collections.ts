@@ -53,6 +53,20 @@ export const useCollectionsStore = defineStore('collections', () => {
   const inboxProjectIds = computed(
     () => new Set(projects.value.filter((p) => p.isInbox).map((p) => p.id)),
   )
+  /**
+   * 目前所在工作區的收件匣 id。stores/tasks.ts 的 add() 在沒指定專案時
+   * 落到這裡，而不是 projectId: null——伺服器 derive_task_workspace()
+   * 遇到 null 會把任務寫進「建立者自己的個人工作區」（見 0004），受邀
+   * 成員在共享工作區新增未分類任務，同步回來就會從畫面上消失。
+   *
+   * 純本機／尚未登入時 currentWorkspaceId 是 null，這裡也回 null，add()
+   * 維持原本的未分類語意。
+   */
+  const currentInboxId = computed(() => {
+    const workspaceId = workspace.currentWorkspaceId
+    if (workspaceId === null) return null
+    return projects.value.find((p) => p.isInbox && p.workspaceId === workspaceId)?.id ?? null
+  })
   /** 理由同 visibleProjects：標籤／篩選器也是依工作區分的容器（見 0005_rls.sql 的說明）。 */
   const visibleTags = computed(() =>
     tags.value.filter((t) => inCurrentWorkspace(t, workspace.currentWorkspaceId)),
@@ -386,6 +400,7 @@ export const useCollectionsStore = defineStore('collections', () => {
     visibleProjects,
     projectsInCurrentWorkspace,
     inboxProjectIds,
+    currentInboxId,
     tags,
     visibleTags,
     filters,
