@@ -61,6 +61,26 @@ export async function safeText(res: Response): Promise<string> {
   }
 }
 
+/**
+ * `res.json()` 對完全空的回應內文（0 bytes）會直接丟出
+ * `SyntaxError: Unexpected end of JSON input`，不是回傳 `null`——這是真的
+ * 在瀏覽器裡撞到才發現的，不是憑文件猜的：`revoke_invitation()`
+ * （見 supabase/migrations/0008_invitations.sql）宣告 `returns void`，
+ * PostgREST 對 void 回傳型別的 RPC 是回 HTTP 204 加零位元組的內文，不是
+ * `null`／`{}`。呼叫端（sync/workspaceClient.ts 的 rpc()）原本無條件
+ * `await res.json()`，對這支 RPC 每次都會炸開。單元測試沒抓到是因為
+ * mock 直接把 `.json` 換成 `async () => null`，繞過了真正的 JSON 解析
+ * 這一步，模擬不出空內文的真實行為。
+ *
+ * 改成先讀 text，空字串就回傳 undefined，非空才真的 parse——PostgREST
+ * 對 void 以外的回傳型別（text／uuid／boolean…）一律是有內容的 JSON，
+ * 不受影響。
+ */
+export async function parseJsonResponse<T>(res: Response): Promise<T> {
+  const text = await res.text()
+  return (text === '' ? undefined : JSON.parse(text)) as T
+}
+
 export function headers(accessToken: string, extra: Record<string, string> = {}): Record<string, string> {
   return {
     apikey: SUPABASE_ANON_KEY,
@@ -122,5 +142,5 @@ export async function callRpc<T>(fn: string, params: Record<string, unknown>, ac
     body: JSON.stringify(params),
   })
   if (!res.ok) throw new SyncHttpError(fn, 'rpc', res.status, await safeText(res))
-  return (await res.json()) as T
+  return parseJsonResponse<T>(res)
 }

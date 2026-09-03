@@ -39,7 +39,7 @@ describe('attachments store — 工作區儲存配額（M6）', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options) => {
       calls.push(`${(options as RequestInit).method} ${String(url)}`)
       if (String(url).includes('workspace_storage_used')) {
-        return { ok: true, json: async () => 500 * 1024 * 1024 - 10 } as Response
+        return { ok: true, text: async () => String(500 * 1024 * 1024 - 10) } as Response
       }
       return { ok: true, json: async () => [], text: async () => '' } as Response
     })
@@ -56,7 +56,7 @@ describe('attachments store — 工作區儲存配額（M6）', () => {
     const store = setup()
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
       if (String(url).includes('workspace_storage_used')) {
-        return { ok: true, json: async () => 0 } as Response
+        return { ok: true, text: async () => '0' } as Response
       }
       return { ok: true, json: async () => [], text: async () => '' } as Response
     })
@@ -108,7 +108,7 @@ describe('attachments store — 工作區儲存配額（M6）', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
       if (String(url).includes('workspace_storage_used')) {
-        return { ok: true, json: async () => 0 } as Response
+        return { ok: true, text: async () => '0' } as Response
       }
       if (String(url).includes('/rest/v1/attachments')) {
         return {

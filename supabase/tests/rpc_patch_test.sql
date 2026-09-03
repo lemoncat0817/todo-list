@@ -87,7 +87,7 @@ select results_eq(
 reset role;
 
 -- 7) 非成員直接呼叫 RPC：底層 UPDATE 被 RLS 擋下，函式回報「不存在或沒有寫入權限」。
--- errcode 明確指定 PT003（權限不足）：這是 0020_task_patch_errors.sql
+-- errcode 明確指定 TK003（權限不足）：這是 0020_task_patch_errors.sql
 -- 新增的分類，跟「任務不存在」「已被刪除」用不同的 SQLSTATE 區分，
 -- 前端才有辦法顯示不同的說法（見 stores/sync.ts 的 describeSyncError()）。
 -- throws_ok 3 個參數的形式比對的是「錯誤訊息」不是 SQLSTATE（pgTAP 沒有
@@ -103,16 +103,16 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000ca20","r
 select throws_ok(
   $$ select public.apply_task_patch('10000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000001',
        jsonb_build_object('notes', 'Carol 想改')) $$,
-  'PT003', '沒有權限編輯這筆任務', '非成員呼叫 apply_task_patch 被 RLS 擋下，回報 PT003（權限不足）');
+  'TK003', '沒有權限編輯這筆任務', '非成員呼叫 apply_task_patch 被 RLS 擋下，回報 TK003（權限不足）');
 reset role;
 
--- 8) viewer 的 Bob 一樣被擋下，同樣是 PT003。
+-- 8) viewer 的 Bob 一樣被擋下，同樣是 TK003。
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000b0b0","role":"authenticated"}';
 select throws_ok(
   $$ select public.apply_task_patch('10000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000001',
        jsonb_build_object('notes', 'Bob 想改')) $$,
-  'PT003', '沒有權限編輯這筆任務', 'viewer 的 Bob 呼叫 apply_task_patch 也被擋下，回報 PT003');
+  'TK003', '沒有權限編輯這筆任務', 'viewer 的 Bob 呼叫 apply_task_patch 也被擋下，回報 TK003');
 reset role;
 
 -- 9) processed_ops 不會把別人的紀錄洩漏出去。
@@ -135,11 +135,11 @@ select lives_ok(
   'Alice 可以刪除自己有寫入權限的任務');
 
 -- 11) 任務已經被刪除之後，再送一個不含 deleted_at 的一般欄位補丁——
--- 不該被靜默套用到一具墓碑上，應該回報 PT001（已被刪除）。
+-- 不該被靜默套用到一具墓碑上，應該回報 TK001（已被刪除）。
 select throws_ok(
   $$ select public.apply_task_patch('10000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-000000000001',
        jsonb_build_object('notes', '想改已刪除的任務')) $$,
-  'PT001', '任務已經被其他成員刪除', '編輯已被刪除的任務回報 PT001，不是靜默套用補丁');
+  'TK001', '任務已經被其他成員刪除', '編輯已被刪除的任務回報 TK001，不是靜默套用補丁');
 
 -- 12) 冪等刪除：對已經是刪除狀態的任務再送一次 deleted_at 補丁仍然放行
 -- ——只有「一般欄位編輯」才會被已刪除狀態擋下，刪除動作本身不會。
@@ -155,11 +155,11 @@ select is(
   null,
   '補丁明確把 deleted_at 設回 null 可以還原已刪除的任務');
 
--- 14) 根本不存在的 task_id 回報 PT002，不是跟「權限不足」混在一起。
+-- 14) 根本不存在的 task_id 回報 TK002，不是跟「權限不足」混在一起。
 select throws_ok(
   $$ select public.apply_task_patch('10000000-0000-0000-0000-00000000000d', '00000000-0000-0000-0000-00000000ffff',
        jsonb_build_object('notes', '目標不存在')) $$,
-  'PT002', '任務 00000000-0000-0000-0000-00000000ffff 不存在或沒有寫入權限', '不存在的 task_id 回報 PT002');
+  'TK002', '任務 00000000-0000-0000-0000-00000000ffff 不存在或沒有寫入權限', '不存在的 task_id 回報 TK002');
 reset role;
 
 select * from finish();

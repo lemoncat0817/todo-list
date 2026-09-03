@@ -23,6 +23,31 @@ const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
 const INVITE_FROM_EMAIL = Deno.env.get('INVITE_FROM_EMAIL') || 'invitations@example.com'
 
+/**
+ * 這支函式是唯一由瀏覽器直接呼叫的（另外兩支 send-task-notification／
+ * send-daily-digest 都是資料庫 trigger／pg_cron 經 pg_net 呼叫，伺服器
+ * 對伺服器不受瀏覽器 CORS 限制，從沒踩過這個問題）。瀏覽器對帶自訂
+ * header（Authorization）的跨網域 POST 會先送一個不帶任何驗證資訊的
+ * OPTIONS 預檢請求——沒有這段處理的話，預檢會落進下面「沒有
+ * Authorization header 就回 401」那條路徑，401 回應又沒有 CORS 標頭，
+ * 瀏覽器就會把整件事擋下來，在 DevTools 顯示成語焉不詳的「CORS error」，
+ * 而不是真正的 401。本機用 curl 測試時完全看不到這個問題——curl 不會
+ * 自己發預檢，是先前只用 curl 驗證這支函式、從沒經過真正瀏覽器測試
+ * 才漏掉的。
+ */
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+function jsonResponse(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+  })
+}
+
 interface InvitePayload {
   workspace_id: string
   workspace_name: string
@@ -84,21 +109,22 @@ async function canManageWorkspace(workspaceId: string, authHeader: string): Prom
 }
 
 Deno.serve(async (req) => {
+  // 預檢請求：不帶任何驗證資訊，只是瀏覽器在問「這個跨網域請求被允許嗎」，
+  // 直接回 200 + CORS 標頭，不要走到下面任何一步業務邏輯。
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
+
   const authHeader = req.headers.get('Authorization')
-  if (!authHeader) return new Response('unauthorized', { status: 401 })
+  if (!authHeader) return jsonResponse({ error: 'unauthorized' }, 401)
 
   const payload: unknown = await req.json().catch(() => null)
-  if (!isInvitePayload(payload)) return new Response('payload 形狀不對', { status: 400 })
+  if (!isInvitePayload(payload)) return jsonResponse({ error: 'payload 形狀不對' }, 400)
 
   if (!(await canManageWorkspace(payload.workspace_id, authHeader))) {
-    return new Response('沒有權限管理這個工作區', { status: 403 })
+    return jsonResponse({ error: '沒有權限管理這個工作區' }, 403)
   }
 
   if (!RESEND_API_KEY) {
-    return new Response(JSON.stringify({ sent: false, reason: 'not_configured' }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return jsonResponse({ sent: false, reason: 'not_configured' }, 200)
   }
 
   const res = await fetch('https://api.resend.com/emails', {
@@ -114,11 +140,8 @@ Deno.serve(async (req) => {
 
   if (!res.ok) {
     console.error('[send-invitation-email] 寄信失敗', res.status, await res.text())
-    return new Response(JSON.stringify({ sent: false, reason: 'send_failed' }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return jsonResponse({ sent: false, reason: 'send_failed' }, 200)
   }
 
-  return new Response(JSON.stringify({ sent: true }), { headers: { 'Content-Type': 'application/json' } })
+  return jsonResponse({ sent: true }, 200)
 })

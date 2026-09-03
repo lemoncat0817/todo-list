@@ -62,7 +62,7 @@ describe('fetchPendingInvitations', () => {
 
 describe('createInvitation', () => {
   it('打 create_invitation RPC，帶上工作區／信箱／角色', async () => {
-    const fetchMock = mockFetch({ ok: true, json: async () => 'a-token' } as Response)
+    const fetchMock = mockFetch({ ok: true, text: async () => JSON.stringify('a-token') } as Response)
 
     const result = await createInvitation('w1', 'bob@example.com', 'member', 'token')
 
@@ -130,8 +130,8 @@ describe('sendInvitationEmail', () => {
 })
 
 describe('revokeInvitation / acceptInvitation', () => {
-  it('revokeInvitation 打 revoke_invitation RPC', async () => {
-    const fetchMock = mockFetch({ ok: true, json: async () => null } as Response)
+  it('revokeInvitation 打 revoke_invitation RPC——revoke_invitation() 是 returns void，PostgREST 回空內文而不是 null，不能用 .json() 假回應掩蓋這件事', async () => {
+    const fetchMock = mockFetch({ ok: true, text: async () => '' } as Response)
     await revokeInvitation('inv-1', 'token')
 
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -140,7 +140,7 @@ describe('revokeInvitation / acceptInvitation', () => {
   })
 
   it('acceptInvitation 打 accept_invitation RPC，回傳工作區 id', async () => {
-    const fetchMock = mockFetch({ ok: true, json: async () => 'w1' } as Response)
+    const fetchMock = mockFetch({ ok: true, text: async () => JSON.stringify('w1') } as Response)
     const result = await acceptInvitation('raw-token', 'token')
 
     expect(result).toBe('w1')

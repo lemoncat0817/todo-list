@@ -28,9 +28,18 @@ function fakeSession(userId = 'u1'): Session {
   } as unknown as Session
 }
 
+/**
+ * `.text` 一定要跟 `.json` 回傳同樣的內容——sync/workspaceClient.ts 的
+ * rpc()／sync/restClient.ts 的 callRpc() 現在改讀 res.text() 再自己
+ * JSON.parse（見那邊的 parseJsonResponse() 說明：revoke_invitation()
+ * 這種 returns void 的 RPC，PostgREST 回的是空內文，不是 null，只假
+ * `.json()` 掩蓋不了這件事，也不能只假前者不假後者，不然換成呼叫端
+ * 讀 `.text()` 的路徑就會在測試裡直接因為缺這個方法而炸開）。
+ */
 function mockFetch(impl: (url: string) => unknown) {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
-    return { ok: true, json: async () => impl(String(url)) } as Response
+    const result = impl(String(url))
+    return { ok: true, json: async () => result, text: async () => JSON.stringify(result) ?? '' } as Response
   })
 }
 
@@ -188,11 +197,13 @@ describe('invite', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     workspace.currentWorkspaceId = 'w1'
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
-      if (String(url).includes('/rpc/create_invitation')) return { ok: true, json: async () => 'raw-token' } as Response
+      if (String(url).includes('/rpc/create_invitation')) {
+        return { ok: true, json: async () => 'raw-token', text: async () => '"raw-token"' } as Response
+      }
       if (String(url).includes('/functions/v1/send-invitation-email')) {
         return { ok: false, status: 500, text: async () => 'boom' } as Response
       }
-      return { ok: true, json: async () => [] } as Response
+      return { ok: true, json: async () => [], text: async () => '[]' } as Response
     })
 
     const result = await workspace.invite('bob@example.com', 'member')

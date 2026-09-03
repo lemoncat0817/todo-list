@@ -33,7 +33,7 @@ select is(
     where workspace_id = (select id from public.workspaces where created_by = '00000000-0000-0000-0000-00000000a11c')),
   20, '灌完之後工作區剛好 20 個成員（含 Alice）');
 
--- 1) 滿員時，owner 建立邀請直接被擋下，回報 PT004。
+-- 1) 滿員時，owner 建立邀請直接被擋下，回報 WS004。
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000a11c","role":"authenticated"}';
 -- throws_ok 3 個參數的形式比對的是「錯誤訊息」不是 SQLSTATE（pgTAP 沒有
@@ -42,7 +42,7 @@ set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000a11c","r
 select throws_ok(
   format($fmt$ select public.create_invitation(%L, 'overflow@cap-test.local', 'member') $fmt$,
     (select id from public.workspaces where created_by = '00000000-0000-0000-0000-00000000a11c')),
-  'PT004', '這個工作區的成員已滿（上限 20 人）', '工作區成員已滿時，create_invitation 回報 PT004');
+  'WS004', '這個工作區的成員已滿（上限 20 人）', '工作區成員已滿時，create_invitation 回報 WS004');
 reset role;
 
 -- 2) 就算繞過 create_invitation（直接插入一筆有效邀請）拿到 token，
@@ -64,7 +64,7 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000d1e1","role":"authenticated"}';
 select throws_ok(
   format($fmt$ select public.accept_invitation(%L) $fmt$, current_setting('test.bypass_token', true)),
-  'PT004', '這個工作區的成員已滿（上限 20 人），請聯絡工作區管理者',
+  'WS004', '這個工作區的成員已滿（上限 20 人），請聯絡工作區管理者',
   '工作區成員已滿時，accept_invitation 自己也擋下（不只靠 create_invitation 那一關）');
 reset role;
 

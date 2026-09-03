@@ -1,5 +1,5 @@
 import { SUPABASE_URL } from './config'
-import { SyncHttpError, headers, safeText } from './restClient'
+import { SyncHttpError, headers, parseJsonResponse, safeText } from './restClient'
 
 /**
  * 工作區／成員／邀請的 REST＋RPC 呼叫層。跟 sync/rpc.ts 分開——那支是
@@ -54,7 +54,9 @@ async function rpc<T>(fn: string, params: Record<string, unknown>, accessToken: 
     body: JSON.stringify(params),
   })
   if (!res.ok) throw new SyncHttpError(fn, 'rpc', res.status, await safeText(res))
-  return (await res.json()) as T
+  // revoke_invitation() 是 `returns void`，PostgREST 回 204 + 空內文——
+  // 不能直接 res.json()，見 restClient.ts 的 parseJsonResponse() 說明。
+  return parseJsonResponse<T>(res)
 }
 
 /** 目前使用者看得到的所有工作區——RLS 已經把範圍限定在自己是成員的那些。 */
