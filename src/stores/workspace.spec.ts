@@ -95,6 +95,52 @@ describe('auth.status 變成 signed-in 時', () => {
 
     await vi.waitFor(() => expect(workspace.currentWorkspaceId).toBe('shared-1'))
   })
+
+  it('被邀進別人的個人工作區時，預設仍選自己的個人工作區，不是清單裡第一個 is_personal', async () => {
+    const { workspace, auth } = setup()
+    mockFetch((url) => {
+      if (url.includes('/workspaces?')) {
+        return [
+          { id: 'a-personal', name: 'A 的個人工作區', is_personal: true, created_by: 'u-a', updated_at: 1 },
+          { id: 'b-personal', name: 'B 的個人工作區', is_personal: true, created_by: 'u1', updated_at: 1 },
+        ]
+      }
+      if (url.includes('/workspace_members?')) {
+        return [{ user_id: 'u1', role: 'viewer', joined_at: '2026-01-01', profiles: { display_name: 'B', avatar_url: null } }]
+      }
+      return []
+    })
+
+    auth.session = fakeSession('u1')
+    auth.status = 'signed-in'
+
+    await vi.waitFor(() => expect(workspace.currentWorkspaceId).toBe('b-personal'))
+  })
+
+  it('切換工作區後重新載入會還原上次選擇', async () => {
+    const { workspace, auth } = setup()
+    mockFetch((url) => {
+      if (url.includes('/workspaces?')) {
+        return [
+          { id: 'a-personal', name: 'A 的個人工作區', is_personal: true, created_by: 'u-a', updated_at: 1 },
+          { id: 'b-personal', name: 'B 的個人工作區', is_personal: true, created_by: 'u1', updated_at: 1 },
+        ]
+      }
+      return []
+    })
+
+    auth.session = fakeSession('u1')
+    auth.status = 'signed-in'
+    await vi.waitFor(() => expect(workspace.currentWorkspaceId).toBe('b-personal'))
+
+    await workspace.selectWorkspace('a-personal')
+    expect(workspace.currentWorkspaceId).toBe('a-personal')
+
+    // 模擬 reload：清空記憶體狀態再觸發一次載入
+    workspace.currentWorkspaceId = null
+    await workspace.load()
+    expect(workspace.currentWorkspaceId).toBe('a-personal')
+  })
 })
 
 describe('auth.status 變成 signed-out 時', () => {

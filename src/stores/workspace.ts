@@ -23,6 +23,7 @@ import {
   canWriteCollections as roleCanWriteCollections,
   canWriteTasks as roleCanWriteTasks,
 } from '@/domain/workspaceRole'
+import { pickCurrentWorkspaceId } from '@/domain/pickWorkspace'
 import { useAuthStore } from './auth'
 
 /**
@@ -39,6 +40,8 @@ function describeWorkspaceError(e: unknown, fallback: string): string {
 }
 
 const PENDING_INVITE_KEY = 'todoTask:pendingInvite'
+/** 依帳號記住上次選的工作區，避免 reload 又落到別人的個人工作區。 */
+const CURRENT_WORKSPACE_KEY_PREFIX = 'todoTask:currentWorkspace:'
 
 /**
  * 邀請連結被點開時，使用者不一定已經登入——OAuth 的登入流程會整頁導去
@@ -67,6 +70,26 @@ function consumePendingInviteToken(): string | null {
   }
 }
 
+function rememberedWorkspaceKey(userId: string): string {
+  return `${CURRENT_WORKSPACE_KEY_PREFIX}${userId}`
+}
+
+function readRememberedWorkspaceId(userId: string): string | null {
+  try {
+    return localStorage.getItem(rememberedWorkspaceKey(userId))
+  } catch {
+    return null
+  }
+}
+
+function writeRememberedWorkspaceId(userId: string, workspaceId: string): void {
+  try {
+    localStorage.setItem(rememberedWorkspaceKey(userId), workspaceId)
+  } catch {
+    // 同 pending invite：無痕／停用 cookie 時只影響「記住上次選哪個」
+  }
+}
+
 /**
  * 工作區、成員、待處理邀請。
  *
@@ -75,11 +98,9 @@ function consumePendingInviteToken(): string | null {
  * 只是 fetch 呼叫，沒有 authClient.ts／realtime.ts 那種重量級相依，
  * 所以這裡是一般的靜態 import，不需要動態載入。
  *
- * 目前沒有「切換工作區」的畫面——currentWorkspaceId 預設落在
- * is_personal 的那個，多工作區（使用者被邀進別人的工作區）時介面
- * 還是會抓到正確的清單與成員，只是還沒有 UI 讓使用者手動切換。
- * tasks／collections 的拉取也還沒依 workspace_id 篩選（見計畫書
- * M2 之後才要處理的範圍）——這裡先把「工作區本身」這一層資料備妥。
+ * 目前所在工作區：切換時寫進 localStorage（依 user id），reload 後還原；
+ * 沒有記住的值時，挑「自己建立的個人工作區」，不是任意 is_personal——
+ * 被邀進別人的個人工作區時對方那列也是 is_personal，以前會踩到。
  */
 export const useWorkspaceStore = defineStore('workspace', () => {
   const workspaces = ref<WorkspaceRow[]>([])
@@ -160,7 +181,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     try {
       workspaces.value = await fetchMyWorkspaces(token)
       if (!currentWorkspaceId.value || !workspaces.value.some((w) => w.id === currentWorkspaceId.value)) {
-        currentWorkspaceId.value = workspaces.value.find((w) => w.is_personal)?.id ?? workspaces.value[0]?.id ?? null
+        const userId = auth.session?.user.id ?? null
+        currentWorkspaceId.value = pickCurrentWorkspaceId(workspaces.value, {
+          userId,
+          rememberedId: userId ? readRememberedWorkspaceId(userId) : null,
+        })
       }
       await loadMembers()
     } catch (e) {
@@ -173,6 +198,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   function selectWorkspace(id: string): Promise<void> {
     currentWorkspaceId.value = id
+    const userId = auth.session?.user.id
+    if (userId) writeRememberedWorkspaceId(userId, id)
     return loadMembers()
   }
 
@@ -289,6 +316,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         const joinedWorkspaceId = await acceptInvitation(inviteToken, token)
         await load()
         currentWorkspaceId.value = joinedWorkspaceId
+        const userId = auth.session?.user.id
+        if (userId) writeRememberedWorkspaceId(userId, joinedWorkspaceId)
         await loadMembers()
         return true
       } catch (e) {
