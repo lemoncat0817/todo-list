@@ -60,6 +60,7 @@ import { useCommentsStore } from './comments'
 import { useNotificationsStore } from './notifications'
 import { useSectionsStore } from './sections'
 import { useWorkspaceStore } from './workspace'
+import { pendingDeleteIdsForTable } from './outboxSync'
 
 /**
  * 同步是背景輪詢，不是即時協作——所以用固定間隔加幾個「現在很可能有變化」
@@ -122,7 +123,7 @@ const sectionBinding: TableBinding<StoredSection> = {
  * `error.message`，`SyncHttpError` 的訊息長這樣——
  * `[sync] upsert tasks 失敗（HTTP 400）：{"code":"PGRST102","details":null,...}`
  * ——資料表名稱、HTTP 狀態碼、PostgREST 原始錯誤 JSON 全部照樣顯示在
- * `AccountDialog.vue`／`AppSidebar.vue` 上。這跟 `stores/auth.ts` 的
+ * `AccountDialog.vue`／`AppSidebar.vue`／`AppFooter.vue` 上。這跟 `stores/auth.ts` 的
  * `describeError()` 已經在做的事（見那邊的註解：「使用者不需要、也不該
  * 知道這個工具背後接的是什麼服務」）是同一個原則，卻只做了一半——認證
  * 錯誤有翻譯，同步錯誤沒有。這裡補上同一套處理：只分「網路連不上」跟
@@ -279,6 +280,11 @@ export const useSyncStore = defineStore('sync', () => {
    * 「整份陣列替換」式的操作（remove／batchUpdate／undo…），合併時用
    * 一份舊快照當基準會把那個操作靜靜蓋掉。
    *
+   * 光重讀本地陣列還不夠：本地刪除是把那一列從陣列拿掉，遠端若還沒
+   * 墓碑（outbox 的 *.delete 還在佇列裡、或這一輪 drain 之後才排進去），
+   * mergeByUpdatedAt 會把「遠端獨有」當成新增加回來。所以合併時要把
+   * 目前 outbox 裡對應表的刪除 id 一併當成 tombstone。
+   *
    * `applyMerge()` 只在真的有東西要改（遠端贏了某幾列、或遠端回報刪除）
    * 時才呼叫——不然就算這一輪遠端完全沒有變化，`mergeByUpdatedAt` 仍然
    * 回傳一個內容相同、但參照不同的新陣列，寫回 `tasks.items`／
@@ -297,7 +303,8 @@ export const useSyncStore = defineStore('sync', () => {
     applyMerge: (rows: T[]) => void,
   ): Promise<void> {
     const { live, deletedIds } = await pullTable(binding, cursor, token)
-    const merge = mergeByUpdatedAt(readLocal(), live, deletedIds)
+    const pendingDeletedIds = pendingDeleteIdsForTable(await loadOutbox(), binding.table)
+    const merge = mergeByUpdatedAt(readLocal(), live, [...deletedIds, ...pendingDeletedIds])
     if (merge.remoteWon.length > 0 || merge.removedIds.length > 0) applyMerge(merge.merged)
   }
 

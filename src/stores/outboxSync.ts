@@ -4,6 +4,26 @@ import { diffAgainstFingerprint, diffFields } from '@/domain/diff'
 import { monotonicNow } from '@/domain/task'
 
 /**
+ * 表名 → 對應的 outbox 刪除 kind。pull 合併時要把「本地已經排了刪除、
+ * 但還沒送到伺服器（或這一輪 drain 之後才排進去）」的 id 當成墓碑，
+ * 否則遠端還活著的列會被 mergeByUpdatedAt 當成「遠端獨有」加回來。
+ */
+const DELETE_KIND_BY_TABLE: Record<string, OpKind> = {
+  tasks: 'task.delete',
+  projects: 'project.delete',
+  tags: 'tag.delete',
+  filters: 'filter.delete',
+  comments: 'comment.delete',
+  sections: 'section.delete',
+}
+
+export function pendingDeleteIdsForTable(ops: readonly Op[], table: string): readonly string[] {
+  const kind = DELETE_KIND_BY_TABLE[table]
+  if (!kind) return []
+  return ops.filter((op) => op.kind === kind).map((op) => op.targetId)
+}
+
+/**
  * 跟 stores/tasks.ts 的 enqueueSyncOps 同一套邏輯，套用在 projects/tags/
  * filters/comments/sections 上——形狀不同但規則相同，寫一支泛型函式而不是各寫
  * 一份。`kind` 決定 op 的種類前綴，`toRemote` 是各自的欄位對應
