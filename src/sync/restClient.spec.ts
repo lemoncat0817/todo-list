@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { SyncHttpError, fetchRowsSince, upsertRows } from './restClient'
+import { SyncHttpError, fetchRowsSince, isPrimaryKeyConflict, upsertRows } from './restClient'
 
 /**
  * 用 vi.spyOn(globalThis, 'fetch') 頂替網路層，比照專案既有的
@@ -92,5 +92,26 @@ describe('upsertRows', () => {
 
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toContain('on_conflict=device_id')
+  })
+})
+
+describe('isPrimaryKeyConflict', () => {
+  it('23505 + *_pkey 為 true', () => {
+    expect(
+      isPrimaryKeyConflict(
+        JSON.stringify({ code: '23505', message: 'duplicate key value violates unique constraint "tasks_pkey"' }),
+      ),
+    ).toBe(true)
+  })
+
+  it('其他 unique 約束名稱不是主鍵衝突', () => {
+    expect(
+      isPrimaryKeyConflict(
+        JSON.stringify({
+          code: '23505',
+          message: 'duplicate key value violates unique constraint "projects_one_inbox_per_workspace"',
+        }),
+      ),
+    ).toBe(false)
   })
 })

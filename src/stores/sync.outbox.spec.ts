@@ -174,6 +174,42 @@ describe('drainOutbox：outbox 真的被送出並在成功後清空', () => {
     expect(sync.syncError).toBeNull()
   })
 
+  it('task.create 撞 tasks_pkey（23505）時視為已建立，op 從佇列移除', async () => {
+    const { sync, auth, tasks } = setup()
+    tasks.isLoading = false
+    auth.session = fakeSession()
+
+    await enqueueOp({
+      id: 'dup-create',
+      kind: 'task.create',
+      targetId: 'already-on-server',
+      payload: { id: 'already-on-server', task_name: '重複的' },
+      createdAt: Date.now(),
+      attempts: 0,
+    })
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (String(url).includes('/rpc/create_task')) {
+        return {
+          ok: false,
+          status: 409,
+          text: async () =>
+            JSON.stringify({
+              code: '23505',
+              message: 'duplicate key value violates unique constraint "tasks_pkey"',
+            }),
+        } as Response
+      }
+      return { ok: true, json: async () => [] } as Response
+    })
+
+    await sync.start()
+    await vi.waitFor(async () => {
+      expect(await loadOutbox()).toEqual([])
+    })
+    expect(sync.syncError).toBeNull()
+  })
+
   it('遭遇不可重試的業務錯誤（PT001/TK001）時，移除 op 避免無效重試', async () => {
     const { sync, auth, tasks } = setup()
     tasks.isLoading = false

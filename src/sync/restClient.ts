@@ -36,6 +36,16 @@ function parsePostgrestErrorCode(detail: string): string | null {
   }
 }
 
+/**
+ * PostgreSQL 23505 + 主鍵約束（`*_pkey`）。create_* RPC 在目標列已存在時
+ * 會撞這個——見 supabase/migrations/0028_create_idempotent_on_pk.sql。
+ * 其他 unique 約束（例如 `projects_one_inbox_per_workspace`）名字不含
+ * `_pkey`，不能當成「建立成功」吞掉。
+ */
+export function isPrimaryKeyConflict(detail: string): boolean {
+  return parsePostgrestErrorCode(detail) === '23505' && /_pkey/.test(detail)
+}
+
 export class SyncHttpError extends Error {
   /** PostgREST 錯誤回應裡的 SQLSTATE，parse 不出來就是 null（例如非 JSON 的錯誤內文）。 */
   readonly code: string | null
