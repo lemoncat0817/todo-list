@@ -287,6 +287,15 @@ export const useTasksStore = defineStore('tasks', () => {
       try {
         do {
           dirty = false
+          // persistedIndex 是 setup() 閉包裡的 Map，不是 Pinia state——Vite HMR
+          // 重跑 store 時 items 可能還在、指紋卻變成空的。若直接 diff，每一列
+          // 都會被當成新任務再排一次 task.create，撞遠端 tasks_pkey（見
+          // supabase/migrations/0028）。指紋空時先從 IndexedDB 重建，只把
+          // 「記憶體有、磁碟還沒有」的列當成真正的新增。
+          if (persistedIndex.size === 0) {
+            const stored = await loadTasks()
+            persistedIndex = new Map(stored.map((t) => [t.id, JSON.stringify(t)]))
+          }
           const { upserts, deletes, nextFingerprint } = diffAgainstFingerprint(snapshot(), persistedIndex)
 
           await applyTaskChanges({ upserts, deletes })

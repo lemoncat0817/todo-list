@@ -86,4 +86,38 @@ describe('sendOp', () => {
       status: 403,
     })
   })
+
+  it('create 撞主鍵（23505 *_pkey）視為已成功，不丟錯——避免 outbox 毒丸重試', async () => {
+    mockFetch({
+      ok: false,
+      status: 409,
+      text: async () =>
+        JSON.stringify({
+          code: '23505',
+          details: null,
+          hint: null,
+          message: 'duplicate key value violates unique constraint "tasks_pkey"',
+        }),
+    } as Response)
+
+    await expect(
+      sendOp(baseOp({ kind: 'task.create', payload: { id: 'task-1', task_name: 'x' } }), 'token'),
+    ).resolves.toBeUndefined()
+  })
+
+  it('非主鍵的 23505（例如 inbox unique）仍然丟錯，不能當成 create 成功', async () => {
+    mockFetch({
+      ok: false,
+      status: 409,
+      text: async () =>
+        JSON.stringify({
+          code: '23505',
+          message: 'duplicate key value violates unique constraint "projects_one_inbox_per_workspace"',
+        }),
+    } as Response)
+
+    await expect(
+      sendOp(baseOp({ kind: 'project.create', payload: { id: 'p1', name: '收件匣' } }), 'token'),
+    ).rejects.toThrow(SyncHttpError)
+  })
 })

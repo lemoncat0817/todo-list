@@ -3,7 +3,7 @@ import { createApp, nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
-import { loadOutbox } from '@/db'
+import { applyTaskChanges, loadOutbox } from '@/db'
 import { makeTask, becomeWorkspaceMember } from '@/test/helpers'
 
 /**
@@ -234,5 +234,24 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
     const ops = await loadOutbox()
     const patchOp = ops.find((o) => o.kind === 'task.patch' && o.targetId === 'remote-1')
     expect(patchOp?.payload).toMatchObject({ notes: '使用者後來加的備註' })
+  })
+
+  /**
+   * Vite HMR 重跑 defineStore 的 setup 時，Pinia 可能保留 items，但
+   * persistedIndex 是閉包裡的 Map、會變成空的——若不從 IndexedDB 重建，
+   * 下一輪 flush 會把每列都排成 task.create，撞遠端 tasks_pkey。
+   */
+  it('指紋為空時從 IndexedDB 重建，不會把已持久化的列再排成 create', async () => {
+    const store = setup()
+    // 不呼叫 init()：persistedIndex 維持空 Map，模擬 HMR 後的狀態
+    store.isLoading = false
+    const existing = makeTask('已在磁碟', false, { id: 'disk-task-1' })
+    await applyTaskChanges({ upserts: [existing], deletes: [] })
+    store.items = [existing]
+    await nextTick()
+    await store.flush()
+
+    const ops = await loadOutbox()
+    expect(ops.some((o) => o.targetId === existing.id)).toBe(false)
   })
 })

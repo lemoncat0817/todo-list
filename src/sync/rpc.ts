@@ -1,6 +1,6 @@
 import type { Op, OpKind } from '@/db/schema'
 import { SUPABASE_URL } from './config'
-import { SyncHttpError, headers, safeText } from './restClient'
+import { SyncHttpError, headers, isPrimaryKeyConflict, safeText } from './restClient'
 
 /**
  * outbox 上傳器打 PostgREST 的 RPC 端點（`/rest/v1/rpc/<function>`），
@@ -50,6 +50,14 @@ export async function sendOp(op: Op, accessToken: string): Promise<void> {
   })
   if (!res.ok) {
     const detail = await safeText(res)
+    // 目標列已在伺服器上（通常是指紋遺失後又排了一次 create）：對
+    // create 來說「已經有了」就是成功——outbox 可以清掉這筆，不必重試。
+    // 資料庫端 0028 之後本來就不會再回 409；這裡是給尚未套 migration
+    // 的環境、以及任何漏網的 23505，擋掉毒丸重試迴圈。
+    if (op.kind.endsWith('.create') && isPrimaryKeyConflict(detail)) {
+      console.info(`[sync] RPC ${fn} 目標已存在（主鍵衝突），視為 create 完成`, { opId: op.id, targetId: op.targetId })
+      return
+    }
     console.error(`[sync] RPC ${fn} 失敗 (HTTP ${res.status}):`, { op, detail })
     throw new SyncHttpError(fn, 'rpc', res.status, detail)
   }
