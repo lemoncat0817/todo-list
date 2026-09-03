@@ -8,11 +8,23 @@ import { useTasksStore } from '@/stores/tasks'
 import { useAuthStore } from '@/stores/auth'
 import { useSyncStore } from '@/stores/sync'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useFlashStore } from '@/stores/flash'
 import { isSyncConfigured } from '@/sync/config'
 
 const app = createApp(App)
 const pinia = createPinia()
-pinia.use(createPersistPlugin())
+pinia.use(
+  createPersistPlugin({
+    onFailure: (failure) => {
+      console.warn(`[persist] ${failure.phase} 失敗（${failure.key}）`, failure.error)
+      // hydrate 失敗會退回預設值，畫面還能用；persist 失敗則是使用者以為
+      // 存好了其實沒有（稽核 P12），這個才需要打斷來說一聲。
+      if (failure.phase === 'persist') {
+        useFlashStore().error('偏好設定沒有存下來，請確認瀏覽器儲存空間是否已滿')
+      }
+    },
+  }),
+)
 app.use(pinia)
 app.use(router)
 

@@ -13,6 +13,7 @@ vi.mock('@/sync/notificationsClient', () => clientMocks)
 
 const { useNotificationsStore } = await import('@/stores/notifications')
 const { useAuthStore } = await import('@/stores/auth')
+const { useFlashStore } = await import('@/stores/flash')
 const { loadNotifications } = await import('@/db')
 
 function setup() {
@@ -136,6 +137,22 @@ describe('notifications store — markRead／markAllRead', () => {
 
     expect(clientMocks.markAllNotificationsRead).not.toHaveBeenCalled()
   })
+
+  it('markRead 網路失敗時本地已讀狀態保留，並把錯誤送到畫面', async () => {
+    const { notifications, auth } = setup()
+    auth.session = fakeSession()
+    notifications.mergeRemote([
+      { id: 'n1', actorId: null, kind: 'mention', taskId: 't1', body: '', readAt: null, createdAt: 1, updatedAt: 1 },
+    ])
+    clientMocks.markNotificationRead.mockRejectedValue(new Error('network error'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await notifications.markRead('n1')
+
+    expect(notifications.items[0]?.readAt).not.toBeNull()
+    expect(notifications.error).toBe('標記已讀沒有同步到其他裝置，請稍後再試一次')
+    expect(useFlashStore().message).toBe(notifications.error)
+  })
 })
 
 describe('notifications store — 偏好設定', () => {
@@ -153,6 +170,19 @@ describe('notifications store — 偏好設定', () => {
     await notifications.refreshPrefs()
 
     expect(notifications.prefs).toEqual({ notifyOnMention: false, notifyOnAssignment: true, dailyDigestEnabled: true })
+  })
+
+  it('refreshPrefs 失敗時寫入錯誤，不覆蓋既有偏好', async () => {
+    const { notifications, auth } = setup()
+    auth.session = fakeSession()
+    notifications.prefs = { notifyOnMention: false, notifyOnAssignment: true, dailyDigestEnabled: true }
+    clientMocks.fetchNotificationPrefs.mockRejectedValue(new Error('network error'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await notifications.refreshPrefs()
+
+    expect(notifications.prefs.notifyOnMention).toBe(false)
+    expect(notifications.error).toBe('無法讀取通知偏好，請稍後再試一次')
   })
 
   it('setPref 樂觀更新，失敗時回滾並顯示錯誤', async () => {

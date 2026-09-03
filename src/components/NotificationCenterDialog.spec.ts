@@ -89,4 +89,11 @@ describe('NotificationCenterDialog.vue', () => {
 
     expect(notifications.unreadCount).toBe(0)
   })
+
+  it('顯示 notifications.error', () => {
+    const pinia = setup()
+    useNotificationsStore().error = '標記已讀沒有同步到其他裝置，請稍後再試一次'
+    const w = mountWith(NotificationCenterDialog, pinia, { props: { open: true } })
+    expect(w.text()).toContain('標記已讀沒有同步到其他裝置，請稍後再試一次')
+  })
 })

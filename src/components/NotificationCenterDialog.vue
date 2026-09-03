@@ -12,6 +12,8 @@
         </button>
       </div>
 
+      <p v-if="notifications.error" role="alert" class="text-sm text-danger-ink">{{ notifications.error }}</p>
+
       <p v-if="notifications.sorted.length === 0" class="text-sm text-ink-faint">還沒有通知</p>
 
       <ul v-else class="flex flex-col gap-1">

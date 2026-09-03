@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import AppFooter from '@/components/AppFooter.vue'
 import { useTasksStore } from '@/stores/tasks'
 import { useHistoryStore } from '@/stores/history'
+import { useFlashStore } from '@/stores/flash'
+import { useSyncStore } from '@/stores/sync'
 import type { Pinia } from 'pinia'
 import { freshPinia, mountWith, makeTask, at, stubDialogs, type Wrapper } from '@/test/helpers'
 
@@ -23,7 +25,10 @@ describe('AppFooter.vue', () => {
     // 元件測試針對已載入完成的狀態；載入流程由 db 層的測試負責。
     store.isLoading = false
   })
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => {
+    useSyncStore().stop()
+    vi.restoreAllMocks()
+  })
 
   /** 三個計數在同一個 p 裡；抓文字比抓元素穩固，改樣式不會連累測試。 */
   const counters = (w: Wrapper) => w.find('footer p').text().replace(/\s+/g, '')
@@ -118,6 +123,45 @@ describe('AppFooter.vue', () => {
       await w.find('button[aria-label="關閉提示"]').trigger('click')
       await w.vm.$nextTick()
       expect(w.find('button[aria-label="關閉提示"]').exists()).toBe(false)
+    })
+  })
+
+  describe('錯誤提示', () => {
+    it('顯示 flash 錯誤訊息，可用關閉按鈕清掉', async () => {
+      const flash = useFlashStore()
+      flash.error('無法載入工作區資料，請稍後再試一次')
+      const w = mountWith(AppFooter, pinia)
+
+      expect(w.get('[data-test=flash]').text()).toContain('無法載入工作區資料，請稍後再試一次')
+      expect(w.get('[data-test=flash]').attributes('role')).toBe('alert')
+
+      await w.find('button[aria-label="關閉提示"]').trigger('click')
+      await w.vm.$nextTick()
+      expect(w.find('[data-test=flash]').exists()).toBe(false)
+    })
+
+    it('flash 優先於可復原操作提示', async () => {
+      store.items = [makeTask('a', true)]
+      const w = mountWith(AppFooter, pinia)
+      await clearButton(w).trigger('click')
+      useFlashStore().error('同步以外的錯誤')
+      await w.vm.$nextTick()
+
+      expect(w.find('[data-test=flash]').exists()).toBe(true)
+      expect(w.find('[data-test=last-action]').exists()).toBe(false)
+      expect(w.get('[data-test=flash]').text()).toContain('同步以外的錯誤')
+    })
+
+    it('本地寫入失敗時顯示存檔提示', async () => {
+      store.writeError = new Error('配額已滿')
+      const w = mountWith(AppFooter, pinia)
+      expect(w.get('[data-test=write-error]').text()).toContain('變更尚未存檔')
+    })
+
+    it('同步失敗時在頁尾顯示友善訊息', async () => {
+      useSyncStore().syncError = '目前連不上網路，恢復連線後會自動重試'
+      const w = mountWith(AppFooter, pinia)
+      expect(w.get('[data-test=sync-error]').text()).toContain('目前連不上網路，恢復連線後會自動重試')
     })
   })
 })

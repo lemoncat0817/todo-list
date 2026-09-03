@@ -25,6 +25,7 @@ import {
 } from '@/domain/workspaceRole'
 import { pickCurrentWorkspaceId } from '@/domain/pickWorkspace'
 import { useAuthStore } from './auth'
+import { useFlashStore } from './flash'
 
 /**
  * PT004（supabase/migrations/0021_workspace_member_cap.sql）是唯一目前
@@ -198,7 +199,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       await loadMembers()
     } catch (e) {
       console.error('[workspace] 載入工作區失敗', e)
-      error.value = '無法載入工作區資料，稍後會自動重試'
+      error.value = '無法載入工作區資料，請稍後再試一次'
+      useFlashStore().error(error.value)
     } finally {
       loading.value = false
     }
@@ -217,7 +219,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       await loadMembers()
     } catch (e) {
       console.error('[workspace] 載入成員失敗', e)
-      error.value = '無法載入工作區成員，請稍後再試'
+      error.value = '無法載入工作區成員，請稍後再試一次'
+      useFlashStore().error(error.value)
     }
   }
 
