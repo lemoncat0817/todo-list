@@ -178,6 +178,45 @@ describe('subscribeToWorkspace', () => {
     expect(onChange).toHaveBeenCalledTimes(1)
   })
 
+  it('workspace_members 變更走 onMembersChange，不觸發 onChange', () => {
+    const onChange = vi.fn()
+    const onMembersChange = vi.fn()
+    subscribeToWorkspace({
+      workspaceId: 'w1',
+      userId: 'u1',
+      getAccessToken: async () => 'token',
+      onChange,
+      onMembersChange,
+      onSubscribed: vi.fn(),
+    })
+
+    lastChannel?.emitChange('workspace_members')
+    lastChannel?.emitChange('workspace_members')
+    vi.advanceTimersByTime(500)
+
+    expect(onMembersChange).toHaveBeenCalledTimes(1)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('任務變更不觸發 onMembersChange', () => {
+    const onChange = vi.fn()
+    const onMembersChange = vi.fn()
+    subscribeToWorkspace({
+      workspaceId: 'w1',
+      userId: 'u1',
+      getAccessToken: async () => 'token',
+      onChange,
+      onMembersChange,
+      onSubscribed: vi.fn(),
+    })
+
+    lastChannel?.emitChange('tasks')
+    vi.advanceTimersByTime(500)
+
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(onMembersChange).not.toHaveBeenCalled()
+  })
+
   it('去抖動視窗過後又有新事件，會再觸發一次 onChange', () => {
     const onChange = vi.fn()
     subscribeToWorkspace({

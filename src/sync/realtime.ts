@@ -24,8 +24,9 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from './config'
 /** 一連串變更事件在這段時間內只觸發一次 onChange，避免一串編輯戳出一串補拉請求。 */
 const CHANGE_DEBOUNCE_MS = 500
 
-/** 任務／集合表，加上 workspace_members：角色變更也要提早戳一次。 */
+/** 任務／集合表，加上 workspace_members：角色變更走另一條回呼。 */
 const WATCHED_TABLES = ['tasks', 'projects', 'tags', 'filters', 'workspace_members'] as const
+const DATA_TABLES: ReadonlySet<string> = new Set(['tasks', 'projects', 'tags', 'filters'])
 
 export type RealtimeStatus = 'subscribed' | 'disconnected' | 'error'
 
@@ -39,8 +40,14 @@ export interface SubscribeOptions {
   userId: string
   /** RealtimeClient 需要在每次連線／重連時取得目前有效的 token，不是只在建立當下讀一次。 */
   getAccessToken: () => Promise<string | null>
-  /** 這個工作區的四張表有任何變更時觸發（已去抖動）。 */
+  /** 這個工作區的任務／集合表有任何變更時觸發（已去抖動）——用來提早戳一次同步。 */
   onChange: () => void
+  /**
+   * workspace_members 變更時觸發（已去抖動）。跟 onChange 分開：角色變更
+   * 不該順便踢一次完整 sync（那會跟切換工作區時的 loadMembers 疊加打爆
+   * 連線，畫面上就變成「切換工作區 → Failed to fetch」）。
+   */
+  onMembersChange?: () => void
   /** 每次成功連上（含首次與每次重連）都會呼叫一次。 */
   onSubscribed: () => void
   onStatusChange?: (status: RealtimeStatus) => void
@@ -82,16 +89,22 @@ export function subscribeToWorkspace(opts: SubscribeOptions): WorkspaceSubscript
   })
 
   let debounceTimer: ReturnType<typeof setTimeout> | undefined
+  let membersDebounceTimer: ReturnType<typeof setTimeout> | undefined
   const notifyChange = () => {
     clearTimeout(debounceTimer)
     debounceTimer = setTimeout(opts.onChange, CHANGE_DEBOUNCE_MS)
+  }
+  const notifyMembersChange = () => {
+    if (!opts.onMembersChange) return
+    clearTimeout(membersDebounceTimer)
+    membersDebounceTimer = setTimeout(opts.onMembersChange, CHANGE_DEBOUNCE_MS)
   }
 
   for (const table of WATCHED_TABLES) {
     channel.on(
       'postgres_changes',
       { event: '*', schema: 'public', table, filter: `workspace_id=eq.${opts.workspaceId}` },
-      notifyChange,
+      DATA_TABLES.has(table) ? notifyChange : notifyMembersChange,
     )
   }
 
@@ -125,6 +138,7 @@ export function subscribeToWorkspace(opts: SubscribeOptions): WorkspaceSubscript
   return {
     stop: () => {
       clearTimeout(debounceTimer)
+      clearTimeout(membersDebounceTimer)
       void channel.untrack()
       void channel.unsubscribe()
     },
