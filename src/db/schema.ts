@@ -217,11 +217,10 @@ export interface StoredTask {
   createdAt: number
   updatedAt: number
   /**
-   * 這筆任務所屬的工作區——由伺服器的 derive_task_workspace() trigger
-   * 依 project_id 反推決定，client 端唯讀（toRemoteTask 不送出這個欄位，
-   * 送了也會被忽略）。本地只在拉取回來時記錄，用途是日後依工作區篩選
-   * 可見任務；null 代表這筆還沒跟伺服器同步過、或本來就在未設定同步的
-   * 純本機模式下建立。
+   * 這筆任務所屬的工作區。建立時會送給 create_task：project_id 有值時
+   * 伺服器仍依專案反推；沒有 project_id 時用這個值決定落到哪個工作區的
+   * 收件匣（見 supabase/migrations/0026）。null 代表還沒同步過、或純本機
+   * 模式。
    */
   workspaceId: string | null
   /**

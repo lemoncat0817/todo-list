@@ -369,7 +369,16 @@ export const useTasksStore = defineStore('tasks', () => {
   const indexOf = (id: string) => items.value.findIndex((t) => t.id === id)
 
   function add(taskName: string, overrides: Partial<StoredTask> = {}): StoredTask {
-    const task = createTask(taskName, nextRank(items.value), overrides)
+    const task = createTask(taskName, nextRank(items.value), {
+      ...overrides,
+      // 沒指定專案時落到目前工作區的收件匣，而不是 projectId: null。
+      // 伺服器 derive_task_workspace() 在 project_id 為 null 時會把任務
+      // 寫進建立者自己的個人工作區收件匣（見 supabase/migrations/0004），
+      // 受邀成員在共享工作區新增未分類任務，同步後 workspace_id 變成
+      // 自己的個人工作區，inCurrentWorkspace 就把它從畫面上濾掉。
+      projectId: overrides.projectId ?? collections.currentInboxId,
+      workspaceId: overrides.workspaceId ?? workspace.currentWorkspaceId,
+    })
     items.value.push(task)
     history.record({
       label: `新增「${taskName}」`,
@@ -397,6 +406,7 @@ export const useTasksStore = defineStore('tasks', () => {
     const task = createTask(taskName, nextRank(childrenOf(parentId)), {
       parentId,
       projectId: parent.projectId,
+      workspaceId: parent.workspaceId,
     })
     items.value.push(task)
     history.record({

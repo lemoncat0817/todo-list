@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useTasksStore } from '@/stores/tasks'
+import { useWorkspaceStore } from '@/stores/workspace'
+import { useCollectionsStore } from '@/stores/collections'
 import { loadOutbox } from '@/db'
 import { makeTask } from '@/test/helpers'
 
@@ -49,6 +51,49 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
     expect(ops[0]?.kind).toBe('task.create')
     expect(ops[0]?.targetId).toBe(task.id)
     expect(ops[0]?.payload).toMatchObject({ id: task.id, task_name: '買牛奶' })
+  })
+
+  it('在共享工作區新增未分類任務時，create payload 帶該工作區收件匣的 project_id', async () => {
+    const store = setup()
+    await store.init()
+    useWorkspaceStore().currentWorkspaceId = 'shared-ws'
+    useCollectionsStore().mergeRemote({
+      projects: [
+        { id: '11111111-1111-4111-8111-111111111111', name: '收件匣', color: '#6b7280', rank: 'A', updatedAt: 1, isInbox: true, workspaceId: 'shared-ws' },
+      ],
+      tags: [],
+      filters: [],
+    })
+
+    store.add('成員新增的任務')
+    await nextTick()
+    await store.flush()
+
+    const ops = await loadOutbox()
+    expect(ops[0]?.kind).toBe('task.create')
+    expect(ops[0]?.payload).toMatchObject({
+      task_name: '成員新增的任務',
+      project_id: '11111111-1111-4111-8111-111111111111',
+      workspace_id: 'shared-ws',
+    })
+  })
+
+  it('本機還沒有該工作區收件匣時，create payload 仍帶 workspace_id', async () => {
+    const store = setup()
+    await store.init()
+    useWorkspaceStore().currentWorkspaceId = 'shared-ws'
+
+    store.add('還沒拉到收件匣')
+    await nextTick()
+    await store.flush()
+
+    const ops = await loadOutbox()
+    expect(ops[0]?.kind).toBe('task.create')
+    expect(ops[0]?.payload).toMatchObject({
+      task_name: '還沒拉到收件匣',
+      workspace_id: 'shared-ws',
+    })
+    expect(ops[0]?.payload.project_id).toBeNull()
   })
 
   it('只改一個欄位時，補丁只包含那個欄位——不是整列', async () => {

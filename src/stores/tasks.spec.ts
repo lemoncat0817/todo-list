@@ -6,6 +6,7 @@ import * as db from '@/db'
 import { at, freshPinia, makeTask } from '@/test/helpers'
 import { useHistoryStore } from '@/stores/history'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { useCollectionsStore } from '@/stores/collections'
 
 function setup() {
   const pinia = createPinia()
@@ -256,6 +257,55 @@ describe('todoTask store', () => {
       store.items = [existing]
 
       expect(store.add('新的').rank > existing.rank).toBe(true)
+    })
+
+    it('在共享工作區新增未分類任務時，落到該工作區的收件匣，而不是 projectId／workspaceId 為 null', async () => {
+      const store = setup()
+      await store.init()
+      const workspace = useWorkspaceStore()
+      const collections = useCollectionsStore()
+      workspace.currentWorkspaceId = 'shared-ws'
+      collections.mergeRemote({
+        projects: [
+          { id: 'shared-inbox', name: '收件匣', color: '#6b7280', rank: 'A', updatedAt: 1, isInbox: true, workspaceId: 'shared-ws' },
+          { id: 'personal-inbox', name: '收件匣', color: '#6b7280', rank: 'A', updatedAt: 1, isInbox: true, workspaceId: 'personal-ws' },
+        ],
+        tags: [],
+        filters: [],
+      })
+
+      const task = store.add('成員新增的任務')
+      expect(task.projectId).toBe('shared-inbox')
+      expect(task.workspaceId).toBe('shared-ws')
+    })
+
+    it('明確指定專案時沿用該專案，但仍標上目前工作區', async () => {
+      const store = setup()
+      await store.init()
+      const workspace = useWorkspaceStore()
+      const collections = useCollectionsStore()
+      workspace.currentWorkspaceId = 'shared-ws'
+      collections.mergeRemote({
+        projects: [
+          { id: 'shared-inbox', name: '收件匣', color: '#6b7280', rank: 'A', updatedAt: 1, isInbox: true, workspaceId: 'shared-ws' },
+          { id: 'p1', name: '工作', color: '#1d4ed8', rank: 'B', updatedAt: 1, isInbox: false, workspaceId: 'shared-ws' },
+        ],
+        tags: [],
+        filters: [],
+      })
+
+      const task = store.add('專案裡的任務', { projectId: 'p1' })
+      expect(task.projectId).toBe('p1')
+      expect(task.workspaceId).toBe('shared-ws')
+    })
+
+    it('純本機模式（沒有工作區）維持未分類：projectId／workspaceId 為 null', async () => {
+      const store = setup()
+      await store.init()
+
+      const task = store.add('本機任務')
+      expect(task.projectId).toBeNull()
+      expect(task.workspaceId).toBeNull()
     })
   })
 

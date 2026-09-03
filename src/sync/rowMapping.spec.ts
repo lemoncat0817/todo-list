@@ -51,9 +51,15 @@ describe('rowMapping — tasks', () => {
       parentId: null,
       recurrence: { freq: 'daily', interval: 1, byDay: [], byMonthDay: null, until: null, count: null },
       assigneeId: 'bob',
+      workspaceId: 'w1',
     })
     const roundTripped = normalizeTask(fromRemoteTask(toRemoteTask(task)))
     expect(roundTripped).toEqual(task)
+  })
+
+  it('建立時送出 workspace_id：受邀成員在別人工作區新增未分類任務靠這個值', () => {
+    const task = makeTask('寫在共享工作區', false, { workspaceId: 'shared-ws' })
+    expect(toRemoteTask(task)).toMatchObject({ workspace_id: 'shared-ws' })
   })
 })
 

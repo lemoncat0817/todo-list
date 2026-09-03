@@ -80,6 +80,23 @@ describe('visibleProjects／inboxProjectIds', () => {
     expect(collections.visibleProjects.map((p) => p.id)).toEqual(['p1'])
     expect(collections.inboxProjectIds).toEqual(new Set(['inbox-1']))
   })
+
+  it('currentInboxId 是目前工作區的那一個收件匣，不是所有收件匣', () => {
+    const collections = setup()
+    const workspace = useWorkspaceStore()
+    collections.mergeRemote({
+      projects: [
+        { id: 'inbox-1', name: '收件匣', color: '#6b7280', rank: 'A', updatedAt: 1, isInbox: true, workspaceId: 'w1' },
+        { id: 'inbox-2', name: '收件匣', color: '#6b7280', rank: 'A', updatedAt: 1, isInbox: true, workspaceId: 'w2' },
+      ],
+      tags: [],
+      filters: [],
+    })
+
+    expect(collections.currentInboxId).toBeNull()
+    workspace.currentWorkspaceId = 'w2'
+    expect(collections.currentInboxId).toBe('inbox-2')
+  })
 })
 
 describe('建立時落在目前所在的工作區', () => {
