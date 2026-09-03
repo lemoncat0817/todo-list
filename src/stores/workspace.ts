@@ -25,7 +25,7 @@ import { useAuthStore } from './auth'
  * 的原因，不需要因為觸發點是「邀請」還是「接受」而分兩種講法。
  */
 function describeWorkspaceError(e: unknown, fallback: string): string {
-  if (e instanceof SyncHttpError && e.code === 'PT004') {
+  if (e instanceof SyncHttpError && (e.code === 'PT004' || e.code === 'WS004')) {
     return '這個工作區的成員已經滿了，請聯絡工作區管理者'
   }
   return fallback

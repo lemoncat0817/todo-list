@@ -144,6 +144,9 @@ const TASK_PATCH_ERROR_MESSAGES: Record<string, string> = {
   PT001: '這筆任務已經被其他成員刪除，本機顯示的內容可能已經過期',
   PT002: '找不到這筆任務，可能還沒同步完成',
   PT003: '沒有權限編輯這筆任務，可能已經被移出這個工作區或專案',
+  TK001: '這筆任務已經被其他成員刪除，本機顯示的內容可能已經過期',
+  TK002: '找不到這筆任務，可能還沒同步完成',
+  TK003: '沒有權限編輯這筆任務，可能已經被移出這個工作區或專案',
 }
 
 function describeSyncError(error: unknown): string {
@@ -198,11 +201,18 @@ export const useSyncStore = defineStore('sync', () => {
   let stopWatching: (() => void) | null = null
   let stopWorkspaceWatching: (() => void) | null = null
 
+  const MAX_OP_ATTEMPTS = 5
+
   /**
    * outbox 依序送出，中途失敗就整批停下——不能跳過失敗的那筆繼續送
    * 後面的，不然同一筆任務的兩個補丁有可能倒著順序抵達伺服器。失敗的
    * 那筆記一次重試次數（markOpAttempt，供未來做退避用），錯誤原樣往上
    * 丟給 syncOnce() 既有的 try/catch，走同一套 describeSyncError()。
+   *
+   * 防呆防死鎖（poison-pill 防線）：
+   * 1) 若重試次數超過上限（MAX_OP_ATTEMPTS），捨棄該 op 避免佇列永久卡死。
+   * 2) 若為刪除操作且遠端回報任務已不存在／已刪除，視為刪除目的已達成，移除 op。
+   * 3) 若為確定無法透過重試解決的業務邏輯錯誤（已刪除、不存在、無權限），移除 op。
    *
    * 四張表（tasks/projects/tags/filters）的 op 混在同一個佇列裡，
    * 依 createdAt 排序一起送——outbox 本來就不分表，見 stores/tasks.ts
@@ -211,10 +221,37 @@ export const useSyncStore = defineStore('sync', () => {
   async function drainOutbox(token: string): Promise<void> {
     const ops = await loadOutbox()
     for (const op of ops) {
+      if (op.attempts >= MAX_OP_ATTEMPTS) {
+        console.warn(`[sync] op ${op.id} (${op.kind}) 連續重試 ${op.attempts} 次失敗，予以捨棄避免阻塞同步佇列`, op)
+        await removeOp(op.id)
+        continue
+      }
       try {
         await sendOp(op, token)
         await removeOp(op.id)
       } catch (error) {
+        // 刪除操作若目標在遠端已不存在或已被刪除，視為刪除完成，直接移除
+        if (
+          op.kind.endsWith('.delete') &&
+          error instanceof SyncHttpError &&
+          (error.code === 'PT001' || error.code === 'PT002' || error.code === 'TK001' || error.code === 'TK002' || error.status === 404)
+        ) {
+          console.info(`[sync] 刪除操作 ${op.id} 目標已不存在於伺服器，視為完成並自佇列移除`, op)
+          await removeOp(op.id)
+          continue
+        }
+
+        // 不可重試的業務錯誤（任務已刪除、不存在、無權限），重試無效，移除以避免佇列永久卡死
+        if (
+          error instanceof SyncHttpError &&
+          error.code !== null &&
+          (error.code in TASK_PATCH_ERROR_MESSAGES || error.code === 'PT004' || error.code === 'WS004')
+        ) {
+          console.warn(`[sync] op ${op.id} (${op.kind}) 遭遇不可重試的業務錯誤（${error.code}），予以移除`, op)
+          await removeOp(op.id)
+          throw error
+        }
+
         await markOpAttempt(op.id)
         throw error
       }

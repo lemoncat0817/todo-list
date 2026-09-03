@@ -42,10 +42,15 @@ const RPC_BY_KIND: Record<OpKind, { fn: string; params: (op: Op) => Record<strin
 /** 把一個 op 送到它對應的 RPC。失敗時丟出 SyncHttpError，呼叫端（drain 迴圈）負責重試。 */
 export async function sendOp(op: Op, accessToken: string): Promise<void> {
   const { fn, params } = RPC_BY_KIND[op.kind]
+  const bodyObj = params(op)
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
     method: 'POST',
     headers: headers(accessToken),
-    body: JSON.stringify(params(op)),
+    body: JSON.stringify(bodyObj),
   })
-  if (!res.ok) throw new SyncHttpError(fn, 'rpc', res.status, await safeText(res))
+  if (!res.ok) {
+    const detail = await safeText(res)
+    console.error(`[sync] RPC ${fn} 失敗 (HTTP ${res.status}):`, { op, detail })
+    throw new SyncHttpError(fn, 'rpc', res.status, detail)
+  }
 }

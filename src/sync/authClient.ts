@@ -87,9 +87,15 @@ export async function verifyOtp(
  * 不會反映在這裡，而是回程時反映在 URL 的 error 參數，由 restore() 那條路徑處理。
  */
 export async function signInWithOAuth(provider: Provider): Promise<AuthError | null> {
+  const options: { redirectTo: string; queryParams?: Record<string, string> } = {
+    redirectTo: `${window.location.origin}${window.location.pathname}`,
+  }
+  if (provider === 'google') {
+    options.queryParams = { prompt: 'select_account' }
+  }
   const { error } = await getAuthClient().signInWithOAuth({
     provider,
-    options: { redirectTo: `${window.location.origin}${window.location.pathname}` },
+    options,
   })
   return error
 }

@@ -6,7 +6,7 @@ import { useSyncStore } from '@/stores/sync'
 import { useAuthStore } from '@/stores/auth'
 import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
-import { loadOutbox, setMeta } from '@/db'
+import { enqueueOp, loadOutbox, setMeta } from '@/db'
 import { META_SYNC_ACCOUNT_ID } from '@/db/schema'
 
 /**
@@ -115,6 +115,94 @@ describe('drainOutbox：outbox 真的被送出並在成功後清空', () => {
     await sync.start()
     await nextTick()
 
+    expect(await loadOutbox()).toEqual([])
+  })
+
+  it('連續失敗超過上限（attempts >= 5）的 op 會被捨棄，避免永久阻塞佇列', async () => {
+    const { sync, auth, tasks } = setup()
+    tasks.isLoading = false
+    auth.session = fakeSession()
+
+    // 直接在 outbox 插入一個已經嘗試過 5 次的 op
+    await enqueueOp({
+      id: 'stuck-op',
+      kind: 'task.delete',
+      targetId: 'nonexistent-task',
+      payload: { deleted_at: Date.now() },
+      createdAt: Date.now(),
+      attempts: 5,
+    })
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => [] } as Response)
+
+    await sync.start()
+    await vi.waitFor(async () => {
+      expect(await loadOutbox()).toEqual([])
+    })
+    expect(sync.syncError).toBeNull()
+  })
+
+  it('task.delete 遇到遠端不存在（PT002/TK002/404）時，視為刪除完成並自佇列移除', async () => {
+    const { sync, auth, tasks } = setup()
+    tasks.isLoading = false
+    auth.session = fakeSession()
+
+    await enqueueOp({
+      id: 'delete-op',
+      kind: 'task.delete',
+      targetId: 'already-gone-task',
+      payload: { deleted_at: Date.now() },
+      createdAt: Date.now(),
+      attempts: 0,
+    })
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (String(url).includes('/rpc/apply_task_patch')) {
+        return {
+          ok: false,
+          status: 400,
+          text: async () => JSON.stringify({ code: 'TK002', message: '任務不存在或沒有寫入權限' }),
+        } as Response
+      }
+      return { ok: true, json: async () => [] } as Response
+    })
+
+    await sync.start()
+    await vi.waitFor(async () => {
+      expect(await loadOutbox()).toEqual([])
+    })
+    expect(sync.syncError).toBeNull()
+  })
+
+  it('遭遇不可重試的業務錯誤（PT001/TK001）時，移除 op 避免無效重試', async () => {
+    const { sync, auth, tasks } = setup()
+    tasks.isLoading = false
+    auth.session = fakeSession()
+
+    await enqueueOp({
+      id: 'patch-op',
+      kind: 'task.patch',
+      targetId: 'deleted-task',
+      payload: { notes: 'new note' },
+      createdAt: Date.now(),
+      attempts: 0,
+    })
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (String(url).includes('/rpc/apply_task_patch')) {
+        return {
+          ok: false,
+          status: 400,
+          text: async () => JSON.stringify({ code: 'TK001', message: '任務已經被其他成員刪除' }),
+        } as Response
+      }
+      return { ok: true, json: async () => [] } as Response
+    })
+
+    await sync.start()
+    await vi.waitFor(() => expect(sync.syncError).toBe('這筆任務已經被其他成員刪除，本機顯示的內容可能已經過期'))
+
+    // 雖然報錯，但 op 已被移除，不會形成死鎖
     expect(await loadOutbox()).toEqual([])
   })
 })

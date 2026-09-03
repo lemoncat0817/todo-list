@@ -8,7 +8,7 @@
  * 兩個變數缺一就視為未設定：半吊子的設定（例如只填了 URL）沒有意義，
  * 一律當作沒接雲端，而不是讓使用者點進去才發現壞掉。
  */
-export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? ''
+export const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '')
 export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
 
 export const isSyncConfigured = SUPABASE_URL !== '' && SUPABASE_ANON_KEY !== ''
