@@ -6,8 +6,8 @@ import { useSyncStore } from '@/stores/sync'
 import { useAuthStore } from '@/stores/auth'
 import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
-import { enqueueOp, loadOutbox, setMeta } from '@/db'
-import { META_SYNC_ACCOUNT_ID } from '@/db/schema'
+import { enqueueOp, getMeta, loadOutbox, setMeta } from '@/db'
+import { META_SYNC_ACCOUNT_ID, META_SYNC_LAST_PULLED_AT } from '@/db/schema'
 
 /**
  * stores/sync.ts 實際把 outbox 送出去（drainOutbox）的整合測試。
@@ -240,5 +240,55 @@ describe('drainOutbox：outbox 真的被送出並在成功後清空', () => {
 
     // 雖然報錯，但 op 已被移除，不會形成死鎖
     expect(await loadOutbox()).toEqual([])
+  })
+
+  it('本地已刪的標籤，即使拉取還拿到遠端活列，也不該被合併回來', async () => {
+    const { sync, auth, collections } = setup()
+    auth.session = fakeSession()
+    await collections.load()
+
+    const tag = collections.addTag('會被刪的')
+    await collections.flush()
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options) => {
+      const u = String(url)
+      const method = (options as RequestInit | undefined)?.method ?? 'GET'
+      if (u.includes('/rpc/apply_tag_patch')) {
+        return { ok: false, status: 500, text: async () => 'leave delete in outbox' } as Response
+      }
+      if (method === 'GET' && u.includes('/rest/v1/tasks')) {
+        collections.removeTag(tag.id)
+        await collections.flush()
+      }
+      if (method === 'GET' && u.includes('/rest/v1/tags')) {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              id: tag.id,
+              name: tag.name,
+              color: tag.color,
+              updated_at: tag.updatedAt,
+              deleted_at: null,
+              workspace_id: tag.workspaceId,
+            },
+          ],
+        } as Response
+      }
+      if (u.includes('/rpc/')) {
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      return { ok: true, json: async () => [] } as Response
+    })
+
+    await sync.start()
+    await vi.waitFor(async () => {
+      expect(await getMeta<number>(META_SYNC_LAST_PULLED_AT)).toEqual(expect.any(Number))
+    })
+
+    expect(
+      collections.tags.map((t) => t.id),
+      'outbox 還有 tag.delete 時，遠端活列不該把標籤加回來',
+    ).not.toContain(tag.id)
   })
 })

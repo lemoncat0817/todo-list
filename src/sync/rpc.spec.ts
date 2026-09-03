@@ -57,8 +57,11 @@ describe('sendOp', () => {
     ['project.patch', 'apply_project_patch'],
     ['tag.create', 'create_tag'],
     ['tag.patch', 'apply_tag_patch'],
+    ['tag.delete', 'apply_tag_patch'],
     ['filter.create', 'create_filter'],
     ['filter.patch', 'apply_filter_patch'],
+    ['filter.delete', 'apply_filter_patch'],
+    ['project.delete', 'apply_project_patch'],
   ] as const)('%s 打 %s', async (kind, fn) => {
     const fetchMock = mockFetch({ ok: true, json: async () => ({}) } as Response)
     await sendOp(baseOp({ kind, payload: { id: 'x' } }), 'token')

@@ -64,6 +64,20 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
     expect(typeof deleteOp?.payload.deleted_at).toBe('number')
   })
 
+  it('刪除標籤排一筆 tag.delete', async () => {
+    const store = setup()
+    await store.load()
+    const tag = store.addTag('要刪除的')
+    await store.flush()
+
+    store.removeTag(tag.id)
+    await store.flush()
+
+    const deleteOp = (await loadOutbox()).find((o) => o.kind === 'tag.delete')
+    expect(deleteOp?.targetId).toBe(tag.id)
+    expect(typeof deleteOp?.payload.deleted_at).toBe('number')
+  })
+
   it('新增標籤排一筆 tag.create，改名排 tag.patch', async () => {
     const store = setup()
     await store.load()
