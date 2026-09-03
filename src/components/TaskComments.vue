@@ -29,7 +29,7 @@
               <template v-else>{{ segment.text }}</template>
             </template>
           </p>
-          <div v-if="comment.authorId === myUserId" class="flex gap-3">
+          <div v-if="comment.authorId === myUserId && workspace.canComment" class="flex gap-3">
             <button type="button" class="text-xs text-ink-faint transition-colors hover:text-ink"
               @click="startEdit(comment)">編輯</button>
             <button type="button" class="text-xs text-ink-faint transition-colors hover:text-danger-ink"
@@ -39,7 +39,7 @@
       </li>
     </ul>
 
-    <div class="flex flex-col gap-1.5 pt-1">
+    <div v-if="workspace.canComment" class="flex flex-col gap-1.5 pt-1">
       <MentionTextarea :id="`new-comment-${taskId}`" v-model="draft" label="新增留言" placeholder="留個話…（打 @ 可以提及成員）" :members="members" />
       <button type="button"
         class="self-end rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"

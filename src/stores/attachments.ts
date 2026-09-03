@@ -114,6 +114,7 @@ export const useAttachmentsStore = defineStore('attachments', () => {
   }
 
   async function upload(taskId: string, file: File): Promise<void> {
+    if (!workspace.canWriteTasks) return
     const token = auth.session?.access_token
     if (!token) return
     uploading.value = true
@@ -159,6 +160,7 @@ export const useAttachmentsStore = defineStore('attachments', () => {
   }
 
   async function remove(attachment: StoredAttachment): Promise<void> {
+    if (!workspace.canWriteTasks) return
     const token = auth.session?.access_token
     if (!token) return
     error.value = null

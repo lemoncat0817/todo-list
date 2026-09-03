@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import type { Session } from '@supabase/auth-js'
 import { useAttachmentsStore } from '@/stores/attachments'
 import { useAuthStore } from '@/stores/auth'
-import { useWorkspaceStore } from '@/stores/workspace'
+import { becomeWorkspaceMember } from '@/test/helpers'
 import { SyncHttpError } from '@/sync/restClient'
 
 vi.mock('@/sync/config', () => ({
@@ -25,7 +25,7 @@ function setup() {
   setActivePinia(pinia)
   const attachments = useAttachmentsStore()
   useAuthStore().session = fakeSession()
-  useWorkspaceStore().currentWorkspaceId = 'ws-1'
+  becomeWorkspaceMember('ws-1')
   return attachments
 }
 

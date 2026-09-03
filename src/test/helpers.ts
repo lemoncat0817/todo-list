@@ -5,6 +5,9 @@ import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import type { Component } from 'vue'
 import { routes as appRoutes } from '@/router'
 import { DEFAULT_TASK_FIELDS, type StoredTask } from '@/db/schema'
+import { useAuthStore } from '@/stores/auth'
+import { useWorkspaceStore } from '@/stores/workspace'
+import type { MemberRole } from '@/sync/workspaceClient'
 
 /**
  * 每個測試都用全新的 pinia，且刻意不掛 persistedstate plugin，
@@ -131,4 +134,33 @@ export function at<T>(arr: readonly T[], index: number): T {
 /** 把 wrapper 的 element 視為 HTMLInputElement，用於讀取 value / checked。 */
 export function asInput(w: { element: Element }): HTMLInputElement {
   return w.element as HTMLInputElement
+}
+
+/**
+ * 測試裡把目前使用者設成某工作區的成員。stores 的寫入守衛看的是
+ * workspace.myRole + currentWorkspaceId，只設後者會讓 canWriteTasks
+ * 變成 false（角色還沒載到時 fail-closed）。
+ */
+export function becomeWorkspaceMember(
+  workspaceId: string,
+  role: MemberRole = 'member',
+  userId = 'u1',
+): void {
+  useAuthStore().session = {
+    access_token: 'token',
+    refresh_token: 'refresh',
+    expires_in: 3600,
+    token_type: 'bearer',
+    user: { id: userId },
+  } as never
+  const workspace = useWorkspaceStore()
+  workspace.currentWorkspaceId = workspaceId
+  workspace.members = [
+    {
+      user_id: userId,
+      role,
+      joined_at: '2026-01-01',
+      profiles: { display_name: 'me', avatar_url: null },
+    },
+  ]
 }

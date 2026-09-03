@@ -22,7 +22,7 @@
             <span class="font-normal text-ink-faint">{{ column.tasks.length }}</span>
           </h2>
 
-          <template v-if="column.id !== null">
+          <template v-if="column.id !== null && workspace.canWriteTasks">
             <button type="button" aria-label="欄位左移" :disabled="colIndex <= 1"
               class="grid size-6 shrink-0 place-items-center rounded text-ink-faint transition-colors hover:bg-surface hover:text-ink disabled:opacity-30"
               @click="moveColumn(column.id, -1)">
@@ -48,7 +48,7 @@
 
         <ul class="flex min-h-16 grow flex-col gap-1.5 overflow-y-auto p-2">
           <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
-          <li v-for="(item, index) in column.tasks" :key="item.id" draggable="true"
+          <li v-for="(item, index) in column.tasks" :key="item.id" :draggable="workspace.canWriteTasks"
             class="animate-rise rounded-lg border border-line bg-surface p-2.5 transition-colors focus-within:outline-none"
             :class="draggingId === item.id ? 'opacity-50' : ''"
             @dragstart="draggingId = item.id" @dragend="draggingId = null"
@@ -56,7 +56,8 @@
             <div class="flex items-start gap-2">
               <input :checked="item.isCompleted" type="checkbox"
                 :aria-label="`標記「${item.taskName}」為已完成`"
-                class="mt-0.5 size-4 shrink-0 cursor-pointer accent-accent" @change="tasks.toggle(item.id)">
+                :disabled="!workspace.canWriteTasks"
+                class="mt-0.5 size-4 shrink-0 accent-accent" @change="tasks.toggle(item.id)">
               <button type="button" class="min-w-0 grow break-words text-left text-sm text-ink"
                 @click="ui.openDetail(item.id)">
                 {{ item.taskName }}
@@ -69,7 +70,7 @@
               判斷：上移/下移按鈕跟「移到...」選單才是真正的鍵盤/螢幕
               閱讀器路徑。
             -->
-            <div class="mt-2 flex items-center gap-1 border-t border-line pt-1.5">
+            <div v-if="workspace.canWriteTasks" class="mt-2 flex items-center gap-1 border-t border-line pt-1.5">
               <button type="button" :aria-label="`「${item.taskName}」在欄內上移`" :disabled="index === 0"
                 class="grid size-6 shrink-0 place-items-center rounded text-ink-faint transition-colors hover:bg-sunken hover:text-ink disabled:opacity-30"
                 @click="moveWithinColumn(column, index, -1)">
@@ -90,7 +91,7 @@
           </li>
         </ul>
 
-        <form class="flex shrink-0 items-center gap-1.5 border-t border-line p-2" @submit.prevent="addTask(column.id)">
+        <form v-if="workspace.canWriteTasks" class="flex shrink-0 items-center gap-1.5 border-t border-line p-2" @submit.prevent="addTask(column.id)">
           <label class="sr-only" :for="`add-task-${column.id ?? 'unassigned'}`">在「{{ column.name }}」新增任務</label>
           <input :id="`add-task-${column.id ?? 'unassigned'}`" v-model.trim="draftByColumn[column.id ?? '']"
             placeholder="新增任務…"
@@ -102,7 +103,7 @@
         </form>
       </section>
 
-      <form class="w-64 shrink-0 rounded-lg border border-dashed border-line p-2" @submit.prevent="addSection">
+      <form v-if="workspace.canWriteTasks" class="w-64 shrink-0 rounded-lg border border-dashed border-line p-2" @submit.prevent="addSection">
         <label class="sr-only" for="new-section-name">新區段名稱</label>
         <div class="flex items-center gap-1.5">
           <input id="new-section-name" v-model.trim="newSectionName" placeholder="新增區段…"
@@ -122,6 +123,7 @@ import { computed, reactive, ref } from 'vue'
 import { useTasksStore } from '@/stores/tasks'
 import { useSectionsStore } from '@/stores/sections'
 import { useUiStore } from '@/stores/ui'
+import { useWorkspaceStore } from '@/stores/workspace'
 import TaskMeta from './TaskMeta.vue'
 import type { StoredTask } from '@/db/schema'
 
@@ -142,6 +144,7 @@ const props = defineProps<{ projectId: string }>()
 const tasks = useTasksStore()
 const sections = useSectionsStore()
 const ui = useUiStore()
+const workspace = useWorkspaceStore()
 
 interface Column {
   /** null 代表「未分類」——不是真的區段，不能改名/刪除/搬動。 */
@@ -172,6 +175,7 @@ const allSections = computed(() => sections.forProject(props.projectId))
 const draggingId = ref<string | null>(null)
 
 function dropOnColumn(sectionId: string | null): void {
+  if (!workspace.canWriteTasks) return
   if (draggingId.value) tasks.moveToSection(draggingId.value, sectionId, null)
   draggingId.value = null
 }

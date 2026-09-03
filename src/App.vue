@@ -97,6 +97,7 @@ import { useHistoryStore } from '@/stores/history'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
 import { usePrefsStore } from '@/stores/prefs'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { useTheme } from '@/composables/useTheme'
 import { useMediaQuery } from '@/composables/useMediaQuery'
@@ -106,6 +107,7 @@ const history = useHistoryStore()
 const tasks = useTasksStore()
 const ui = useUiStore()
 const prefs = usePrefsStore()
+const workspace = useWorkspaceStore()
 const router = useRouter()
 
 // 主題在 index.html 的內聯腳本已先套用，這裡接手後續切換與系統偏好變化
@@ -172,6 +174,7 @@ function focus(selector: string): void {
 
 useShortcuts({
   undo: () => {
+    if (!workspace.canWriteTasks && !workspace.canComment) return
     void history.undo()
   },
   focusSearch: () => {
@@ -185,6 +188,7 @@ useShortcuts({
     focus('input[aria-label="搜尋代辦事項"]')
   },
   focusNew: () => {
+    if (!workspace.canWriteTasks) return
     if (ui.isSearch) ui.isSearch = false
     requestAnimationFrame(() => focus('input[aria-label="新增代辦事項"]'))
   },

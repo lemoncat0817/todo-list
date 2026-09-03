@@ -144,6 +144,7 @@ export const useCollectionsStore = defineStore('collections', () => {
       // 模式下建立的專案本來就沒有工作區可言。
       workspaceId: workspace.currentWorkspaceId,
     }
+    if (!workspace.canManageProjects) return project
     projects.value.push(project)
     history.record({
       label: `新增專案「${name}」`,
@@ -159,6 +160,7 @@ export const useCollectionsStore = defineStore('collections', () => {
    * 記住整筆舊值再放回去，不需要為每個欄位維護一份反向操作。
    */
   function updateProject(id: string, patch: Partial<Omit<StoredProject, 'id'>>): void {
+    if (!workspace.canManageProjects) return
     const index = projects.value.findIndex((p) => p.id === id)
     if (index === -1) return
     const before = { ...(projects.value[index] as StoredProject) }
@@ -182,6 +184,7 @@ export const useCollectionsStore = defineStore('collections', () => {
    * 這個 store 不該知道任務的存在，否則兩邊互相依賴。
    */
   function removeProject(id: string): StoredProject | null {
+    if (!workspace.canManageProjects) return null
     const project = projects.value.find((p) => p.id === id) ?? null
     if (!project) return null
     projects.value = projects.value.filter((p) => p.id !== id)
@@ -208,6 +211,7 @@ export const useCollectionsStore = defineStore('collections', () => {
       updatedAt: Date.now(),
       workspaceId: workspace.currentWorkspaceId,
     }
+    if (!workspace.canWriteCollections) return tag
     tags.value.push(tag)
     history.record({
       label: `新增標籤「${name}」`,
@@ -219,6 +223,7 @@ export const useCollectionsStore = defineStore('collections', () => {
   }
 
   function updateTag(id: string, patch: Partial<Omit<StoredTag, 'id'>>): void {
+    if (!workspace.canWriteCollections) return
     const index = tags.value.findIndex((t) => t.id === id)
     if (index === -1) return
     const before = { ...(tags.value[index] as StoredTag) }
@@ -238,6 +243,7 @@ export const useCollectionsStore = defineStore('collections', () => {
   }
 
   function removeTag(id: string): StoredTag | null {
+    if (!workspace.canWriteCollections) return null
     const tag = tags.value.find((t) => t.id === id) ?? null
     if (!tag) return null
     tags.value = tags.value.filter((t) => t.id !== id)
@@ -266,6 +272,7 @@ export const useCollectionsStore = defineStore('collections', () => {
       updatedAt: Date.now(),
       workspaceId: workspace.currentWorkspaceId,
     }
+    if (!workspace.canWriteCollections) return filter
     filters.value.push(filter)
     history.record({
       label: `儲存篩選器「${name}」`,
@@ -280,6 +287,7 @@ export const useCollectionsStore = defineStore('collections', () => {
   }
 
   function updateFilter(id: string, patch: Partial<Omit<StoredFilter, 'id'>>): void {
+    if (!workspace.canWriteCollections) return
     const index = filters.value.findIndex((f) => f.id === id)
     if (index === -1) return
     const before = { ...(filters.value[index] as StoredFilter) }
@@ -299,6 +307,7 @@ export const useCollectionsStore = defineStore('collections', () => {
   }
 
   function removeFilter(id: string): void {
+    if (!workspace.canWriteCollections) return
     const filter = filters.value.find((f) => f.id === id)
     if (!filter) return
     filters.value = filters.value.filter((f) => f.id !== id)

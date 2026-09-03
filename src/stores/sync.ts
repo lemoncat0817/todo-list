@@ -143,10 +143,16 @@ const sectionBinding: TableBinding<StoredSection> = {
 const TASK_PATCH_ERROR_MESSAGES: Record<string, string> = {
   PT001: '這筆任務已經被其他成員刪除，本機顯示的內容可能已經過期',
   PT002: '找不到這筆任務，可能還沒同步完成',
-  PT003: '沒有權限編輯這筆任務，可能已經被移出這個工作區或專案',
   TK001: '這筆任務已經被其他成員刪除，本機顯示的內容可能已經過期',
   TK002: '找不到這筆任務，可能還沒同步完成',
-  TK003: '沒有權限編輯這筆任務，可能已經被移出這個工作區或專案',
+}
+
+function describePermissionDenied(): string {
+  const role = useWorkspaceStore().myRole
+  if (role === 'viewer' || role === 'commenter') {
+    return '你目前沒有編輯任務的權限'
+  }
+  return '沒有權限編輯這筆任務，可能已經被移出這個工作區或專案'
 }
 
 function describeSyncError(error: unknown): string {
@@ -155,6 +161,7 @@ function describeSyncError(error: unknown): string {
   // （SyncHttpError）性質不同，值得分開講。
   if (error instanceof TypeError) return '目前連不上網路，恢復連線後會自動重試'
   if (error instanceof SyncHttpError) {
+    if (error.code === 'PT003' || error.code === 'TK003') return describePermissionDenied()
     const specific = error.code !== null ? TASK_PATCH_ERROR_MESSAGES[error.code] : undefined
     return specific ?? '伺服器暫時無法處理，稍後會自動重試'
   }
@@ -245,7 +252,11 @@ export const useSyncStore = defineStore('sync', () => {
         if (
           error instanceof SyncHttpError &&
           error.code !== null &&
-          (error.code in TASK_PATCH_ERROR_MESSAGES || error.code === 'PT004' || error.code === 'WS004')
+          (error.code in TASK_PATCH_ERROR_MESSAGES ||
+            error.code === 'PT003' ||
+            error.code === 'TK003' ||
+            error.code === 'PT004' ||
+            error.code === 'WS004')
         ) {
           console.warn(`[sync] op ${op.id} (${op.kind}) 遭遇不可重試的業務錯誤（${error.code}），予以移除`, op)
           await removeOp(op.id)
@@ -351,7 +362,12 @@ export const useSyncStore = defineStore('sync', () => {
           workspaceId: id,
           userId: auth.session?.user.id ?? '',
           getAccessToken: async () => auth.session?.access_token ?? null,
-          onChange: () => void syncOnce(),
+          onChange: () => {
+            // workspace_members 的角色變更不會出現在 tasks 拉取裡，
+            // 被降成僅檢視時要立刻重載成員名單，畫面才會鎖上。
+            void workspace.loadMembers()
+            void syncOnce()
+          },
           onSubscribed: () => void syncOnce(),
           onPresenceChange: (userIds) => workspace.setOnlineUsers(id, userIds),
         }),
@@ -446,6 +462,9 @@ export const useSyncStore = defineStore('sync', () => {
 
           lastPulledAt.value = startedAt
           await persist()
+          // 角色變更不走 tasks 拉取；定期把成員名單重載一次，
+          // 被降成僅檢視時不必等 realtime 或手動切換工作區才鎖上畫面。
+          void workspace.loadMembers()
           void reportDeviceCursor(token, startedAt)
           syncError.value = null
         } while (dirty)

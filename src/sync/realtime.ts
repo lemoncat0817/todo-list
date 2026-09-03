@@ -24,8 +24,8 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from './config'
 /** 一連串變更事件在這段時間內只觸發一次 onChange，避免一串編輯戳出一串補拉請求。 */
 const CHANGE_DEBOUNCE_MS = 500
 
-/** 目前有資料表的四張表；日後（留言、附件）新增了同步表再加進來。 */
-const WATCHED_TABLES = ['tasks', 'projects', 'tags', 'filters'] as const
+/** 任務／集合表，加上 workspace_members：角色變更也要提早戳一次。 */
+const WATCHED_TABLES = ['tasks', 'projects', 'tags', 'filters', 'workspace_members'] as const
 
 export type RealtimeStatus = 'subscribed' | 'disconnected' | 'error'
 

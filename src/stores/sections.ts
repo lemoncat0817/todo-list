@@ -6,6 +6,7 @@ import { between, compareRankValues, nextRank, withJitter } from '@/domain/rank'
 import { isSyncConfigured } from '@/sync/config'
 import { toRemoteSection } from '@/sync/rowMapping'
 import { useHistoryStore } from './history'
+import { useWorkspaceStore } from './workspace'
 import { enqueueCollectionOps } from './outboxSync'
 
 /**
@@ -21,6 +22,7 @@ import { enqueueCollectionOps } from './outboxSync'
 export const useSectionsStore = defineStore('sections', () => {
   const items = ref<StoredSection[]>([])
   const history = useHistoryStore()
+  const workspace = useWorkspaceStore()
 
   function forProject(projectId: string): StoredSection[] {
     return items.value.filter((s) => s.projectId === projectId).sort((a, b) => compareRankValues(a.rank, b.rank))
@@ -56,6 +58,7 @@ export const useSectionsStore = defineStore('sections', () => {
       rank: nextRank(items.value.filter((s) => s.projectId === projectId)),
       updatedAt: Date.now(),
     }
+    if (!workspace.canWriteTasks) return section
     items.value.push(section)
     history.record({
       label: `新增區段「${name}」`,
@@ -70,6 +73,7 @@ export const useSectionsStore = defineStore('sections', () => {
   }
 
   function renameSection(id: string, name: string): void {
+    if (!workspace.canWriteTasks) return
     const index = items.value.findIndex((s) => s.id === id)
     if (index === -1) return
     const before = { ...(items.value[index] as StoredSection) }
@@ -90,6 +94,7 @@ export const useSectionsStore = defineStore('sections', () => {
 
   /** 拖曳排序看板欄本身——跟 domain/rank.ts 的 between()/withJitter() 同一套邏輯，比照 stores/tasks.ts 的 move()。 */
   function moveSection(id: string, targetId: string, position: 'before' | 'after'): void {
+    if (!workspace.canWriteTasks) return
     const moving = items.value.find((s) => s.id === id)
     const target = items.value.find((s) => s.id === targetId)
     if (!moving || !target || id === targetId || moving.projectId !== target.projectId) return
@@ -123,6 +128,7 @@ export const useSectionsStore = defineStore('sections', () => {
    * collections.ts 的 removeProject() 同一種分工）。
    */
   function removeSection(id: string): StoredSection | null {
+    if (!workspace.canWriteTasks) return null
     const section = items.value.find((s) => s.id === id) ?? null
     if (!section) return null
     items.value = items.value.filter((s) => s.id !== id)

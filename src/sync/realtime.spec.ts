@@ -141,7 +141,7 @@ describe('subscribeToWorkspace', () => {
     expect(onStatusChange.mock.calls.map((c) => c[0])).toEqual(['subscribed', 'disconnected', 'error'])
   })
 
-  it('訂閱目前已知的四張表，且帶上 workspace_id 的過濾條件', () => {
+  it('訂閱任務／集合表與 workspace_members，且帶上 workspace_id 的過濾條件', () => {
     subscribeToWorkspace({
       workspaceId: 'w1',
       userId: 'u1',
@@ -150,7 +150,13 @@ describe('subscribeToWorkspace', () => {
       onSubscribed: vi.fn(),
     })
 
-    expect(lastChannel?.handlers.map((h) => h.table).sort()).toEqual(['filters', 'projects', 'tags', 'tasks'])
+    expect(lastChannel?.handlers.map((h) => h.table).sort()).toEqual([
+      'filters',
+      'projects',
+      'tags',
+      'tasks',
+      'workspace_members',
+    ])
   })
 
   it('短時間內多個變更事件去抖動成一次 onChange', () => {

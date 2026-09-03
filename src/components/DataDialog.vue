@@ -26,7 +26,7 @@
         </div>
       </section>
 
-      <section class="flex flex-col gap-2">
+      <section v-if="workspace.canWriteTasks" class="flex flex-col gap-2">
         <h3 class="text-sm font-medium text-ink-soft">還原</h3>
 
         <fieldset class="flex flex-col gap-1.5">
@@ -163,6 +163,7 @@ import { useDueReminders } from '@/composables/useDueReminders'
 import { useAuthStore } from '@/stores/auth'
 import { usePushStore } from '@/stores/push'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { isPushConfigured, isSyncConfigured } from '@/sync/config'
 
 /**
@@ -181,6 +182,7 @@ const reminders = useDueReminders()
 const auth = useAuthStore()
 const push = usePushStore()
 const notifications = useNotificationsStore()
+const workspace = useWorkspaceStore()
 
 const dialogEl = ref<HTMLDialogElement | null>(null)
 const mode = ref<'merge' | 'replace'>('merge')
@@ -250,6 +252,7 @@ async function importBackup(event: Event): Promise<void> {
   }
 
   const { data, skipped } = parsed.result
+  if (!workspace.canWriteTasks) return
   tasks.importBackup(data, mode.value)
 
   const skippedTotal = skipped.tasks + skipped.projects + skipped.tags + skipped.filters

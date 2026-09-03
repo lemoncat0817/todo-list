@@ -77,6 +77,8 @@ describe('auth.status 變成 signed-in 時', () => {
     await vi.waitFor(() => expect(workspace.members.length).toBe(1))
     expect(workspace.myRole).toBe('owner')
     expect(workspace.canManageMembers).toBe(true)
+    expect(workspace.canWriteTasks).toBe(true)
+    expect(workspace.taskWriteRestriction).toBeNull()
   })
 
   it('沒有個人工作區時退回第一筆（理論上不該發生，但不該整個掛掉）', async () => {
@@ -322,5 +324,36 @@ describe('acceptInvite', () => {
 
     expect(ok).toBe(false)
     expect(workspace.error).toBe('這個邀請連結無法使用，可能已經過期或被撤銷')
+  })
+})
+
+describe('角色權限旗標', () => {
+  it('僅檢視時不能寫任務、不能留言、不能管成員', () => {
+    const { workspace, auth } = setup()
+    auth.session = fakeSession()
+    workspace.currentWorkspaceId = 'w1'
+    workspace.members = [
+      { user_id: 'u1', role: 'viewer', joined_at: '2026-01-01', profiles: { display_name: 'B', avatar_url: null } },
+    ]
+
+    expect(workspace.myRole).toBe('viewer')
+    expect(workspace.canWriteTasks).toBe(false)
+    expect(workspace.canComment).toBe(false)
+    expect(workspace.canManageProjects).toBe(false)
+    expect(workspace.canManageMembers).toBe(false)
+    expect(workspace.taskWriteRestriction).toBe('viewer')
+  })
+
+  it('僅留言時可以留言但不能改任務', () => {
+    const { workspace, auth } = setup()
+    auth.session = fakeSession()
+    workspace.currentWorkspaceId = 'w1'
+    workspace.members = [
+      { user_id: 'u1', role: 'commenter', joined_at: '2026-01-01', profiles: { display_name: 'B', avatar_url: null } },
+    ]
+
+    expect(workspace.canComment).toBe(true)
+    expect(workspace.canWriteTasks).toBe(false)
+    expect(workspace.taskWriteRestriction).toBe('commenter')
   })
 })

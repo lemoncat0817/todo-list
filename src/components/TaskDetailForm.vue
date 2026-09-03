@@ -1,5 +1,6 @@
 <template>
   <form v-if="draft" class="flex flex-col gap-4" @submit.prevent="save">
+    <p v-if="restrictionHint" role="status" class="-mb-1 text-sm text-ink-soft">{{ restrictionHint }}</p>
     <!--
       同時檢視者（補做計畫書第 08 節）：只在有其他人也開著這筆任務時
       才佔位置，平常（只有自己在看）不留一條空的列。名字而非真的頭像
@@ -14,6 +15,7 @@
       </span>
     </p>
 
+    <fieldset class="flex flex-col gap-4 border-0 p-0 min-w-0" :disabled="!workspace.canWriteTasks">
     <label class="flex flex-col gap-1.5 text-sm font-medium text-ink-soft">
       名稱
       <input v-model.trim="draft.taskName" required :class="fieldClass('taskName')"
@@ -81,7 +83,7 @@
     </label>
 
     <!-- 就地建立：沒有這條路徑的話，第一次使用時專案與標籤永遠是空清單 -->
-    <div class="flex gap-2">
+    <div v-if="workspace.canManageProjects" class="flex gap-2">
       <input v-model.trim="newProjectName" aria-label="新專案名稱" placeholder="新增專案…"
         :aria-invalid="projectNameError !== null"
         class="h-9 min-w-0 grow rounded-lg border border-line bg-surface px-2.5 text-[15px] text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
@@ -102,7 +104,7 @@
         <span class="size-2.5 rounded-full" :style="{ backgroundColor: tag.color }" aria-hidden="true" />
         {{ tag.name }}
       </label>
-      <div class="mt-2 flex gap-2">
+      <div v-if="workspace.canWriteCollections" class="mt-2 flex gap-2">
         <input v-model.trim="newTagName" aria-label="新標籤名稱" placeholder="新增標籤…"
           :aria-invalid="tagNameError !== null"
           class="h-9 min-w-0 grow rounded-lg border border-line bg-surface px-2.5 text-[15px] text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
@@ -153,6 +155,7 @@
         <p v-else class="text-sm text-ink-faint">{{ describeRecurrence(draft.recurrence) }}</p>
       </template>
     </fieldset>
+    </fieldset>
 
     <!--
       活動記錄跟留言一樣只有已設定同步且已登入時才有意義（都是伺服器端
@@ -168,7 +171,7 @@
       <button type="button"
         class="rounded-lg px-3 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:bg-sunken"
         @click="emit('close')">取消</button>
-      <button type="submit"
+      <button v-if="workspace.canWriteTasks" type="submit"
         class="rounded-lg bg-accent px-3.5 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover">儲存</button>
     </div>
   </form>
@@ -192,6 +195,7 @@ import { isValidISODate, isValidTime } from '@/domain/dates'
 import { findByNormalizedName } from '@/domain/filtering'
 import { isSyncConfigured } from '@/sync/config'
 import { useWorkspaceStore } from '@/stores/workspace'
+import { TASK_WRITE_RESTRICTION_HINT } from '@/domain/workspaceRole'
 import { useTaskPresence } from '@/composables/useTaskPresence'
 import { useMemberName } from '@/composables/useMemberName'
 import TaskComments from './TaskComments.vue'
@@ -216,6 +220,10 @@ const collections = useCollectionsStore()
 const auth = useAuthStore()
 const workspace = useWorkspaceStore()
 const memberName = useMemberName()
+const restrictionHint = computed(() => {
+  const kind = workspace.taskWriteRestriction
+  return kind === null ? null : TASK_WRITE_RESTRICTION_HINT[kind]
+})
 
 const taskId = computed(() => props.task?.id ?? null)
 const presence = useTaskPresence(taskId)
@@ -275,12 +283,14 @@ const tagNameError = computed(() =>
 
 /** 建立後直接選中，省去「建立完還要再選一次」的來回。 */
 function createProject(): void {
+  if (!workspace.canManageProjects) return
   if (newProjectName.value === '' || projectNameError.value) return
   projectInput.value = collections.addProject(newProjectName.value).id
   newProjectName.value = ''
 }
 
 function createTag(): void {
+  if (!workspace.canWriteCollections) return
   if (newTagName.value === '' || tagNameError.value || !draft.value) return
   const tag = collections.addTag(newTagName.value)
   draft.value.tagIds = [...draft.value.tagIds, tag.id]
@@ -306,6 +316,7 @@ function toggleWeekday(day: Weekday): void {
 }
 
 function save(): void {
+  if (!workspace.canWriteTasks) return
   const current = draft.value
   if (!current || current.taskName.trim() === '') return
 

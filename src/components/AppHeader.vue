@@ -72,7 +72,7 @@
       新增列一律可見——搜尋不再頂掉它。之前搜尋與新增共用同一個位置，
       切換到搜尋後新增輸入框會整個消失，使用者得先手動關掉搜尋才能補一筆待辦。
     -->
-    <div v-if="isTaskView" class="mt-4 flex min-w-0 items-center gap-2">
+    <div v-if="isTaskView && workspace.canWriteTasks" class="mt-4 flex min-w-0 items-center gap-2">
       <input v-model.trim="draft" aria-label="新增代辦事項" :placeholder="placeholder" enterkeyhint="done"
         aria-describedby="quick-add-hint"
         class="h-10 min-w-0 grow rounded-lg border border-line bg-surface px-3 text-base text-ink placeholder:text-ink-faint transition-colors focus:border-accent focus:outline-none"
@@ -84,12 +84,17 @@
       </button>
     </div>
 
+    <p v-else-if="isTaskView && restrictionHint" role="status"
+      class="mt-4 rounded-lg border border-line bg-sunken px-3 py-2 text-sm text-ink-soft">
+      {{ restrictionHint }}
+    </p>
+
     <!--
       解析預覽：系統把哪些片段理解成什麼，必須在送出前就看得到。
       少了這一塊，快速新增就是在賭——猜錯的代價是事後再開一次詳情補救，
       等於把省下來的步驟又還回去。
     -->
-    <p v-if="isTaskView && tokens.length > 0" class="mt-2 flex flex-wrap items-center gap-1.5" role="status"
+    <p v-if="isTaskView && workspace.canWriteTasks && tokens.length > 0" class="mt-2 flex flex-wrap items-center gap-1.5" role="status"
       aria-live="polite">
       <span class="text-[12px] text-ink-faint">將建立：</span>
       <span class="rounded bg-sunken px-1.5 py-0.5 text-[12px] font-medium text-ink">
@@ -101,7 +106,7 @@
       </span>
     </p>
 
-    <p v-else-if="isTaskView && focused" id="quick-add-hint" class="mt-2 text-[12px] text-ink-faint">
+    <p v-else-if="isTaskView && workspace.canWriteTasks && focused" id="quick-add-hint" class="mt-2 text-[12px] text-ink-faint">
       可以直接打：明天 / 下午3點 / 每週一 / p1 / #專案 / @標籤
     </p>
 
@@ -121,7 +126,9 @@ import { useUiStore } from '@/stores/ui'
 import { useCollectionsStore } from '@/stores/collections'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { parseQuickAdd } from '@/domain/quickAdd'
+import { TASK_WRITE_RESTRICTION_HINT } from '@/domain/workspaceRole'
 import { useTheme } from '@/composables/useTheme'
 import { useCurrentView } from '@/composables/useCurrentView'
 import { useMediaQuery } from '@/composables/useMediaQuery'
@@ -136,6 +143,7 @@ const ui = useUiStore()
 const collections = useCollectionsStore()
 const auth = useAuthStore()
 const notifications = useNotificationsStore()
+const workspace = useWorkspaceStore()
 const { preference, cycle } = useTheme()
 const { spec, title } = useCurrentView()
 const route = useRoute()
@@ -155,6 +163,10 @@ const focused = ref(false)
 
 /** 統計頁沒有清單，新增與搜尋在那裡沒有作用對象，一併收起來。 */
 const isTaskView = computed(() => route.name !== 'stats')
+const restrictionHint = computed(() => {
+  const kind = workspace.taskWriteRestriction
+  return kind === null ? null : TASK_WRITE_RESTRICTION_HINT[kind]
+})
 
 /**
  * 快速新增的解析結果。
@@ -198,7 +210,7 @@ const placeholder = computed(() =>
  * 「你正站在今天這個檢視」更強。沒解析到的欄位才落回脈絡預設。
  */
 function submit(): void {
-  if (draft.value === '') return
+  if (!workspace.canWriteTasks || draft.value === '') return
   const result = parsed.value
   const f = result.fields
   const fields: Partial<StoredTask> = { ...contextOverrides.value }

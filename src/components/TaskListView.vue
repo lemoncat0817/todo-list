@@ -3,7 +3,7 @@
     <ListToolbar v-if="!tasks.isLoading && !tasks.loadError" :view-kind="props.viewKind"
       :query="props.viewId" />
 
-    <BatchToolbar v-if="ui.selectedIds.length > 0" :count="ui.selectedIds.length" />
+    <BatchToolbar v-if="ui.selectedIds.length > 0 && workspace.canWriteTasks" :count="ui.selectedIds.length" />
 
     <!--
       看板是專案檢視底下的另一種呈現方式（prefs.projectViewMode，見
@@ -56,7 +56,7 @@
                 :editing="editingId === item.id" :dragging="draggingId === item.id"
                 :active="ui.detailTaskId === item.id" :checked="ui.selectedIds.includes(item.id)"
                 :selecting="ui.selectedIds.length > 0" :children="tasks.childrenOf(item.id)"
-                :expanded="expandedIds.has(item.id)"
+                :expanded="expandedIds.has(item.id)" :readonly="!workspace.canWriteTasks"
                 :is-first="index === 0" :is-last="index === group.tasks.length - 1"
                 @toggle="tasks.toggle(item.id)" @remove="remove(item.id)"
                 @start-edit="editingId = item.id" @cancel-edit="editingId = null"
@@ -89,6 +89,7 @@ import type { StoredTask } from '@/db/schema'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
 import { usePrefsStore } from '@/stores/prefs'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { useListKeyboard } from '@/composables/useListKeyboard'
 
 /**
@@ -108,6 +109,7 @@ const props = withDefaults(defineProps<{ viewKind?: ViewKind; viewId?: string | 
 const tasks = useTasksStore()
 const ui = useUiStore()
 const prefs = usePrefsStore()
+const workspace = useWorkspaceStore()
 
 // 編輯狀態是 UI 暫態，留在元件裡而非 store——
 // 它不需要被持久化，也不需要跨元件共享（稽核 P1 的根因）。
@@ -141,11 +143,16 @@ watch(spec, () => {
 })
 
 useListKeyboard(containerEl, {
-  toggleChecked: (id) => ui.toggleSelected(id),
+  toggleChecked: (id) => {
+    if (!workspace.canWriteTasks) return
+    ui.toggleSelected(id)
+  },
   edit: (id) => {
+    if (!workspace.canWriteTasks) return
     editingId.value = id
   },
   schedule: (id) => {
+    if (!workspace.canWriteTasks) return
     // 排程選單住在 TaskItem 裡，這裡按它的可及名稱找到那顆按鈕再觸發。
     // 讓 store 多一個「哪個選單開著」的狀態只為了鍵盤，代價比這高。
     containerEl.value
@@ -153,7 +160,10 @@ useListKeyboard(containerEl, {
       ?.click()
   },
   openDetail: (id) => ui.openDetail(id),
-  toggleComplete: (id) => tasks.toggle(id),
+  toggleComplete: (id) => {
+    if (!workspace.canWriteTasks) return
+    tasks.toggle(id)
+  },
 })
 
 function toggleExpand(id: string): void {

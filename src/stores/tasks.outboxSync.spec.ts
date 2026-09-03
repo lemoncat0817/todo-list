@@ -2,10 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createApp, nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useTasksStore } from '@/stores/tasks'
-import { useWorkspaceStore } from '@/stores/workspace'
 import { useCollectionsStore } from '@/stores/collections'
 import { loadOutbox } from '@/db'
-import { makeTask } from '@/test/helpers'
+import { makeTask, becomeWorkspaceMember } from '@/test/helpers'
 
 /**
  * flush() 在已設定 Supabase 時，把真的變動的欄位排進離線操作佇列——
@@ -56,7 +55,7 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
   it('在共享工作區新增未分類任務時，create payload 帶該工作區收件匣的 project_id', async () => {
     const store = setup()
     await store.init()
-    useWorkspaceStore().currentWorkspaceId = 'shared-ws'
+    becomeWorkspaceMember('shared-ws')
     useCollectionsStore().mergeRemote({
       projects: [
         { id: '11111111-1111-4111-8111-111111111111', name: '收件匣', color: '#6b7280', rank: 'A', updatedAt: 1, isInbox: true, workspaceId: 'shared-ws' },
@@ -81,7 +80,7 @@ describe('flush() 排入離線操作佇列（已設定 Supabase）', () => {
   it('本機還沒有該工作區收件匣時，create payload 仍帶 workspace_id', async () => {
     const store = setup()
     await store.init()
-    useWorkspaceStore().currentWorkspaceId = 'shared-ws'
+    becomeWorkspaceMember('shared-ws')
 
     store.add('還沒拉到收件匣')
     await nextTick()

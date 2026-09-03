@@ -3,7 +3,7 @@ import { createApp, nextTick, reactive } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useTasksStore } from '@/stores/tasks'
 import * as db from '@/db'
-import { at, freshPinia, makeTask } from '@/test/helpers'
+import { at, freshPinia, makeTask, becomeWorkspaceMember } from '@/test/helpers'
 import { useHistoryStore } from '@/stores/history'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useCollectionsStore } from '@/stores/collections'
@@ -262,9 +262,8 @@ describe('todoTask store', () => {
     it('在共享工作區新增未分類任務時，落到該工作區的收件匣，而不是 projectId／workspaceId 為 null', async () => {
       const store = setup()
       await store.init()
-      const workspace = useWorkspaceStore()
       const collections = useCollectionsStore()
-      workspace.currentWorkspaceId = 'shared-ws'
+      becomeWorkspaceMember('shared-ws')
       collections.mergeRemote({
         projects: [
           { id: 'shared-inbox', name: '收件匣', color: '#6b7280', rank: 'A', updatedAt: 1, isInbox: true, workspaceId: 'shared-ws' },
@@ -282,9 +281,8 @@ describe('todoTask store', () => {
     it('明確指定專案時沿用該專案，但仍標上目前工作區', async () => {
       const store = setup()
       await store.init()
-      const workspace = useWorkspaceStore()
       const collections = useCollectionsStore()
-      workspace.currentWorkspaceId = 'shared-ws'
+      becomeWorkspaceMember('shared-ws')
       collections.mergeRemote({
         projects: [
           { id: 'shared-inbox', name: '收件匣', color: '#6b7280', rank: 'A', updatedAt: 1, isInbox: true, workspaceId: 'shared-ws' },
@@ -306,6 +304,19 @@ describe('todoTask store', () => {
       const task = store.add('本機任務')
       expect(task.projectId).toBeNull()
       expect(task.workspaceId).toBeNull()
+    })
+
+    it('僅檢視時 add 不寫入清單，避免畫面改了卻同步失敗', async () => {
+      const store = setup()
+      await store.init()
+      becomeWorkspaceMember('shared-ws', 'viewer')
+
+      const created = store.add('不該留下的')
+      expect(created.taskName).toBe('不該留下的')
+      expect(store.items).toHaveLength(0)
+      store.toggle(created.id)
+      store.update(created.id, { notes: 'x' })
+      expect(store.items).toHaveLength(0)
     })
   })
 

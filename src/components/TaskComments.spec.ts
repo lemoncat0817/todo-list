@@ -84,6 +84,27 @@ describe('TaskComments.vue', () => {
     expect((w.find('#new-comment-task-1').element as HTMLTextAreaElement).value).toBe('')
   })
 
+  it('僅檢視時不顯示留言輸入框', () => {
+    const workspace = useWorkspaceStore()
+    workspace.currentWorkspaceId = 'w1'
+    workspace.members = [
+      { user_id: 'me', role: 'viewer', joined_at: '2030-01-01', profiles: { display_name: '我自己', avatar_url: null } },
+    ]
+    const w = mountComments()
+    expect(w.find('#new-comment-task-1').exists()).toBe(false)
+    expect(w.findAll('button').some((b) => b.text() === '留言')).toBe(false)
+  })
+
+  it('僅留言時仍顯示留言輸入框', () => {
+    const workspace = useWorkspaceStore()
+    workspace.currentWorkspaceId = 'w1'
+    workspace.members = [
+      { user_id: 'me', role: 'commenter', joined_at: '2030-01-01', profiles: { display_name: '我自己', avatar_url: null } },
+    ]
+    const w = mountComments()
+    expect(w.find('#new-comment-task-1').exists()).toBe(true)
+  })
+
   it('編輯自己的留言：點編輯出現輸入框，儲存後呼叫 comments.update', async () => {
     const comments = useCommentsStore()
     comments.mergeRemote([
