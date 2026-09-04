@@ -91,13 +91,19 @@ export async function parseJsonResponse<T>(res: Response): Promise<T> {
   return (text === '' ? undefined : JSON.parse(text)) as T
 }
 
-export function headers(accessToken: string, extra: Record<string, string> = {}): Record<string, string> {
+export function authHeaders(accessToken: string, extra: Record<string, string> = {}): Record<string, string> {
   return {
     apikey: SUPABASE_ANON_KEY,
     Authorization: `Bearer ${accessToken}`,
-    'Content-Type': 'application/json',
     ...extra,
   }
+}
+
+export function headers(accessToken: string, extra: Record<string, string> = {}): Record<string, string> {
+  return authHeaders(accessToken, {
+    'Content-Type': 'application/json',
+    ...extra,
+  })
 }
 
 /**
@@ -136,6 +142,27 @@ export async function upsertRows(
     method: 'POST',
     headers: headers(accessToken, { Prefer: 'resolution=merge-duplicates,return=minimal' }),
     body: JSON.stringify(rows),
+  })
+  if (!res.ok) throw new SyncHttpError(table, 'upsert', res.status, await safeText(res))
+}
+
+/**
+ * 對單一列發送 PATCH 更新。
+ *
+ * PostgREST 的 PATCH 會觸發 UPDATE 的 RLS policy（USING／WITH CHECK），
+ * 不會像 upsertRows（POST on_conflict）那樣在進入 UPDATE 分支前先檢查 INSERT 的 WITH CHECK policy。
+ */
+export async function patchRow(
+  table: string,
+  id: string,
+  patch: Record<string, unknown>,
+  accessToken: string,
+): Promise<void> {
+  const url = `${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: headers(accessToken, { Prefer: 'return=minimal' }),
+    body: JSON.stringify(patch),
   })
   if (!res.ok) throw new SyncHttpError(table, 'upsert', res.status, await safeText(res))
 }

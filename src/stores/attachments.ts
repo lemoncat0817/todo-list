@@ -4,7 +4,7 @@ import { loadAttachments, saveAttachments } from '@/db'
 import type { StoredAttachment } from '@/db/schema'
 import { classifyQuota } from '@/domain/attachments'
 import { TABLE_ATTACHMENTS, toRemoteAttachment } from '@/sync/rowMapping'
-import { callRpc, SyncHttpError, upsertRows } from '@/sync/restClient'
+import { callRpc, patchRow, SyncHttpError, upsertRows } from '@/sync/restClient'
 import {
   attachmentStoragePath,
   deleteAttachmentFile,
@@ -58,9 +58,7 @@ export const useAttachmentsStore = defineStore('attachments', () => {
   }
 
   function mergeRemote(rows: readonly StoredAttachment[]): void {
-    const byId = new Map(items.value.map((a) => [a.id, a]))
-    for (const row of rows) byId.set(row.id, row)
-    items.value = [...byId.values()]
+    items.value = [...rows]
   }
 
   /**
@@ -85,6 +83,12 @@ export const useAttachmentsStore = defineStore('attachments', () => {
     // 這裡改認 HTTP 狀態碼本身，不必依賴回應內文格式。
     if (e instanceof SyncHttpError && e.status === 413) {
       return '這個檔案超過單檔大小上限（10MB），請壓縮或分割後再上傳'
+    }
+    if (e instanceof SyncHttpError && (e.code === '42501' || e.status === 403)) {
+      return '你沒有權限修改這筆任務的附件'
+    }
+    if (e instanceof SyncHttpError && (e.status === 404 || e.message.includes('not_found') || e.message.includes('NoSuchKey'))) {
+      return '此附件檔案已不存在或已被刪除'
     }
     if (e instanceof SyncHttpError) return '伺服器暫時無法處理，請稍後再試一次'
     return '發生未預期的問題，請再試一次'
@@ -167,7 +171,7 @@ export const useAttachmentsStore = defineStore('attachments', () => {
     try {
       await deleteAttachmentFile(attachment.storagePath, token)
       const now = Date.now()
-      await upsertRows(TABLE_ATTACHMENTS, [{ id: attachment.id, deleted_at: now, updated_at: now }], token)
+      await patchRow(TABLE_ATTACHMENTS, attachment.id, { deleted_at: now, updated_at: now }, token)
 
       items.value = items.value.filter((a) => a.id !== attachment.id)
       await persist()
@@ -185,6 +189,13 @@ export const useAttachmentsStore = defineStore('attachments', () => {
     try {
       await downloadAttachmentFile(attachment.storagePath, attachment.fileName, token)
     } catch (e) {
+      if (e instanceof SyncHttpError && (e.status === 404 || e.message.includes('not_found') || e.message.includes('NoSuchKey'))) {
+        console.warn('[attachments] 附件檔案在 Storage 已不存在，從本地移除', attachment.id)
+        items.value = items.value.filter((a) => a.id !== attachment.id)
+        void persist()
+        error.value = '此附件已被其他成員刪除'
+        return
+      }
       console.error('[attachments] 下載失敗', e)
       error.value = describeAttachmentError(e)
       throw e

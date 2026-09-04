@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { SyncHttpError, fetchRowsSince, isPrimaryKeyConflict, upsertRows } from './restClient'
+import { SyncHttpError, authHeaders, fetchRowsSince, headers, isPrimaryKeyConflict, patchRow, upsertRows } from './restClient'
 
 /**
  * 用 vi.spyOn(globalThis, 'fetch') 頂替網路層，比照專案既有的
@@ -92,6 +92,41 @@ describe('upsertRows', () => {
 
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toContain('on_conflict=device_id')
+  })
+})
+
+describe('patchRow', () => {
+  it('發送 PATCH 請求到 /rest/v1/:table?id=eq.:id，body 包含 patch 欄位', async () => {
+    const fetchMock = mockFetch({ ok: true } as Response)
+    await patchRow('attachments', 'att-1', { deleted_at: 12345, updated_at: 12345 }, 'token-abc')
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('/rest/v1/attachments?id=eq.att-1')
+    expect(options.method).toBe('PATCH')
+    const h = options.headers as Record<string, string>
+    expect(h.Authorization).toBe('Bearer token-abc')
+    expect(h['Content-Type']).toBe('application/json')
+    expect(h.Prefer).toBe('return=minimal')
+    expect(JSON.parse(options.body as string)).toEqual({ deleted_at: 12345, updated_at: 12345 })
+  })
+
+  it('HTTP 失敗時拋出 SyncHttpError', async () => {
+    mockFetch({ ok: false, status: 403, text: async () => '{"code":"42501","message":"forbidden"}' } as Response)
+    await expect(patchRow('attachments', 'att-1', { deleted_at: 1 }, 'token')).rejects.toThrow(SyncHttpError)
+  })
+})
+
+describe('authHeaders / headers', () => {
+  it('authHeaders 只包含 apikey 與 Authorization，不預設帶 Content-Type', () => {
+    const h = authHeaders('token-1')
+    expect(h.Authorization).toBe('Bearer token-1')
+    expect(h['Content-Type']).toBeUndefined()
+  })
+
+  it('headers 包含 Content-Type: application/json', () => {
+    const h = headers('token-1')
+    expect(h.Authorization).toBe('Bearer token-1')
+    expect(h['Content-Type']).toBe('application/json')
   })
 })
 
