@@ -143,6 +143,8 @@ today & p1 & #工作
 | Vitest | 4.1.10 | 單元測試 |
 | Playwright | 1.62.1 | E2E（含無障礙檢測） |
 | ESLint | 10.8.1 | 含 vuejs-accessibility |
+| @supabase/auth-js | 2.112.4 | 輕量認證模組（動態載入） |
+| @supabase/realtime-js | 2.112.4 | 即時協作與 Presence 模組（動態載入） |
 
 ## 開發
 
@@ -165,19 +167,19 @@ pnpm test:e2e     # Playwright E2E（含無障礙檢測）
 不做這一段，`pnpm dev` 就是完整可用的純本地版本。
 
 1. 到 https://supabase.com/dashboard 建一個免費專案
-2. SQL Editor 依序貼上 [`supabase/migrations/`](supabase/migrations) 底下每個檔案執行一次
-   （目前是 `0001_init.sql`、`0002_tombstone_defaults.sql`——已經照舊版本做過 `0001` 的人，
-   之後新增檔案時記得補跑，不會自動套用）
+2. 套用資料庫遷移檔案（目前為 `0001` 至 `0030`）：
+   - **推薦做法**：安裝 Supabase CLI 並連結專案後，執行 `npx supabase db push` 一鍵自動套用
+   - **手動做法**：至 Supabase Dashboard 的 SQL Editor，依序貼上 [`supabase/migrations/`](supabase/migrations) 底下每個檔案執行
 3. Project Settings → API，把 `Project URL` 和 `anon public` key 填進複製自
    [`.env.local.example`](.env.local.example) 的 `.env.local`
-4. 不用改 Email 範本——Supabase 內建（免費方案）的寄信服務預設寄的就是一個
-   登入連結（magic link），跟這個工具的畫面本來就對得上。**範本編輯本身
-   被鎖住**：Dashboard 的 Authentication → Email Templates 要接上自訂 SMTP
-   才能改 Subject／Body，這個工具刻意不要求接自訂 SMTP，所以走預設的連結
-   流程，不必也不能改範本
-5. `pnpm dev`，側邊欄會出現「登入以同步」；輸入信箱、去信箱點裡面的連結——
-   連結不用在同一個分頁點開，另一個分頁、手機、另一台裝置都可以，原本的
-   分頁會自動反映成已登入（跨分頁廣播），不需要手動重新整理
+4. 啟用 Google／GitHub 登入（見下方「啟用 Google／GitHub 登入」設定 Providers 與 Redirect URLs）。目前信箱登入因免費寄件額度限制預設隱藏，改採第三方登入
+5. `pnpm dev`，側邊欄會出現「登入以同步」；點擊 Google 或 GitHub 一鍵完成登入並開始同步
+6. （選配）若需啟用推播通知、每日摘要信與工作區邀請信，執行以下指令部署雲端函式：
+   ```sh
+   npx supabase functions deploy send-task-notification --no-verify-jwt
+   npx supabase functions deploy send-daily-digest --no-verify-jwt
+   npx supabase functions deploy send-invitation-email
+   ```
 
 **啟用 Google／GitHub 登入**：`AccountDialog.vue` 畫面上已經有按鈕
 （`OAUTH_PROVIDERS_ENABLED` 是 `true`），但按鈕能點不代表登入真的會成功——
