@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, toRaw } from 'vue'
 import { loadAttachments, saveAttachments } from '@/db'
 import type { StoredAttachment } from '@/db/schema'
+import { classifyQuota } from '@/domain/attachments'
 import { TABLE_ATTACHMENTS, toRemoteAttachment } from '@/sync/rowMapping'
 import { callRpc, SyncHttpError, upsertRows } from '@/sync/restClient'
 import {
@@ -12,14 +13,6 @@ import {
 } from '@/sync/storageClient'
 import { useAuthStore } from './auth'
 import { useWorkspaceStore } from './workspace'
-
-/**
- * 跟 supabase/migrations/0019_maintenance.sql 的 v_quota 常數同一個值
- * ——這裡只是「上傳前先問一次，省得白白傳完整個檔案才被拒絕」的提前
- * 檢查，真正擋得住的是資料庫那邊的 trigger（enforce_attachment_quota），
- * 兩邊數字要保持一致，但這裡改壞了也不會讓配額失效，只是提示會慢一拍。
- */
-const WORKSPACE_STORAGE_QUOTA_BYTES = 500 * 1024 * 1024
 
 /**
  * 附件（M3）。跟 comments.ts／activity.ts 最大的不同：upload()／remove()
@@ -38,6 +31,8 @@ export const useAttachmentsStore = defineStore('attachments', () => {
 
   const uploading = ref(false)
   const error = ref<string | null>(null)
+  /** 接近 500MB 上限時的軟提示，跟 error（滿額／失敗）分開，上傳仍會繼續。 */
+  const quotaWarning = ref<string | null>(null)
 
   const byTask = computed(() => {
     const map = new Map<string, StoredAttachment[]>()
@@ -101,15 +96,15 @@ export const useAttachmentsStore = defineStore('attachments', () => {
    * 讓真正的錯誤處理（若有）留給伺服器那道 trigger。查詢本身失敗
    * （例如網路不穩）也不擋上傳——這只是提前檢查，不是唯一防線。
    */
-  async function checkQuota(file: File, token: string): Promise<boolean> {
+  async function checkQuota(file: File, token: string): Promise<'ok' | 'near' | 'full' | 'skip'> {
     const workspaceId = workspace.currentWorkspaceId
-    if (!workspaceId) return true
+    if (!workspaceId) return 'skip'
     try {
       const used = await callRpc<number>('workspace_storage_used', { p_workspace: workspaceId }, token)
-      return used + file.size <= WORKSPACE_STORAGE_QUOTA_BYTES
+      return classifyQuota(used, file.size)
     } catch (e) {
       console.error('[attachments] 查詢工作區用量失敗，略過預先檢查', e)
-      return true
+      return 'skip'
     }
   }
 
@@ -119,10 +114,15 @@ export const useAttachmentsStore = defineStore('attachments', () => {
     if (!token) return
     uploading.value = true
     error.value = null
+    quotaWarning.value = null
     try {
-      if (!(await checkQuota(file, token))) {
+      const quota = await checkQuota(file, token)
+      if (quota === 'full') {
         error.value = '這個工作區的附件容量已滿（上限 500MB），請先刪除不需要的附件'
         return
+      }
+      if (quota === 'near') {
+        quotaWarning.value = '這個工作區的附件容量即將用完（上限 500MB），建議先清理不需要的附件'
       }
 
       const id = crypto.randomUUID()
@@ -191,5 +191,5 @@ export const useAttachmentsStore = defineStore('attachments', () => {
     }
   }
 
-  return { items, uploading, error, forTask, load, persist, mergeRemote, upload, remove, download }
+  return { items, uploading, error, quotaWarning, forTask, load, persist, mergeRemote, upload, remove, download }
 })

@@ -123,6 +123,22 @@ describe('attachments store — 工作區儲存配額（M6）', () => {
 
     expect(store.error).toContain('容量已滿')
   })
+
+  it('用量達到 90% 但仍未滿額時仍上傳，並設 quotaWarning 而不是 error', async () => {
+    const store = setup()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (String(url).includes('workspace_storage_used')) {
+        return { ok: true, text: async () => String(450 * 1024 * 1024) } as Response
+      }
+      return { ok: true, json: async () => [], text: async () => '' } as Response
+    })
+
+    await store.upload('task-1', new File(['x'], 'small.pdf'))
+
+    expect(store.error).toBeNull()
+    expect(store.quotaWarning).toContain('即將用完')
+    expect(store.forTask('task-1')).toHaveLength(1)
+  })
 })
 
 describe('SyncHttpError 攜帶的訊息', () => {

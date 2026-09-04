@@ -22,6 +22,7 @@
     </ul>
 
     <p v-if="attachments.error" role="alert" class="text-sm text-danger-ink">{{ attachments.error }}</p>
+    <p v-else-if="attachments.quotaWarning" role="status" class="text-sm text-warning-ink">{{ attachments.quotaWarning }}</p>
 
     <div v-if="workspace.canWriteTasks" class="flex items-center gap-2 pt-1">
       <!--

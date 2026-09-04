@@ -342,7 +342,7 @@ export interface StoredSection {
  * 活動記錄的種類——只涵蓋資料庫 trigger 真的會記的幾種「事件」
  * （見 supabase/migrations/0013_activity_log.sql 的說明）。
  */
-export type ActivityKind = 'created' | 'completed' | 'reopened' | 'moved'
+export type ActivityKind = 'created' | 'completed' | 'reopened' | 'moved' | 'renamed' | 'due_changed'
 
 /**
  * 任務活動記錄（M3）。純粹是拉取進來的唯讀資料——完全由伺服器端的
