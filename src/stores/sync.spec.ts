@@ -11,7 +11,8 @@ import { useActivityStore } from '@/stores/activity'
 import { useAttachmentsStore } from '@/stores/attachments'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useSectionsStore } from '@/stores/sections'
-import { makeTask } from '@/test/helpers'
+import { useWorkspaceStore } from '@/stores/workspace'
+import { makeTask, becomeWorkspaceMember } from '@/test/helpers'
 import { getMeta, setMeta } from '@/db'
 import { META_SYNC_ACCOUNT_ID, META_SYNC_LAST_PULLED_AT } from '@/db/schema'
 
@@ -37,6 +38,7 @@ function setup() {
     attachments: useAttachmentsStore(),
     notifications: useNotificationsStore(),
     sections: useSectionsStore(),
+    workspace: useWorkspaceStore(),
   }
   activeSync = app.sync
   return app
@@ -151,6 +153,66 @@ describe('已登入時', () => {
 
     expect(sync.syncError).toBe('目前連不上網路，恢復連線後會自動重試')
   })
+
+  it('遭遇無權限錯誤（TK003）時，若身分為 viewer 顯示友善中文，不洩漏技術細節', async () => {
+    const { sync, auth, tasks } = setup()
+    becomeWorkspaceMember('ws-1', 'viewer', 'u1')
+    auth.session = fakeSession('token-123', 'u1')
+    tasks.isLoading = false
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ code: 'TK003', message: '沒有權限編輯這筆任務' }),
+    } as Response)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await sync.start()
+    await vi.waitFor(() => expect(sync.syncError).not.toBeNull())
+
+    expect(sync.syncError).toBe('你目前沒有編輯任務的權限')
+    expect(sync.syncError).not.toContain('TK003')
+    expect(sync.syncError).not.toContain('400')
+  })
+
+  it('遭遇無權限錯誤（TK003）時，若身分為 member 顯示移出專案提示，不洩漏技術細節', async () => {
+    const { sync, auth, tasks } = setup()
+    becomeWorkspaceMember('ws-1', 'member', 'u1')
+    auth.session = fakeSession('token-123', 'u1')
+    tasks.isLoading = false
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ code: 'TK003', message: '沒有權限編輯這筆任務' }),
+    } as Response)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await sync.start()
+    await vi.waitFor(() => expect(sync.syncError).not.toBeNull())
+
+    expect(sync.syncError).toBe('沒有權限編輯這筆任務，可能已經被移出這個工作區或專案')
+    expect(sync.syncError).not.toContain('TK003')
+    expect(sync.syncError).not.toContain('400')
+  })
+
+  it('遭遇已刪除錯誤（TK001）時，顯示友善中文，不洩漏技術細節', async () => {
+    const { sync, auth, tasks } = setup()
+    auth.session = fakeSession()
+    tasks.isLoading = false
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ code: 'TK001', message: '任務已經被其他成員刪除' }),
+    } as Response)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await sync.start()
+    await vi.waitFor(() => expect(sync.syncError).not.toBeNull())
+
+    expect(sync.syncError).toBe('這筆任務已經被其他成員刪除，本機顯示的內容可能已經過期')
+    expect(sync.syncError).not.toContain('TK001')
+    expect(sync.syncError).not.toContain('400')
+  })
+
 
   /**
    * M6：清理墓碑要等所有裝置都同步過某個時間點，前提是裝置真的有回報
