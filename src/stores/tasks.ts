@@ -12,6 +12,7 @@ import type {
 } from '@/db/schema'
 import { createTask, groupByParent, monotonicNow } from '@/domain/task'
 import { inCurrentWorkspace } from '@/domain/workspaceScope'
+import { scopeBackupToWorkspace } from '@/domain/backupScope'
 import { diffAgainstFingerprint, diffFields } from '@/domain/diff'
 import { mergeById } from '@/db/backup'
 import { nextOccurrence } from '@/domain/recurrence'
@@ -65,6 +66,7 @@ async function enqueueSyncOps(
   deletes: readonly string[],
   previousIndex: ReadonlyMap<string, string>,
   excludeIds: ReadonlySet<string>,
+  reviveIds: ReadonlySet<string> = new Set(),
 ): Promise<void> {
   // 用單調時鐘不是 Date.now()：同一毫秒內排出的兩筆 op（例如批次操作，
   // 或使用者連續兩個動作剛好落在同一毫秒）如果 createdAt 相同，
@@ -78,15 +80,40 @@ async function enqueueSyncOps(
     const previousJson = previousIndex.get(row.id)
     const before = previousJson ? toRemoteTask(JSON.parse(previousJson) as StoredTask) : null
     const patch = diffFields(before, toRemoteTask(row))
+    const isReviving = reviveIds.has(row.id)
+    if (isReviving) {
+      patch.deleted_at = null
+    }
     if (Object.keys(patch).length === 0) continue
-    ops.push({
-      id: crypto.randomUUID(),
-      kind: before === null ? 'task.create' : 'task.patch',
-      targetId: row.id,
-      payload: patch,
-      createdAt: now,
-      attempts: 0,
-    })
+    if (before === null) {
+      ops.push({
+        id: crypto.randomUUID(),
+        kind: 'task.create',
+        targetId: row.id,
+        payload: patch,
+        createdAt: now,
+        attempts: 0,
+      })
+      if (isReviving) {
+        ops.push({
+          id: crypto.randomUUID(),
+          kind: 'task.patch',
+          targetId: row.id,
+          payload: patch,
+          createdAt: now + 1,
+          attempts: 0,
+        })
+      }
+    } else {
+      ops.push({
+        id: crypto.randomUUID(),
+        kind: 'task.patch',
+        targetId: row.id,
+        payload: patch,
+        createdAt: now,
+        attempts: 0,
+      })
+    }
   }
 
   for (const id of deletes) {
@@ -273,6 +300,8 @@ export const useTasksStore = defineStore('tasks', () => {
    * 產生補丁。
    */
   let remoteMergedIds = new Set<string>()
+  /** 匯入或復原時需明確復活的任務 id 集合，下一次 flush() 傳給 enqueueSyncOps 附帶 deleted_at: null。 */
+  let reviveTaskIds = new Set<string>()
 
   /**
    * 回傳的 Promise 一定在資料真的寫完時才 resolve，即使呼叫時已有寫入在進行中。
@@ -299,8 +328,11 @@ export const useTasksStore = defineStore('tasks', () => {
           const { upserts, deletes, nextFingerprint } = diffAgainstFingerprint(snapshot(), persistedIndex)
 
           await applyTaskChanges({ upserts, deletes })
-          if (isSyncConfigured) await enqueueSyncOps(upserts, deletes, persistedIndex, remoteMergedIds)
+          if (isSyncConfigured) {
+            await enqueueSyncOps(upserts, deletes, persistedIndex, remoteMergedIds, reviveTaskIds)
+          }
           remoteMergedIds = new Set()
+          reviveTaskIds = new Set()
           await collections.flush()
           await comments.flush()
           await sections.flush()
@@ -398,6 +430,7 @@ export const useTasksStore = defineStore('tasks', () => {
         items.value = items.value.filter((t) => t.id !== task.id)
       },
       redo: () => {
+        reviveTaskIds.add(task.id)
         items.value.push(task)
       },
     })
@@ -428,6 +461,7 @@ export const useTasksStore = defineStore('tasks', () => {
         items.value = items.value.filter((t) => t.id !== task.id)
       },
       redo: () => {
+        reviveTaskIds.add(task.id)
         items.value.push(task)
       },
     })
@@ -467,6 +501,7 @@ export const useTasksStore = defineStore('tasks', () => {
           ? `刪除「${target.taskName}」與 ${removed.length - 1} 個子項`
           : `刪除「${target.taskName}」`,
       undo: () => {
+        for (const t of removed) reviveTaskIds.add(t.id)
         items.value = sortByRank([...items.value, ...removed])
       },
       redo: () => {
@@ -483,6 +518,7 @@ export const useTasksStore = defineStore('tasks', () => {
     history.record({
       label: `清除 ${removed.length} 項已完成`,
       undo: () => {
+        for (const t of removed) reviveTaskIds.add(t.id)
         items.value = sortByRank([...items.value, ...removed])
       },
       redo: () => {
@@ -721,6 +757,7 @@ export const useTasksStore = defineStore('tasks', () => {
     history.record({
       label: `刪除 ${ids.length} 項`,
       undo: () => {
+        for (const t of removed) reviveTaskIds.add(t.id)
         items.value = sortByRank([...items.value, ...removed])
       },
       redo: drop,
@@ -801,18 +838,35 @@ export const useTasksStore = defineStore('tasks', () => {
     const beforeTasks = snapshot()
     const beforeCollections = collections.snapshot()
 
+    const scopedData = scopeBackupToWorkspace(data, {
+      currentWorkspaceId: workspace.currentWorkspaceId,
+      targetInboxId: collections.currentInboxId,
+      canManageProjects: workspace.canManageProjects,
+      validMemberIds: new Set(workspace.members.map((m) => m.user_id)),
+      existingProjectIds: new Set(collections.projectsInCurrentWorkspace.map((p) => p.id)),
+      validSectionIds: new Set(sections.items.map((s) => s.id)),
+    })
+
+    for (const t of scopedData.tasks) {
+      reviveTaskIds.add(t.id)
+    }
+
     // 理由同 collections.ts 的 applyImport()：匯出範圍改成只含目前工作區
     // 之後，「取代」只能動目前工作區的任務，其餘工作區的本機快取不能
     // 被一份只含單一工作區的備份檔連帶清空。
     items.value =
       mode === 'replace'
-        ? [...beforeTasks.filter((t) => !inCurrentWorkspace(t, workspace.currentWorkspaceId)), ...data.tasks]
-        : sortByRank(mergeById(beforeTasks, data.tasks))
-    collections.applyImport(data, mode)
+        ? [
+            ...beforeTasks.filter((t) => !inCurrentWorkspace(t, workspace.currentWorkspaceId)),
+            ...scopedData.tasks,
+          ]
+        : sortByRank(mergeById(beforeTasks, scopedData.tasks))
+    collections.applyImport(scopedData, mode)
 
     history.record({
-      label: `匯入 ${data.tasks.length} 筆任務`,
+      label: `匯入 ${scopedData.tasks.length} 筆任務`,
       undo: () => {
+        for (const t of beforeTasks) reviveTaskIds.add(t.id)
         items.value = beforeTasks
         collections.restoreSnapshot(beforeCollections)
       },
@@ -868,6 +922,7 @@ export const useTasksStore = defineStore('tasks', () => {
       undo: () => {
         collections.restoreProject(project)
         if (options.deleteTasks) {
+          for (const t of affected) reviveTaskIds.add(t.id)
           items.value = sortByRank([...items.value, ...affected])
         } else {
           const ids = new Set(affected.map((a) => a.id))
