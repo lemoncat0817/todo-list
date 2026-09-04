@@ -1,8 +1,10 @@
 name: Deploy to GitHub Pages
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
     branches: [master]
+    types: [completed]
   workflow_dispatch:
 
 # 一次只跑一個部署；不取消進行中的部署，避免半途中斷留下壞掉的站。
@@ -19,8 +21,13 @@ jobs:
   build:
     name: 建置
     runs-on: ubuntu-latest
+    # 只有在手動觸發、或 CI 完整通過（success）時才執行建置與部署，
+    # 避免 CI 失敗時將有問題的程式碼發布至正式機。
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: pnpm/action-setup@v6
 
@@ -32,13 +39,6 @@ jobs:
       - name: 安裝依賴
         run: pnpm install --frozen-lockfile
 
-      # 部署前再跑一次完整驗證：master 上不該出現沒過關的產物。
-      - name: 型別檢查
-        run: pnpm typecheck
-
-      - name: 單元測試
-        run: pnpm test
-
       - name: 建置
         # 見 ci.yml 同一步驟的註解：沒設定這兩個值時同步功能整個隱藏，
         # 正式站照常是純本地版本，不是建置失敗。
@@ -46,6 +46,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_VAPID_PUBLIC_KEY: ${{ vars.VITE_VAPID_PUBLIC_KEY }}
 
       - uses: actions/configure-pages@v6
 
@@ -63,3 +64,4 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+
