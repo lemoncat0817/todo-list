@@ -121,3 +121,30 @@ describe('collections applyImport — replace 模式（有目前工作區）', (
     expect(ids).toEqual(['a-proj-new', 'b-proj'])
   })
 })
+
+describe('importBackup — 權限防護（viewer／無權限）', () => {
+  it('viewer 身分呼叫 importBackup 時無效，任務與專案皆不被修改', () => {
+    const { tasks, collections } = setup()
+    becomeWorkspaceMember('ws-a', 'viewer')
+    tasks.items = [makeTask('原本任務', false, { id: 'orig-t', workspaceId: 'ws-a' })]
+    collections.projects = [
+      { id: 'orig-p', name: '原本專案', color: '#000', rank: 'A', updatedAt: 1, isInbox: false, workspaceId: 'ws-a' },
+    ]
+
+    tasks.importBackup(
+      {
+        tasks: [makeTask('新任務', false, { id: 'new-t', workspaceId: 'ws-a' })],
+        projects: [
+          { id: 'new-p', name: '新專案', color: '#000', rank: 'A', updatedAt: 2, isInbox: false, workspaceId: 'ws-a' },
+        ],
+        tags: [],
+        filters: [],
+      },
+      'replace',
+    )
+
+    expect(tasks.items.map((t) => t.id)).toEqual(['orig-t'])
+    expect(collections.projects.map((p) => p.id)).toEqual(['orig-p'])
+  })
+})
+

@@ -139,6 +139,30 @@ describe('attachments store — 工作區儲存配額（M6）', () => {
     expect(store.quotaWarning).toContain('即將用完')
     expect(store.forTask('task-1')).toHaveLength(1)
   })
+
+  it('單檔超過上限（Storage 回傳 HTTP 413）時，顯示友善中文，不洩漏原始 413 代碼', async () => {
+    const store = setup()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (String(url).includes('workspace_storage_used')) {
+        return { ok: true, text: async () => '0' } as Response
+      }
+      if (String(url).includes('/storage/v1/object/attachments')) {
+        return {
+          ok: false,
+          status: 413,
+          text: async () => 'Payload Too Large',
+        } as Response
+      }
+      return { ok: true, text: async () => '' } as Response
+    })
+
+    await expect(store.upload('task-1', new File(['x'], 'big.mp4'))).rejects.toThrow()
+
+    expect(store.error).toBe('這個檔案超過單檔大小上限（10MB），請壓縮或分割後再上傳')
+    expect(store.error).not.toContain('413')
+    expect(store.error).not.toContain('Payload Too Large')
+  })
 })
 
 describe('SyncHttpError 攜帶的訊息', () => {

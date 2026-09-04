@@ -331,6 +331,24 @@ describe('invite', () => {
     expect(result).toBeNull()
     expect(workspace.error).toBe('邀請沒有送出，請稍後再試一次')
   })
+
+  it('成員已滿（WS004）時顯示專屬的中文友善訊息，不洩漏 PostgREST 原文', async () => {
+    const { workspace, auth } = setup()
+    auth.session = fakeSession()
+    workspace.currentWorkspaceId = 'w1'
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ code: 'WS004', message: '這個工作區的成員已滿（上限 20 人）' }),
+    } as Response)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const result = await workspace.invite('bob@example.com', 'member')
+
+    expect(result).toBeNull()
+    expect(workspace.error).toBe('這個工作區的成員已經滿了，請聯絡工作區管理者')
+    expect(workspace.error).not.toContain('WS004')
+  })
 })
 
 describe('removeMemberFromWorkspace', () => {
@@ -428,6 +446,23 @@ describe('acceptInvite', () => {
 
     expect(ok).toBe(false)
     expect(workspace.error).toBe('這個邀請連結無法使用，可能已經過期或被撤銷')
+  })
+
+  it('成員已滿（WS004）時顯示專屬的中文友善訊息，不洩漏 PostgREST 原文', async () => {
+    const { workspace, auth } = setup()
+    auth.session = fakeSession()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ code: 'WS004', message: '這個工作區的成員已滿（上限 20 人），請聯絡工作區管理者' }),
+    } as Response)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const ok = await workspace.acceptInvite('full-token')
+
+    expect(ok).toBe(false)
+    expect(workspace.error).toBe('這個工作區的成員已經滿了，請聯絡工作區管理者')
+    expect(workspace.error).not.toContain('WS004')
   })
 })
 

@@ -3,7 +3,7 @@ import DataDialog from '@/components/DataDialog.vue'
 import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { freshPinia, mountWith, makeTask } from '@/test/helpers'
+import { freshPinia, mountWith, makeTask, becomeWorkspaceMember } from '@/test/helpers'
 
 /**
  * M6 補做：匯出範圍改成只含目前所在的工作區。獨立成一支檔案——既有的
@@ -82,4 +82,54 @@ describe('DataDialog.vue — 匯出範圍（有目前工作區）', () => {
     const json = JSON.parse(await blob.text()) as { projects: { id: string }[] }
     expect(json.projects.map((p) => p.id)).toEqual(['inbox-a'])
   })
+
+  it('標籤與篩選器也只匯出目前工作區', async () => {
+    const pinia = freshPinia()
+    const workspace = useWorkspaceStore()
+    workspace.currentWorkspaceId = 'ws-a'
+    const collections = useCollectionsStore()
+    collections.tags = [
+      { id: 'tag-a', name: '標籤A', color: '#f00', updatedAt: 1, workspaceId: 'ws-a' },
+      { id: 'tag-b', name: '標籤B', color: '#0f0', updatedAt: 1, workspaceId: 'ws-b' },
+    ]
+    collections.filters = [
+      { id: 'f-a', name: '篩選器A', query: 'p1', color: '#000', rank: '0', updatedAt: 1, workspaceId: 'ws-a' },
+      { id: 'f-b', name: '篩選器B', query: 'p2', color: '#000', rank: '1', updatedAt: 1, workspaceId: 'ws-b' },
+    ]
+    const w = mountWith(DataDialog, pinia, { props: { open: true } })
+
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    const button = w.findAll('button').find((b) => b.text() === '匯出 JSON')
+    await button?.trigger('click')
+
+    const blob = createObjectURL.mock.calls[0]?.[0] as Blob
+    const json = JSON.parse(await blob.text()) as {
+      tags: { id: string }[]
+      filters: { id: string }[]
+    }
+    expect(json.tags.map((t) => t.id)).toEqual(['tag-a'])
+    expect(json.filters.map((f) => f.id)).toEqual(['f-a'])
+  })
 })
+
+describe('DataDialog.vue — viewer／無權限時匯入入口隱藏', () => {
+  it('viewer 身分時，還原區塊與匯入按鈕隱藏', () => {
+    const pinia = freshPinia()
+    becomeWorkspaceMember('ws-a', 'viewer')
+    const w = mountWith(DataDialog, pinia, { props: { open: true } })
+
+    expect(w.text()).not.toContain('還原')
+    expect(w.find('#import-file').exists()).toBe(false)
+  })
+
+  it('member 身分時，顯示還原區塊與匯入按鈕', () => {
+    const pinia = freshPinia()
+    becomeWorkspaceMember('ws-a', 'member')
+    const w = mountWith(DataDialog, pinia, { props: { open: true } })
+
+    expect(w.text()).toContain('還原')
+    expect(w.find('#import-file').exists()).toBe(true)
+  })
+})
+
