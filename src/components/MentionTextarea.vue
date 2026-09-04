@@ -51,7 +51,7 @@ let range: { start: number; end: number } | null = null
 function refreshSuggestions(): void {
   const el = textareaEl.value
   if (!el) return
-  const result = suggestMentions(props.modelValue, el.selectionStart, props.members)
+  const result = suggestMentions(el.value, el.selectionStart, props.members)
   if (!result || result.suggestions.length === 0) {
     closeSuggestions()
     return
@@ -74,7 +74,7 @@ function onInput(event: Event): void {
 function pick(member: MentionableMember): void {
   const el = textareaEl.value
   if (!el || !range) return
-  const value = props.modelValue
+  const value = el.value
   const start = range.start
   const next = `${value.slice(0, range.start)}@${member.displayName} ${value.slice(range.end)}`
   emit('update:modelValue', next)
