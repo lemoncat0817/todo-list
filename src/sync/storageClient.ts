@@ -1,5 +1,5 @@
 import { SUPABASE_URL } from './config'
-import { SyncHttpError, headers, safeText } from './restClient'
+import { SyncHttpError, authHeaders, headers, safeText } from './restClient'
 
 /**
  * 附件的檔案本體走 Supabase Storage 的 HTTP API，不裝
@@ -34,14 +34,29 @@ function objectUrl(path: string): string {
 export async function uploadAttachmentFile(path: string, file: File, accessToken: string): Promise<void> {
   const res = await fetch(objectUrl(path), {
     method: 'POST',
-    headers: headers(accessToken, { 'Content-Type': file.type || 'application/octet-stream' }),
+    headers: authHeaders(accessToken, { 'Content-Type': file.type || 'application/octet-stream' }),
     body: file,
   })
   if (!res.ok) throw new SyncHttpError(BUCKET, 'upsert', res.status, await safeText(res))
 }
 
+/**
+ * 刪除 Supabase Storage 中的檔案。
+ *
+ * Supabase Storage 刪除物件的標準 REST 端點是 `DELETE /storage/v1/object/${BUCKET}`，
+ * 必須以 JSON body 提供 `{ prefixes: [path] }`（同 `@supabase/storage-js` 的 remove()）。
+ * 過去若直接對單一物件 URL（`DELETE /storage/v1/object/${BUCKET}/${path}`）發請求，
+ * 且 headers 帶有 `'Content-Type': 'application/json'`，Fastify 的 body parser
+ * 會因 body 為空而拋出：
+ * "Body cannot be empty when content-type is set to 'application/json'" (HTTP 400 InvalidRequest)。
+ */
 export async function deleteAttachmentFile(path: string, accessToken: string): Promise<void> {
-  const res = await fetch(objectUrl(path), { method: 'DELETE', headers: headers(accessToken) })
+  const url = `${SUPABASE_URL}/storage/v1/object/${BUCKET}`
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: headers(accessToken),
+    body: JSON.stringify({ prefixes: [path] }),
+  })
   if (!res.ok) throw new SyncHttpError(BUCKET, 'delete', res.status, await safeText(res))
 }
 
@@ -51,7 +66,7 @@ export async function deleteAttachmentFile(path: string, accessToken: string): P
  * 或檔案已經被刪除）。
  */
 export async function downloadAttachmentFile(path: string, fileName: string, accessToken: string): Promise<void> {
-  const res = await fetch(objectUrl(path), { method: 'GET', headers: headers(accessToken) })
+  const res = await fetch(objectUrl(path), { method: 'GET', headers: authHeaders(accessToken) })
   if (!res.ok) throw new SyncHttpError(BUCKET, 'fetch', res.status, await safeText(res))
   const blob = await res.blob()
   const url = URL.createObjectURL(blob)
