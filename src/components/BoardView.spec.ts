@@ -177,4 +177,26 @@ describe('BoardView.vue — 拖曳（滑鼠加強路徑）', () => {
 
     expect(tasks.items[0]?.sectionId).toBe(section.id)
   })
+
+  it('拖到某張卡片上，插在該卡片之前', async () => {
+    const { pinia, tasks, sections } = setup()
+    const section = sections.addSection('p1', '進行中')
+    tasks.items = [
+      makeTask('A', false, { id: 'a', projectId: 'p1', sectionId: section.id, order: 1 }),
+      makeTask('B', false, { id: 'b', projectId: 'p1', sectionId: null, order: 2 }),
+    ]
+    const w = mountWith(BoardView, pinia, { props: { projectId: 'p1' } })
+
+    const cards = w.findAll('li[draggable="true"]')
+    const cardB = cards[0]
+    const cardA = cards[1]
+
+    await cardB?.trigger('dragstart')
+    await cardA?.trigger('drop')
+
+    const movedB = tasks.items.find((t) => t.id === 'b')
+    expect(movedB?.sectionId).toBe(section.id)
+    const sectionTasks = tasks.items.filter((t) => t.sectionId === section.id).sort((x, y) => (x.rank < y.rank ? -1 : 1))
+    expect(sectionTasks.map((t) => t.id)).toEqual(['b', 'a'])
+  })
 })

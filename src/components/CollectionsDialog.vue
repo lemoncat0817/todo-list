@@ -407,7 +407,10 @@ function removeTag(id: string): void {
 /** 複製完直接帶使用者去看新專案——留在原地的話，複製了什麼、去哪裡都得自己找。 */
 function duplicateProject(id: string): void {
   const copy = tasks.duplicateProject(id)
-  if (copy) void router.push(`/project/${copy.id}`)
+  if (copy) {
+    emit('close')
+    void router.push(`/project/${copy.id}`)
+  }
 }
 
 function createProject(): void {
