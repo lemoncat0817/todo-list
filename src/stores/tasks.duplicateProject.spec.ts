@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
 import { useSectionsStore } from '@/stores/sections'
+import { useCommentsStore } from '@/stores/comments'
 import { useHistoryStore } from '@/stores/history'
 import { makeTask } from '@/test/helpers'
 
@@ -15,6 +16,7 @@ function setup() {
     tasks: useTasksStore(),
     collections: useCollectionsStore(),
     sections: useSectionsStore(),
+    comments: useCommentsStore(),
     history: useHistoryStore(),
   }
 }
@@ -35,8 +37,8 @@ describe('tasks store — duplicateProject（M5：專案範本）', () => {
     expect(copy?.id).not.toBe(source.id)
   })
 
-  it('只複製未完成的頂層任務，帶著備註／優先度／標籤／重複規則，但不帶到期日與指派對象', () => {
-    const { tasks, collections } = setup()
+  it('只複製未完成的頂層任務，帶著備註／優先度／標籤／重複規則，但不帶到期日與指派對象，也不帶留言', () => {
+    const { tasks, collections, comments } = setup()
     const source = collections.addProject('工作')
     const tag = collections.addTag('緊急')
     tasks.items = [
@@ -46,6 +48,9 @@ describe('tasks store — duplicateProject（M5：專案範本）', () => {
         recurrence: { freq: 'daily', interval: 1, byDay: [], byMonthDay: null, until: null, count: null },
       }),
       makeTask('已完成的事', true, { id: 't2', projectId: source.id }),
+    ]
+    comments.items = [
+      { id: 'c1', taskId: 't1', body: '留言內容', authorId: 'u1', mentionedUserIds: [], createdAt: 1, updatedAt: 1 },
     ]
 
     const copy = tasks.duplicateProject(source.id)
@@ -63,6 +68,7 @@ describe('tasks store — duplicateProject（M5：專案範本）', () => {
     expect(copied.assigneeId).toBeNull()
     expect(copied.isCompleted).toBe(false)
     expect(copied.id).not.toBe('t1')
+    expect(comments.forTask(copied.id)).toHaveLength(0)
   })
 
   it('複製區段，任務的 sectionId 對應到新專案裡新建的區段', () => {

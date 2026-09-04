@@ -33,6 +33,8 @@ describe('tasks store — moveToSection', () => {
 
     const order = [...tasks.items].sort((x, y) => (x.rank < y.rank ? -1 : 1)).map((t) => t.id)
     expect(order).toEqual(['c', 'a', 'b'])
+    const listTasks = tasks.groupsOf({ kind: 'project', id: 'p1' })[0]?.tasks.map((t) => t.id)
+    expect(listTasks).toEqual(['c', 'a', 'b'])
   })
 
   it('拖到別的區段（沒指定目標卡片）附加到該欄最後面，section_id 正確更新', () => {

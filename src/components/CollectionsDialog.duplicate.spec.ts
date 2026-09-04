@@ -21,5 +21,6 @@ describe('CollectionsDialog.vue — 複製專案', () => {
 
     expect(collections.projects.map((p) => p.name)).toContain('工作 的副本')
     expect(router.currentRoute.value.path).toMatch(/^\/project\//)
+    expect(w.emitted('close')).toBeTruthy()
   })
 })
