@@ -40,6 +40,7 @@ export async function enqueueCollectionOps<T extends { id: string; updatedAt: nu
   previousIndex: ReadonlyMap<string, string>,
   toRemote: (row: T) => Record<string, unknown>,
   excludeIds: ReadonlySet<string>,
+  reviveIds: ReadonlySet<string> = new Set(),
 ): Promise<Map<string, string>> {
   const { upserts, deletes, nextFingerprint } = diffAgainstFingerprint(current, previousIndex)
   // 單調時鐘，理由跟 stores/tasks.ts 的 enqueueSyncOps 一致：避免同一
@@ -53,15 +54,40 @@ export async function enqueueCollectionOps<T extends { id: string; updatedAt: nu
     const previousJson = previousIndex.get(row.id)
     const before = previousJson ? toRemote(JSON.parse(previousJson) as T) : null
     const patch = diffFields(before, toRemote(row))
+    const isReviving = reviveIds.has(row.id)
+    if (isReviving) {
+      patch.deleted_at = null
+    }
     if (Object.keys(patch).length === 0) continue
-    ops.push({
-      id: crypto.randomUUID(),
-      kind: `${kind}.${before === null ? 'create' : 'patch'}` as OpKind,
-      targetId: row.id,
-      payload: patch,
-      createdAt: now,
-      attempts: 0,
-    })
+    if (before === null) {
+      ops.push({
+        id: crypto.randomUUID(),
+        kind: `${kind}.create` as OpKind,
+        targetId: row.id,
+        payload: patch,
+        createdAt: now,
+        attempts: 0,
+      })
+      if (isReviving) {
+        ops.push({
+          id: crypto.randomUUID(),
+          kind: `${kind}.patch` as OpKind,
+          targetId: row.id,
+          payload: patch,
+          createdAt: now + 1,
+          attempts: 0,
+        })
+      }
+    } else {
+      ops.push({
+        id: crypto.randomUUID(),
+        kind: `${kind}.patch` as OpKind,
+        targetId: row.id,
+        payload: patch,
+        createdAt: now,
+        attempts: 0,
+      })
+    }
   }
 
   for (const id of deletes) {

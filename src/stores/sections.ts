@@ -30,6 +30,7 @@ export const useSectionsStore = defineStore('sections', () => {
 
   let persistedIndex = new Map<string, string>()
   let remoteMergedIds = new Set<string>()
+  let reviveSectionIds = new Set<string>()
 
   async function load(): Promise<void> {
     items.value = await loadSections()
@@ -45,8 +46,16 @@ export const useSectionsStore = defineStore('sections', () => {
     const rows = snapshot()
     await saveSections(rows)
     if (isSyncConfigured) {
-      persistedIndex = await enqueueCollectionOps('section', rows, persistedIndex, toRemoteSection, remoteMergedIds)
+      persistedIndex = await enqueueCollectionOps(
+        'section',
+        rows,
+        persistedIndex,
+        toRemoteSection,
+        remoteMergedIds,
+        reviveSectionIds,
+      )
       remoteMergedIds = new Set()
+      reviveSectionIds = new Set()
     }
   }
 
@@ -136,6 +145,7 @@ export const useSectionsStore = defineStore('sections', () => {
   }
 
   function restoreSection(section: StoredSection): void {
+    reviveSectionIds.add(section.id)
     items.value = [...items.value, section].sort((a, b) => compareRankValues(a.rank, b.rank))
   }
 

@@ -93,6 +93,11 @@ export const useCollectionsStore = defineStore('collections', () => {
     persistedFiltersIndex = new Map(filters.value.map((f) => [f.id, JSON.stringify(f)]))
   }
 
+  /** 匯入時需復活的 id 集合，下一次 flush() 傳給 enqueueCollectionOps 清除遠端墓碑。 */
+  let reviveProjectIds = new Set<string>()
+  let reviveTagIds = new Set<string>()
+  let reviveFilterIds = new Set<string>()
+
   async function flush(): Promise<void> {
     await saveProjects(projects.value.map((p) => ({ ...p })))
     await saveTags(tags.value.map((t) => ({ ...t })))
@@ -105,16 +110,28 @@ export const useCollectionsStore = defineStore('collections', () => {
         persistedProjectsIndex,
         toRemoteProject,
         remoteMergedIds,
+        reviveProjectIds,
       )
-      persistedTagsIndex = await enqueueCollectionOps('tag', tags.value, persistedTagsIndex, toRemoteTag, remoteMergedIds)
+      persistedTagsIndex = await enqueueCollectionOps(
+        'tag',
+        tags.value,
+        persistedTagsIndex,
+        toRemoteTag,
+        remoteMergedIds,
+        reviveTagIds,
+      )
       persistedFiltersIndex = await enqueueCollectionOps(
         'filter',
         filters.value,
         persistedFiltersIndex,
         toRemoteFilter,
         remoteMergedIds,
+        reviveFilterIds,
       )
       remoteMergedIds = new Set()
+      reviveProjectIds = new Set()
+      reviveTagIds = new Set()
+      reviveFilterIds = new Set()
     }
   }
 
@@ -192,6 +209,7 @@ export const useCollectionsStore = defineStore('collections', () => {
   }
 
   function restoreProject(project: StoredProject): void {
+    reviveProjectIds.add(project.id)
     projects.value = [...projects.value, project].sort((a, b) => compareRankValues(a.rank, b.rank))
   }
 
@@ -251,6 +269,7 @@ export const useCollectionsStore = defineStore('collections', () => {
   }
 
   function restoreTag(tag: StoredTag): void {
+    reviveTagIds.add(tag.id)
     tags.value = [...tags.value, tag]
   }
 
@@ -314,6 +333,7 @@ export const useCollectionsStore = defineStore('collections', () => {
     history.record({
       label: `刪除篩選器「${filter.name}」`,
       undo: () => {
+        reviveFilterIds.add(filter.id)
         filters.value = [...filters.value, filter].sort((a, b) => compareRankValues(a.rank, b.rank))
       },
       redo: () => {
@@ -336,6 +356,9 @@ export const useCollectionsStore = defineStore('collections', () => {
     tags: StoredTag[]
     filters: StoredFilter[]
   }): void {
+    for (const p of snap.projects) reviveProjectIds.add(p.id)
+    for (const t of snap.tags) reviveTagIds.add(t.id)
+    for (const f of snap.filters) reviveFilterIds.add(f.id)
     projects.value = snap.projects
     tags.value = snap.tags
     filters.value = snap.filters
@@ -371,7 +394,33 @@ export const useCollectionsStore = defineStore('collections', () => {
       for (const item of incoming) byId.set(item.id, item)
       return [...byId.values()]
     }
-    projects.value = merge(projects.value, data.projects)
+
+    const mergeProjects = (
+      existing: StoredProject[],
+      incoming: readonly StoredProject[],
+    ): StoredProject[] => {
+      if (mode === 'replace') {
+        const outsideCurrentWorkspace = existing.filter(
+          (item) => !inCurrentWorkspace(item, workspace.currentWorkspaceId),
+        )
+        // 收件匣專案在伺服器端一個工作區僅有一個，取代模式不能將當前工作區原本的收件匣專案抹除
+        const currentInbox = existing.find(
+          (p) => p.workspaceId === workspace.currentWorkspaceId && p.isInbox,
+        )
+        const preserved =
+          currentInbox && !incoming.some((p) => p.id === currentInbox.id) ? [currentInbox] : []
+        return [...outsideCurrentWorkspace, ...preserved, ...incoming]
+      }
+      const byId = new Map(existing.map((item) => [item.id, item]))
+      for (const item of incoming) byId.set(item.id, item)
+      return [...byId.values()]
+    }
+
+    for (const p of data.projects) reviveProjectIds.add(p.id)
+    for (const t of data.tags) reviveTagIds.add(t.id)
+    for (const f of data.filters) reviveFilterIds.add(f.id)
+
+    projects.value = mergeProjects(projects.value, data.projects)
     tags.value = merge(tags.value, data.tags)
     filters.value = merge(filters.value, data.filters)
   }
