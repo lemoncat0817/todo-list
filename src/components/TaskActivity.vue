@@ -41,6 +41,12 @@ function projectName(id: unknown): string {
   return collections.projects.find((p) => p.id === id)?.name ?? '已刪除的專案'
 }
 
+function describeDueChange(to: unknown): string {
+  if (to === null || to === undefined || to === '') return '清除了截止日期'
+  if (typeof to === 'string') return `把截止日期改為 ${to}`
+  return '更改了截止日期'
+}
+
 function describe(entry: StoredActivity): string {
   switch (entry.kind) {
     case 'created':
@@ -51,6 +57,12 @@ function describe(entry: StoredActivity): string {
       return '重新開啟了這個任務'
     case 'moved':
       return `把任務移到「${projectName(entry.detail.to)}」`
+    case 'renamed':
+      return typeof entry.detail.to === 'string' && entry.detail.to !== ''
+        ? `把名稱改為「${entry.detail.to}」`
+        : '更改了任務名稱'
+    case 'due_changed':
+      return describeDueChange(entry.detail.to)
     default:
       return '更新了這個任務'
   }

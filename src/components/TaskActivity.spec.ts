@@ -72,6 +72,36 @@ describe('TaskActivity.vue', () => {
     expect(w.text()).toContain('把任務移到「已刪除的專案」')
   })
 
+  it('renamed 事件顯示改過後的名稱', () => {
+    useActivityStore().mergeRemote([
+      {
+        id: 'a1', taskId: 'task-1', actorId: 'me', kind: 'renamed',
+        detail: { from: '舊名', to: '新名' }, createdAt: 1, updatedAt: 1,
+      },
+    ])
+    const w = mountActivity()
+    expect(w.text()).toContain('把名稱改為「新名」')
+  })
+
+  it('due_changed 事件顯示新的截止日期；清除時另有說法', () => {
+    useActivityStore().mergeRemote([
+      {
+        id: 'a1', taskId: 'task-1', actorId: 'me', kind: 'due_changed',
+        detail: { from: null, to: '2026-09-04' }, createdAt: 1, updatedAt: 1,
+      },
+    ])
+    expect(mountActivity().text()).toContain('把截止日期改為 2026-09-04')
+
+    useActivityStore().items = []
+    useActivityStore().mergeRemote([
+      {
+        id: 'a2', taskId: 'task-1', actorId: 'me', kind: 'due_changed',
+        detail: { from: '2026-09-04', to: null }, createdAt: 2, updatedAt: 2,
+      },
+    ])
+    expect(mountActivity().text()).toContain('清除了截止日期')
+  })
+
   it('只顯示這筆任務自己的活動記錄', () => {
     useActivityStore().mergeRemote([
       { id: 'a1', taskId: 'task-1', actorId: 'me', kind: 'created', detail: {}, createdAt: 1, updatedAt: 1 },

@@ -206,7 +206,14 @@ export function normalizeComment(raw: unknown): StoredComment | null {
   }
 }
 
-const ACTIVITY_KINDS: readonly ActivityKind[] = ['created', 'completed', 'reopened', 'moved']
+const ACTIVITY_KINDS: readonly ActivityKind[] = [
+  'created',
+  'completed',
+  'reopened',
+  'moved',
+  'renamed',
+  'due_changed',
+]
 
 /**
  * 活動記錄純粹是拉取進來的資料（見 db/schema.ts 的 StoredActivity 說明），

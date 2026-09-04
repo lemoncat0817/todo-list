@@ -206,6 +206,17 @@
       <li v-if="isSyncConfigured && auth.status === 'signed-in'">
         <button type="button" :class="`${linkClass} w-full text-left`" @click="emit('members')">
           <span class="min-w-0 grow truncate">工作區成員</span>
+          <!--
+            跟 MembersDialog 同一套線上綠點／離線灰點。側邊只放指示點，
+            完整名單仍在對話框裡——這裡要回答的是「誰在線」，不是再列一次成員表。
+          -->
+          <span v-if="workspace.members.length > 0" class="flex shrink-0 items-center gap-0.5" aria-label="成員線上狀態">
+            <span v-for="member in workspace.members" :key="member.user_id"
+              class="size-2 rounded-full"
+              :class="isOnline(member.user_id) ? 'bg-success' : 'bg-sunken'"
+              :title="`${member.profiles?.display_name || '（未命名）'}（${isOnline(member.user_id) ? '線上' : '離線'}）`"
+              aria-hidden="true" />
+          </span>
         </button>
       </li>
     </ul>
@@ -281,5 +292,13 @@ const filterCount = (query: string): number => tasks.countOf({ kind: 'filter', i
 function switchWorkspace(event: Event): void {
   const id = (event.target as HTMLSelectElement).value
   void workspace.selectWorkspace(id)
+}
+
+/**
+ * 線上狀態（M3）：跟 MembersDialog.vue 同一顆判斷——自己一定算在線上，
+ * 其餘看 workspace.onlineUserIds（Realtime presence）。
+ */
+function isOnline(userId: string): boolean {
+  return userId === auth.session?.user.id || workspace.onlineUserIds.has(userId)
 }
 </script>
