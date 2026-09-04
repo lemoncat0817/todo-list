@@ -348,8 +348,8 @@ test.describe('通知與推播（M4）E2E 測試', () => {
     const dataDialog = page.getByRole('dialog').filter({ hasText: '資料與提醒' })
     const mentionCheckbox = dataDialog.getByLabel('被留言 @提及時通知我')
 
-    // 取消勾選提及
-    await mentionCheckbox.uncheck()
+    // 取消勾選提及（點擊觸發變更並預期失敗回滾）
+    await mentionCheckbox.click()
 
     // 驗證錯誤提示出現，且勾選框回滾為已勾選
     await expect(dataDialog.getByRole('alert')).toContainText('更新通知偏好失敗，請稍後再試一次')
