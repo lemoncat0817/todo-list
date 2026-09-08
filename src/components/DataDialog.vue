@@ -7,9 +7,12 @@
 
       <section class="flex flex-col gap-2">
         <h3 class="text-sm font-medium text-ink-soft">備份</h3>
-        <p class="text-sm text-ink-faint">
+        <p v-if="!isSyncConfigured || auth.status !== 'signed-in'" class="text-sm text-ink-faint">
           資料只存在這一台裝置的瀏覽器裡。清除瀏覽資料就會全部消失，
           換一台機器也帶不過去——所以請定期匯出一份。
+        </p>
+        <p v-else class="text-sm text-ink-faint">
+          目前已啟用雲端同步。若需離線存檔或移轉，也可隨時匯出一份 JSON 備份。
         </p>
         <p v-if="isSyncConfigured && auth.status === 'signed-in'" class="text-xs text-ink-faint">
           匯出／匯入只會動到目前所在的工作區，不影響其他工作區的資料。

@@ -63,8 +63,8 @@ import { useWorkspaceStore } from './workspace'
 import { pendingDeleteIdsForTable } from './outboxSync'
 
 /**
- * 同步是背景輪詢，不是即時協作——所以用固定間隔加幾個「現在很可能有變化」
- * 的時機點補洞（回到分頁、恢復網路），而不是 WebSocket。
+ * 背景定期輪詢作為保底（避免 WebSocket 斷線或離線時遺漏），並在回到分頁、
+ * 恢復網路等時機點主動補拉。即時變更則由 Realtime 訂閱通知觸發。
  */
 const PULL_INTERVAL_MS = 30_000
 /** 本地編輯觸發推送前先等一下：一串連續編輯（例如批次操作）只值得推一次。 */

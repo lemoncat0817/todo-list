@@ -159,25 +159,28 @@ the async write window before a tab closes.
 Dormant unless `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` are set
 (`sync/config.ts`'s `isSyncConfigured`) — the "帳號與同步" sidebar entry
 doesn't even render otherwise, so a fork without a Supabase project is a fully
-working client-only app, not a broken button. Scope is deliberately narrow:
-**single-user sync across a person's own devices**, not multi-user
-collaboration (no shared projects, no realtime, no field-level merge). Those
-are explicit non-goals for now, not gaps someone forgot.
+working client-only app, not a broken button. Scope covers personal cross-device
+sync as well as multi-user workspace collaboration (shared projects, member
+roles, task assignment, comments, @mentions, notifications, and realtime
+presence/sync; field-level merge remains an explicit non-goal, using row-level
+last-write-wins instead).
 
 **No `@supabase/supabase-js`.** Every other dependency choice in this repo is
 justified by a measured gzip number (`idb` over Dexie, hand-rolled dates over
 date-fns, hand-rolled recurrence over `rrule`), and the full SDK — auth +
-postgrest + realtime + storage + functions — is disproportionate to the five
-or six fixed operations sync actually needs. Split instead:
+postgrest + realtime + storage + functions — is disproportionate to the
+operations sync actually needs. Split instead:
 - **`sync/authClient.ts`** wraps `@supabase/auth-js` (GoTrue's real client, not
   the umbrella package) — token refresh/expiry/storage are security-sensitive
   enough to not reinvent. Measured: 23.16 kB gzip as its own chunk.
+- **`sync/realtime.ts`** wraps `@supabase/realtime-js` — handles workspace
+  table subscriptions, broadcast, and task presence.
 - **`sync/restClient.ts`** hand-rolls `fetch` calls against PostgREST — the
   query shapes are fixed (`fetchRowsSince`/`upsertRows`), so a general query
   builder buys nothing.
-- Both are dynamically `import()`ed only when an account action actually runs
+- All are dynamically `import()`ed only when an account action actually runs
   (`stores/auth.ts`, `stores/sync.ts`) — a user who never signs in never
-  downloads either, and the base bundle is unaffected.
+  downloads them, and the base bundle is unaffected.
 
 **Sign-in is an email magic link or OAuth (Google/GitHub), never a
 password.** (`sync/authClient.ts`'s `requestOtp`/`verifyOtp` names still say
@@ -291,16 +294,16 @@ accordingly, so no call site has to remember to react to a session change it
 didn't initiate. `start`/`stop` stay exported for tests and possible manual
 use, but nothing in the app is expected to call them directly any more.
 
-**Pull is polling, not Realtime.** `stores/sync.ts` pulls on `start()`, every
-30s, on `online`, and on `visibilitychange`, mirroring the polling pattern
-already used by `useDueReminders.ts`. Realtime (websocket) would be the
-natural upgrade *if* live multi-user collaboration is ever built — until then
-it would only add `realtime-js`'s bundle weight for no behavioral benefit.
+**Realtime sync with fallback polling.** `sync/realtime.ts` subscribes to
+Postgres changes and presence via `@supabase/realtime-js` (dynamically
+imported) for instant updates across collaborators. `stores/sync.ts` also
+pulls on `start()`, every 30s, on `online`, and on `visibilitychange` as a
+reliable fallback safety net (e.g. for reconnects or offline recovery).
 
 **Conflicts are row-level last-write-wins**, comparing `updatedAt`
 (`sync/merge.ts`'s `mergeByUpdatedAt`). Two devices editing *different fields*
 of the same row within the same sync window will have one edit lose entirely
-— an accepted, documented tradeoff for a single-user feature, not a hidden
+— an accepted, documented tradeoff at this tool's scale, not a hidden
 gap. `StoredProject`/`StoredTag`/`StoredFilter` gained an `updatedAt` field
 for this (they didn't need one before sync existed); `domain/task.ts`'s
 `normalize*` functions backfill it for pre-existing rows, so no IndexedDB
