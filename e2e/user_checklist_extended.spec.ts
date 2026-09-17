@@ -293,7 +293,8 @@ test.describe('復原（做完再復原，取代確認對話框）', () => {
     await rows(page).nth(0).locator('input[type=checkbox]').first().check()
     await rows(page).nth(1).locator('input[type=checkbox]').first().check()
 
-    await page.getByRole('button', { name: '清除已完成代辦事項' }).click()
+    await page.getByRole('link', { name: /^已完成/ }).click()
+    await page.getByRole('button', { name: '清空已完成' }).click()
     await expect(rows(page)).toHaveCount(0)
 
     await page.keyboard.press('Control+z')

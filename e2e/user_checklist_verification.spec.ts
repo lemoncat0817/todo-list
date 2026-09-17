@@ -103,7 +103,7 @@ test.describe('排序／分組／篩選器', () => {
     await addTask(page, '普通任務 p3')
 
     // 方式 A：透過管理對話框建立篩選器
-    await page.getByRole('button', { name: '管理專案與標籤' }).click()
+    await page.getByRole('button', { name: '管理篩選器' }).click()
     const dialog = page.getByRole('dialog').filter({ hasText: '管理專案與標籤' })
     await dialog.getByLabel('篩選器名稱').fill('重要事項')
     await dialog.getByLabel('篩選條件').fill('p1')
@@ -279,7 +279,7 @@ test.describe('批次操作與鍵盤', () => {
   test('4. Ctrl/Cmd+K 開命令面板，能找到檢視／專案／標籤／篩選器／任務', async ({ page }) => {
     await addTask(page, '買咖啡 #日常 @購物 p1')
     // 建立自訂篩選器
-    await page.getByRole('button', { name: '管理專案與標籤' }).click()
+    await page.getByRole('button', { name: '管理篩選器' }).click()
     const colDialog = page.getByRole('dialog').filter({ hasText: '管理專案與標籤' })
     await colDialog.getByLabel('篩選器名稱').fill('重要篩選')
     await colDialog.getByLabel('篩選條件').fill('p1')

@@ -75,7 +75,9 @@ test('U3: 增刪改查完整走查', async ({ page }) => {
   await expect(page.locator('main li')).toHaveCount(2)
 
   // 清除已完成
-  await page.getByRole('button', { name: '清除已完成代辦事項' }).click()
+  await page.getByRole('link', { name: /^已完成/ }).click()
+  await page.getByRole('button', { name: '清空已完成' }).click()
+  await page.getByRole('link', { name: /^全部/ }).click()
   await expect(page.locator('main li')).toHaveCount(1)
 
   // 刪除

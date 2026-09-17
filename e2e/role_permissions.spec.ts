@@ -160,8 +160,8 @@ test.describe('角色權限 E2E 完整功能驗證', () => {
     // (4) 可改附件：新增附件標籤按鈕存在
     await expect(detail.getByText('新增附件')).toBeVisible()
 
-    // (5) 可改標籤、不可管專案：開啟管理專案與標籤
-    await page.getByRole('button', { name: '管理專案與標籤' }).click()
+    // (5) 可改標籤、不可管專案：開啟管理標籤（直接落在標籤頁籤）
+    await page.getByRole('button', { name: '管理標籤' }).click()
     const collDialog = page.getByRole('dialog').filter({ hasText: '管理專案與標籤' })
     await expect(collDialog).toBeVisible()
     // 標籤可改：
@@ -341,6 +341,7 @@ test.describe('角色權限 E2E 完整功能驗證', () => {
     const collDialog = page.getByRole('dialog').filter({ hasText: '管理專案與標籤' })
     await expect(collDialog).toBeVisible()
     await expect(collDialog.locator('#new-project')).toBeVisible()
+    await collDialog.getByRole('tab', { name: '標籤' }).click()
     await expect(collDialog.locator('#new-tag')).toBeVisible()
     await collDialog.getByRole('button', { name: '關閉' }).click()
 

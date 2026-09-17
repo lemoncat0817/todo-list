@@ -324,7 +324,7 @@ test.describe('篩選器', () => {
     await addTask(page, '重要的事 p1 明天')
     await addTask(page, '普通的事')
 
-    await page.getByRole('button', { name: '管理專案與標籤' }).click()
+    await page.getByRole('button', { name: '管理篩選器' }).click()
     const dialog = page.getByRole('dialog').filter({ hasText: '管理專案與標籤' })
     await dialog.getByLabel('篩選器名稱').fill('要事')
     await dialog.getByLabel('篩選條件').fill('p1')
@@ -382,7 +382,8 @@ test.describe('復原', () => {
   test('清除已完成後可復原', async ({ page }) => {
     await addTask(page, '會被清掉')
     await rows(page).first().locator('input[type=checkbox]').check()
-    await page.getByRole('button', { name: '清除已完成代辦事項' }).click()
+    await page.getByRole('link', { name: /^已完成/ }).click()
+    await page.getByRole('button', { name: '清空已完成' }).click()
     await expect(rows(page)).toHaveCount(0)
 
     await page.getByRole('button', { name: '復原' }).click()

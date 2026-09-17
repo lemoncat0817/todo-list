@@ -118,7 +118,9 @@ test('檢視連結可用鍵盤操作（稽核 P6 已修正）', async ({ page })
 })
 
 test('空清單時仍可切換到任一分頁，不再被 alert 攔截', async ({ page }) => {
-  await page.getByRole('button', { name: '清除已完成代辦事項' }).click()
+  await page.getByRole('link', { name: /^已完成/ }).click()
+  await page.getByRole('button', { name: '清空已完成' }).click()
+  await page.getByRole('link', { name: /^全部/ }).click()
   await page.locator('main li').first().getByRole('button', { name: '刪除' }).click()
   await expect(page.locator('main li')).toHaveCount(0)
 
