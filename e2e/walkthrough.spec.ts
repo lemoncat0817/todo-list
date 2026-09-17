@@ -236,7 +236,7 @@ for (const [label, payload, expectedRows] of BAD_PAYLOADS) {
       appLen: (document.querySelector('#app') as HTMLElement).innerHTML.length,
       hasHeader: !!document.querySelector('h1'),
       navLinks: document.querySelectorAll('nav a').length,
-      hasFooter: !!document.querySelector('button[data-test=clear-completed]'),
+      hasFooter: !!document.querySelector('footer'),
       rows: document.querySelectorAll('main li').length,
     }))
 

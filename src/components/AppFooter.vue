@@ -31,7 +31,7 @@
       同步失敗：{{ sync.syncError }}
     </p>
 
-    <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-6">
+    <div class="px-4 py-3 sm:px-6">
       <p class="text-sm tabular-nums text-ink-faint">
         全部: {{ counts.all }} 項
         <span aria-hidden="true" class="mx-1.5 text-line-strong">·</span>
@@ -39,13 +39,6 @@
         <span aria-hidden="true" class="mx-1.5 text-line-strong">·</span>
         已完成: {{ counts.completed }} 項
       </p>
-
-      <button type="button"
-        class="rounded-md px-2.5 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:bg-danger-soft hover:text-danger-ink disabled:pointer-events-none disabled:opacity-40"
-        data-test="clear-completed" :disabled="counts.completed === 0 || !workspace.canWriteTasks"
-        @click="tasks.clearCompleted()">
-        清除已完成代辦事項
-      </button>
     </div>
   </footer>
 </template>

@@ -35,6 +35,14 @@
       @click="save">
       儲存此篩選器
     </button>
+
+    <button v-if="viewKind === 'completed'" type="button"
+      data-test="clear-completed"
+      :disabled="tasks.counts.completed === 0 || !workspace.canWriteTasks"
+      class="rounded-md border border-line bg-surface px-2.5 py-1 text-sm font-medium text-ink-soft transition-colors hover:bg-danger-soft hover:text-danger-ink disabled:pointer-events-none disabled:opacity-40 sm:ml-auto"
+      @click="tasks.clearCompleted()">
+      清空已完成
+    </button>
   </div>
 </template>
 
@@ -50,6 +58,8 @@ import {
 } from '@/domain/views'
 import { usePrefsStore } from '@/stores/prefs'
 import { useCollectionsStore } from '@/stores/collections'
+import { useTasksStore } from '@/stores/tasks'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { isSyncConfigured } from '@/sync/config'
 
 /**
@@ -63,6 +73,8 @@ const props = defineProps<{ viewKind: ViewKind; query: string | null }>()
 
 const prefs = usePrefsStore()
 const collections = useCollectionsStore()
+const tasks = useTasksStore()
+const workspace = useWorkspaceStore()
 const router = useRouter()
 
 const selectClass =

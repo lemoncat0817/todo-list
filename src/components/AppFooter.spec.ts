@@ -5,7 +5,7 @@ import { useHistoryStore } from '@/stores/history'
 import { useFlashStore } from '@/stores/flash'
 import { useSyncStore } from '@/stores/sync'
 import type { Pinia } from 'pinia'
-import { freshPinia, mountWith, makeTask, at, stubDialogs, type Wrapper } from '@/test/helpers'
+import { freshPinia, mountWith, makeTask, at, type Wrapper } from '@/test/helpers'
 
 /**
  * AppFooter 的統計與「清除已完成」。
@@ -32,7 +32,6 @@ describe('AppFooter.vue', () => {
 
   /** 三個計數在同一個 p 裡；抓文字比抓元素穩固，改樣式不會連累測試。 */
   const counters = (w: Wrapper) => w.find('footer p').text().replace(/\s+/g, '')
-  const clearButton = (w: Wrapper) => w.find('button[data-test=clear-completed]')
   const undoButton = (w: Wrapper) => w.find('button[data-test=undo]')
 
   describe('統計數字', () => {
@@ -63,37 +62,14 @@ describe('AppFooter.vue', () => {
     })
   })
 
-  describe('清除已完成', () => {
-    it('沒有已完成項目時按鈕停用，不再用 alert 攔截', async () => {
-      const dialogs = stubDialogs()
-      store.items = [makeTask('a', false)]
-      const w = mountWith(AppFooter, pinia)
-
-      expect(clearButton(w).attributes('disabled')).toBeDefined()
-      expect(dialogs.alerts, '不應再用 alert 攔截').toEqual([])
-    })
-
-    it('直接清除已完成項目，不再跳 confirm', async () => {
-      const dialogs = stubDialogs()
-      store.items = [
-        makeTask('done-1', true, { id: '1' }),
-        makeTask('todo-1', false, { id: '2' }),
-        makeTask('done-2', true, { id: '3' }),
-      ]
-      const w = mountWith(AppFooter, pinia)
-      await clearButton(w).trigger('click')
-
-      expect(dialogs.confirms, '不應再有阻塞式對話框').toEqual([])
-      expect(store.items.map((t) => t.id)).toEqual(['2'])
-    })
-
-    it('清除後顯示可復原提示，按下復原即還原', async () => {
+  describe('可復原操作提示', () => {
+    it('有操作紀錄時顯示提示，按下復原即還原', async () => {
       store.items = [
         makeTask('done-1', true, { id: '1' }),
         makeTask('todo-1', false, { id: '2' }),
       ]
+      store.clearCompleted()
       const w = mountWith(AppFooter, pinia)
-      await clearButton(w).trigger('click')
 
       expect(w.text()).toContain('清除 1 項已完成')
       expect(history.canUndo).toBe(true)
@@ -103,21 +79,10 @@ describe('AppFooter.vue', () => {
       expect(store.items.map((t) => t.id).sort()).toEqual(['1', '2'])
     })
 
-    it('全部都是已完成時，清空整份清單且仍可復原', async () => {
-      store.items = [makeTask('a', true, { id: '1' }), makeTask('b', true, { id: '2' })]
-      const w = mountWith(AppFooter, pinia)
-      await clearButton(w).trigger('click')
-
-      expect(store.items).toHaveLength(0)
-
-      await history.undo()
-      expect(store.items).toHaveLength(2)
-    })
-
     it('提示可以關閉', async () => {
       store.items = [makeTask('a', true)]
+      store.clearCompleted()
       const w = mountWith(AppFooter, pinia)
-      await clearButton(w).trigger('click')
       expect(w.text()).toContain('清除 1 項已完成')
 
       await w.find('button[aria-label="關閉提示"]').trigger('click')
@@ -142,8 +107,8 @@ describe('AppFooter.vue', () => {
 
     it('flash 優先於可復原操作提示', async () => {
       store.items = [makeTask('a', true)]
+      store.clearCompleted()
       const w = mountWith(AppFooter, pinia)
-      await clearButton(w).trigger('click')
       useFlashStore().error('同步以外的錯誤')
       await w.vm.$nextTick()
 
