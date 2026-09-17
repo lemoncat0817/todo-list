@@ -165,6 +165,32 @@ describe('signOut', () => {
     expect(auth.session).toBeNull()
     expect(auth.email).toBe('')
   })
+
+  it('清 session 之前先把還沒送出的推送擠出去，不是清完才做（那時 token 已經沒用了）', async () => {
+    // 見 stores/auth.ts signOut() 的說明：sync.ts 的 auth.status watcher
+    // 一變成 signed-out 就會呼叫 stop()，直接把還掛著的 pushTimer 清掉，
+    // 所以 flushPendingPush() 必須是 signOut() 自己主動、且在清 session
+    // 之前呼叫的，不能指望交給那個 watcher 事後補——這個測試專門驗證
+    // 「呼叫當下 session 是否還有效」，不是只驗證有沒有被呼叫過。
+    authClientMock.requestOtp.mockResolvedValue(null)
+    authClientMock.verifyOtp.mockResolvedValue({ session: fakeSession(), error: null })
+    authClientMock.signOut.mockResolvedValue(undefined)
+    const auth = setup()
+    await auth.requestMagicLink('me@example.com')
+    await auth.verifyCode('123456')
+
+    const { useSyncStore } = await import('@/stores/sync')
+    let sessionAtFlushTime: Session | null | undefined = null
+    const flushSpy = vi.spyOn(useSyncStore(), 'flushPendingPush').mockImplementation(async () => {
+      sessionAtFlushTime = auth.session
+    })
+
+    await auth.signOut()
+
+    expect(flushSpy).toHaveBeenCalledOnce()
+    expect(sessionAtFlushTime).not.toBeNull()
+    expect(auth.session).toBeNull()
+  })
 })
 
 describe('signInWithOAuthProvider', () => {

@@ -134,9 +134,27 @@ export const useAuthStore = defineStore('auth', () => {
    * 登出只斷開同步、清掉 session，不刪除本地 IndexedDB 資料——
    * 離線優先的原則，使用者要清空本地資料是另一個明確動作（見 DataDialog 的匯入／匯出），
    * 這裡不做。
+   *
+   * 清 session 之前先把還沒送出的推送擠出去（見 stores/sync.ts 的
+   * flushPendingPush() 說明）：推送到遠端刻意防抖 PUSH_DEBOUNCE_MS，
+   * 「編輯完立刻登出」很可能落在防抖計時器還沒觸發的空窗——sync.ts
+   * 自己 watch 的 auth.status 一變成 signed-out 就會呼叫 stop()，直接
+   * 把還掛著的 pushTimer 清掉，那筆變更就這樣沒送出去過。main.ts 的
+   * pagehide／visibilitychange 已經對「關分頁」做了同一件事，這裡補的
+   * 是「明確按登出」這個一樣會清掉 pushTimer、卻沒被涵蓋到的路徑。
+   * 必須在這裡、清 session 之前做，不能指望 sync.ts 的 watcher 自己去
+   * 補——那個 watcher 觸發時 session 已經是 null，flushPendingPush()
+   * 內部想送出去也沒有有效的 token 可用了。
+   *
+   * 動態 import：跟 ensureAuthClient() 同一個理由，不讓沒接 Supabase
+   * 的使用者連這個 store 都要載入。
    */
   async function signOut(): Promise<void> {
     const auth = await ensureAuthClient()
+    if (isSyncConfigured) {
+      const { useSyncStore } = await import('./sync')
+      await useSyncStore().flushPendingPush()
+    }
     await auth.signOut()
     applySession(null)
     email.value = ''

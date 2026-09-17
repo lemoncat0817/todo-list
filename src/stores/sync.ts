@@ -526,6 +526,17 @@ export const useSyncStore = defineStore('sync', () => {
           const startedAt = Date.now()
 
           await drainOutbox(token)
+          // 九張表的拉取原本考慮過用 Promise.all 併發送出（各自的
+          // applyMerge 表面上只動自己那個/那組 store 欄位，理論上互不
+          // 干擾）；實測會讓兩個既有回歸測試失敗——「本地已刪的標籤，
+          // 即使拉取還拿到遠端活列，也不該被合併回來」跟「換帳號登入
+          // 同一瀏覽器」都依賴「某張表的拉取正在等網路時，本地又發生了
+          // 一次新的編輯／刪除／清空 outbox」這件事，會先於「另一張表
+          // 讀 outbox 判斷哪些 id 是待刪除的墓碑」發生——這個先後關係
+          // 在依序 await 時有一定機率成立，併發送出後完全不能保證，兩個
+          // 測試就是在驗證這個保證有沒有被破壞。為了同步這幾百毫秒的
+          // 速度，去冒「拉取又把本地剛刪掉的東西加回來」這種資料完整性
+          // 風險不划算，所以維持依序 await。
           await pullAndMerge(taskBinding, () => tasks.items, cursor, token, tasks.mergeRemote)
           await pullAndMerge(
             projectBinding,
