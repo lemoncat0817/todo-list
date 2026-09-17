@@ -82,6 +82,16 @@ export const useCollectionsStore = defineStore('collections', () => {
   /** mergeRemote() 這次動到的 id，下一次 flush() 消費後清空——理由跟 stores/tasks.ts 的 remoteMergedIds 一致。 */
   let remoteMergedIds = new Set<string>()
 
+  /**
+   * 供 stores/sync.ts 的 drainOutbox() 呼叫：理由跟 stores/tasks.ts 的
+   * invalidatePendingSync() 完全一致，只是這裡一次管三張表的指紋，
+   * 用 kind 決定要動哪一份。
+   */
+  function invalidatePendingSync(kind: 'project' | 'tag' | 'filter', id: string): void {
+    const index = kind === 'project' ? persistedProjectsIndex : kind === 'tag' ? persistedTagsIndex : persistedFiltersIndex
+    index.delete(id)
+  }
+
   async function load(): Promise<void> {
     projects.value = await loadProjects()
     tags.value = await loadTags()
@@ -472,6 +482,7 @@ export const useCollectionsStore = defineStore('collections', () => {
     removeFilter,
     load,
     flush,
+    invalidatePendingSync,
     addProject,
     updateProject,
     removeProject,

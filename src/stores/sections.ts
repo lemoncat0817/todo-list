@@ -32,6 +32,11 @@ export const useSectionsStore = defineStore('sections', () => {
   let remoteMergedIds = new Set<string>()
   let reviveSectionIds = new Set<string>()
 
+  /** 供 stores/sync.ts 的 drainOutbox() 呼叫，理由同 stores/tasks.ts 的 invalidatePendingSync()。 */
+  function invalidatePendingSync(id: string): void {
+    persistedIndex.delete(id)
+  }
+
   async function load(): Promise<void> {
     items.value = await loadSections()
     persistedIndex = new Map(items.value.map((s) => [s.id, JSON.stringify(s)]))
@@ -159,6 +164,7 @@ export const useSectionsStore = defineStore('sections', () => {
     forProject,
     load,
     flush,
+    invalidatePendingSync,
     addSection,
     renameSection,
     moveSection,

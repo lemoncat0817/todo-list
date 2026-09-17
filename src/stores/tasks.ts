@@ -285,6 +285,25 @@ export const useTasksStore = defineStore('tasks', () => {
    * 序列化幾百個小物件是毫秒等級，真正貴的是 IndexedDB 的寫入。
    */
   let persistedIndex = new Map<string, string>()
+  /**
+   * flush() 判斷要不要從 IndexedDB 重建 persistedIndex 的依據，故意跟
+   * 「persistedIndex 是不是空的」脫鉤——invalidatePendingSync() 也會讓
+   * persistedIndex 變空（例如整個 session 只有一筆任務、又剛好被回退），
+   * 那種情況必須維持「已初始化」，不能被當成 Vite HMR 那種真正需要
+   * 整份重建的情況，否則剛回退的那一筆會被這裡用磁碟上的舊內容蓋回去，
+   * 等於當場撤銷 invalidatePendingSync() 的效果。
+   */
+  let persistedIndexReady = false
+
+  /**
+   * 供 stores/sync.ts 的 drainOutbox() 呼叫：一個 create／patch op 被捨棄、
+   * 但不確定伺服器端有沒有真的套用時，把這筆列從指紋裡移除，讓下一次
+   * flush() 的 diff 把它當成「還沒同步」重新判斷——見 sync.ts 裡
+   * invalidateFingerprint() 上方那則長註解的完整理由。
+   */
+  function invalidatePendingSync(id: string): void {
+    persistedIndex.delete(id)
+  }
 
   /**
    * 這次 flush() 之前，最近一次 mergeRemote() 動到的 id 集合——這些列的
@@ -319,11 +338,13 @@ export const useTasksStore = defineStore('tasks', () => {
           // persistedIndex 是 setup() 閉包裡的 Map，不是 Pinia state——Vite HMR
           // 重跑 store 時 items 可能還在、指紋卻變成空的。若直接 diff，每一列
           // 都會被當成新任務再排一次 task.create，撞遠端 tasks_pkey（見
-          // supabase/migrations/0028）。指紋空時先從 IndexedDB 重建，只把
-          // 「記憶體有、磁碟還沒有」的列當成真正的新增。
-          if (persistedIndex.size === 0) {
+          // supabase/migrations/0028）。還沒初始化過時先從 IndexedDB 重建，
+          // 只把「記憶體有、磁碟還沒有」的列當成真正的新增——用
+          // persistedIndexReady 而不是 size === 0 判斷，理由見它上面的註解。
+          if (!persistedIndexReady) {
             const stored = await loadTasks()
             persistedIndex = new Map(stored.map((t) => [t.id, JSON.stringify(t)]))
+            persistedIndexReady = true
           }
           const { upserts, deletes, nextFingerprint } = diffAgainstFingerprint(snapshot(), persistedIndex)
 
@@ -364,6 +385,7 @@ export const useTasksStore = defineStore('tasks', () => {
       // 剛讀進來的內容就是資料庫裡的內容，先記下指紋，
       // 否則第一次 flush 會把每一列都當成新的而重寫一遍
       persistedIndex = new Map(snapshot().map((t) => [t.id, JSON.stringify(t)]))
+      persistedIndexReady = true
       await collections.load()
       await comments.load()
       await sections.load()
@@ -1079,6 +1101,7 @@ export const useTasksStore = defineStore('tasks', () => {
     childrenOf,
     init,
     flush,
+    invalidatePendingSync,
     add,
     addSubtask,
     update,

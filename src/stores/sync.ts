@@ -5,6 +5,7 @@ import {
   META_DEVICE_ID,
   META_SYNC_ACCOUNT_ID,
   META_SYNC_LAST_PULLED_AT,
+  type OpKind,
   type StoredActivity,
   type StoredAttachment,
   type StoredComment,
@@ -213,6 +214,31 @@ export const useSyncStore = defineStore('sync', () => {
   const MAX_OP_ATTEMPTS = 5
 
   /**
+   * 把一個被捨棄、但不確定伺服器有沒有真的套用的 op，退回給它所屬的 store，
+   * 讓下一次 flush() 用「現在的本地內容」重新診斷一次，而不是永遠停在
+   * enqueue 當下就已經前推的指紋（見下面 drainOutbox() 的說明）。
+   */
+  function invalidateFingerprint(kind: OpKind, targetId: string): void {
+    const entity = kind.slice(0, kind.indexOf('.'))
+    switch (entity) {
+      case 'task':
+        tasks.invalidatePendingSync(targetId)
+        break
+      case 'project':
+      case 'tag':
+      case 'filter':
+        collections.invalidatePendingSync(entity, targetId)
+        break
+      case 'comment':
+        comments.invalidatePendingSync(targetId)
+        break
+      case 'section':
+        sections.invalidatePendingSync(targetId)
+        break
+    }
+  }
+
+  /**
    * outbox 依序送出，中途失敗就整批停下——不能跳過失敗的那筆繼續送
    * 後面的，不然同一筆任務的兩個補丁有可能倒著順序抵達伺服器。失敗的
    * 那筆記一次重試次數（markOpAttempt，供未來做退避用），錯誤原樣往上
@@ -226,47 +252,118 @@ export const useSyncStore = defineStore('sync', () => {
    * 四張表（tasks/projects/tags/filters）的 op 混在同一個佇列裡，
    * 依 createdAt 排序一起送——outbox 本來就不分表，見 stores/tasks.ts
    * 的 enqueueSyncOps／stores/collections.ts 的 enqueueCollectionOps。
+   *
+   * 指紋補漏：各 store 的 persistedIndex／persistedXIndex 在 op 被排進
+   * outbox 的當下就已經前推（見 stores/tasks.ts flush() 的註解），不是
+   * 送達伺服器才前推——這是刻意的，離線時才能一路排隊而不必等網路。
+   * 代價是：如果一個 create／patch op 最後被上面 1)、3) 捨棄，且我們
+   * 沒辦法確定伺服器端到底有沒有套用，指紋已經前推到「當作處理過了」，
+   * 之後這筆列不管本地再怎麼改都只會再產生一個 patch，永遠不會被察覺
+   * 「其實從來沒真的建立過」——這筆資料就此卡死，安靜地再也不會同步。
+   * 這裡在以下三種情況呼叫 invalidateFingerprint() 讓它退回未同步狀態，
+   * 下一次 flush() 用現在的本地內容重新判斷該送 create 還是 patch：
+   *   a) 重試次數用盡而捨棄（非 delete）——不知道伺服器有沒有收到。
+   *   b) TK004（task.create 引用的專案在伺服器端不存在，通常是「建立
+   *      任務後、專案的 create 還沒送達就把專案刪了」這種時序）——
+   *      任務本身這時多半已經沒有那個 projectId 了（removeProject()
+   *      預設就會清掉），重新診斷會自然送出一份不帶失效專案參照的
+   *      create，不需要另外寫一支「清掉懸空專案」的特別處理。
+   *   c) PT002／TK002（「找不到，可能還沒同步完成」，非 delete）——
+   *      跟 a) 同一類不確定，只是這次伺服器端明確給了理由。
+   * 三者都不 throw（不中斷這批 outbox），因為已經知道原因且已經處理，
+   * 沒有理由讓同一批裡其他不相干的 op 跟著等到下一輪。PT001／TK001
+   * （已被其他成員刪除）跟 PT003／TK003／WS004（無權限、人數已滿）
+   * 維持原樣不觸發這個機制：前者是遠端明確的墓碑，該讓本地跟著變成
+   * 已刪除，不是重新排一次 create；後者重試也不會有不同結果。
    */
-  async function drainOutbox(token: string): Promise<void> {
+  async function drainOutbox(token: string, isRetryAfterHeal = false): Promise<void> {
     const ops = await loadOutbox()
-    for (const op of ops) {
-      if (op.attempts >= MAX_OP_ATTEMPTS) {
-        console.warn(`[sync] op ${op.id} (${op.kind}) 連續重試 ${op.attempts} 次失敗，予以捨棄避免阻塞同步佇列`, op)
-        await removeOp(op.id)
-        continue
-      }
-      try {
-        await sendOp(op, token)
-        await removeOp(op.id)
-      } catch (error) {
-        // 刪除操作若目標在遠端已不存在或已被刪除，視為刪除完成，直接移除
-        if (
-          op.kind.endsWith('.delete') &&
-          error instanceof SyncHttpError &&
-          (error.code === 'PT001' || error.code === 'PT002' || error.code === 'TK001' || error.code === 'TK002' || error.status === 404)
-        ) {
-          console.info(`[sync] 刪除操作 ${op.id} 目標已不存在於伺服器，視為完成並自佇列移除`, op)
+    let needsRediff = false
+    try {
+      for (const op of ops) {
+        if (op.attempts >= MAX_OP_ATTEMPTS) {
+          console.warn(`[sync] op ${op.id} (${op.kind}) 連續重試 ${op.attempts} 次失敗，予以捨棄避免阻塞同步佇列`, op)
+          if (!op.kind.endsWith('.delete')) {
+            invalidateFingerprint(op.kind, op.targetId)
+            needsRediff = true
+          }
           await removeOp(op.id)
           continue
         }
-
-        // 不可重試的業務錯誤（任務已刪除、不存在、無權限），重試無效，移除以避免佇列永久卡死
-        if (
-          error instanceof SyncHttpError &&
-          error.code !== null &&
-          (error.code in TASK_PATCH_ERROR_MESSAGES ||
-            error.code === 'PT003' ||
-            error.code === 'TK003' ||
-            error.code === 'PT004' ||
-            error.code === 'WS004')
-        ) {
-          console.warn(`[sync] op ${op.id} (${op.kind}) 遭遇不可重試的業務錯誤（${error.code}），予以移除`, op)
+        try {
+          await sendOp(op, token)
           await removeOp(op.id)
+        } catch (error) {
+          // 刪除操作若目標在遠端已不存在或已被刪除，視為刪除完成，直接移除
+          if (
+            op.kind.endsWith('.delete') &&
+            error instanceof SyncHttpError &&
+            (error.code === 'PT001' || error.code === 'PT002' || error.code === 'TK001' || error.code === 'TK002' || error.status === 404)
+          ) {
+            console.info(`[sync] 刪除操作 ${op.id} 目標已不存在於伺服器，視為完成並自佇列移除`, op)
+            await removeOp(op.id)
+            continue
+          }
+
+          // task.create 引用的專案已經不存在（見上方說明 b）——不是無條件
+          // 不可重試，而是已知原因、已經處理，讓下一輪重新診斷即可。
+          if (op.kind === 'task.create' && error instanceof SyncHttpError && error.code === 'TK004') {
+            console.info(`[sync] op ${op.id} (${op.kind}) 引用的專案已不存在，重置本地指紋讓下一輪重新診斷`, op)
+            invalidateFingerprint(op.kind, op.targetId)
+            needsRediff = true
+            await removeOp(op.id)
+            continue
+          }
+
+          // PT002／TK002（非刪除操作）：不確定伺服器有沒有這筆列，多半是
+          // 它自己的 create 從沒送達（見上方說明 c），值得讓下一輪重新
+          // 整份判斷，而不是跟其他「已刪除／無權限」一樣直接放棄。
+          if (
+            !op.kind.endsWith('.delete') &&
+            error instanceof SyncHttpError &&
+            (error.code === 'PT002' || error.code === 'TK002')
+          ) {
+            console.warn(`[sync] op ${op.id} (${op.kind}) 找不到目標，重置本地指紋讓下一輪重新整份送出`, op)
+            invalidateFingerprint(op.kind, op.targetId)
+            needsRediff = true
+            await removeOp(op.id)
+            continue
+          }
+
+          // 不可重試的業務錯誤（任務已刪除、無權限……），重試無效，移除以避免佇列永久卡死
+          if (
+            error instanceof SyncHttpError &&
+            error.code !== null &&
+            (error.code in TASK_PATCH_ERROR_MESSAGES ||
+              error.code === 'PT003' ||
+              error.code === 'TK003' ||
+              error.code === 'PT004' ||
+              error.code === 'WS004')
+          ) {
+            console.warn(`[sync] op ${op.id} (${op.kind}) 遭遇不可重試的業務錯誤（${error.code}），予以移除`, op)
+            await removeOp(op.id)
+            throw error
+          }
+
+          await markOpAttempt(op.id)
           throw error
         }
-
-        await markOpAttempt(op.id)
-        throw error
+      }
+    } finally {
+      // 不管迴圈是正常跑完還是中途拋錯，只要有指紋被回退，就補一次
+      // flush() 讓對應的 create／patch 用現在的本地內容重新排進 outbox，
+      // 不必等使用者剛好再編輯到同一筆才會被撿回來。
+      //
+      // 補完立刻再 drain 一輪（isRetryAfterHeal 擋遞迴只做這一輪）：
+      // 不這樣做的話，剛補回去的 op 要等到下一次 30 秒輪詢或使用者
+      // 再碰一次別的東西才會真的送出——對「建立任務後立刻刪除其所屬
+      // 專案」這種情境來說，使用者體驗上就是「錯誤訊息消失了，但任務
+      // 還要再等半分鐘才會真的同步完」，不夠乾脆。isRetryAfterHeal 擋住
+      // 的是「補救之後這一輪還是失敗」的情況——那就是真的有問題，不該
+      // 無限遞迴，留給下一次自然觸發的週期就好。
+      if (needsRediff) {
+        await tasks.flush()
+        if (!isRetryAfterHeal) await drainOutbox(token, true)
       }
     }
   }

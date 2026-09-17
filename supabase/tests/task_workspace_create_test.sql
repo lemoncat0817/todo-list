@@ -1,7 +1,7 @@
 -- 受邀成員在別人的工作區新增未分類任務，必須落到該工作區的收件匣，
 -- 不是建立者自己的個人工作區（見 0026）。
 begin;
-select plan(4);
+select plan(5);
 
 insert into auth.users (instance_id, id, aud, role, email, encrypted_password,
   email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
@@ -78,6 +78,22 @@ select is(
   (select count(*)::int from public.tasks where id = '26000000-0000-0000-0000-000000000013'),
   0,
   '權限被拒時不會另外寫出一筆落到個人工作區的任務');
+
+reset role;
+
+-- 5) project_id 指到一個不存在的專案（見 0032）——outbox 端要能靠
+-- TK004 分辨「這筆列的 create 其實沒有依附對象」，而不是通用的 P0001。
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000a11c","role":"authenticated"}';
+
+select throws_ok(
+  $$ select public.create_task(
+       '26000000-0000-0000-0000-000000000004',
+       jsonb_build_object('id', '26000000-0000-0000-0000-000000000014', 'task_name', '專案不存在',
+         'rank', 'D', 'project_id', '00000000-0000-0000-0000-0000000000ff')
+     ) $$,
+  'TK004', 'project 00000000-0000-0000-0000-0000000000ff 不存在或尚未歸屬工作區',
+  'project_id 指到不存在的專案時丟出 TK004 而不是通用的 P0001');
 
 reset role;
 

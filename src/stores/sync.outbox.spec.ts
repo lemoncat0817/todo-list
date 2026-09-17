@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useTasksStore } from '@/stores/tasks'
 import { useCollectionsStore } from '@/stores/collections'
 import { enqueueOp, getMeta, loadOutbox, setMeta } from '@/db'
-import { META_SYNC_ACCOUNT_ID, META_SYNC_LAST_PULLED_AT } from '@/db/schema'
+import { META_SYNC_ACCOUNT_ID, META_SYNC_LAST_PULLED_AT, type Op } from '@/db/schema'
 
 /**
  * stores/sync.ts 實際把 outbox 送出去（drainOutbox）的整合測試。
@@ -240,6 +240,77 @@ describe('drainOutbox：outbox 真的被送出並在成功後清空', () => {
 
     // 雖然報錯，但 op 已被移除，不會形成死鎖
     expect(await loadOutbox()).toEqual([])
+  })
+
+  it('task.create 重試次數用盡而捨棄時，本地指紋跟著回退，同一輪立刻用目前內容重新送出並成功', async () => {
+    const { sync, auth, tasks } = setup()
+    tasks.isLoading = false
+    auth.session = fakeSession()
+
+    const task = tasks.add('會被捨棄又自動補回的任務')
+    await tasks.flush()
+    const originalOp = (await loadOutbox()).find((o) => o.targetId === task.id)
+    expect(originalOp).toBeDefined()
+    // 模擬這筆 op 已經連續重試 5 次（同一個 op id，直接覆寫 attempts）。
+    await enqueueOp({ ...(originalOp as Op), attempts: 5 })
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => [] } as Response)
+
+    await sync.start()
+    await vi.waitFor(async () => {
+      expect(await loadOutbox()).toEqual([])
+    })
+
+    // 被捨棄的那筆本身沒有真的打過 RPC（它是直接被判定重試次數超標）；
+    // 指紋回退後、同一輪立刻補送的那一筆才是真正呼叫 create_task 的
+    // 請求，證明這筆任務沒有從此卡死不再同步。
+    const createCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/rpc/create_task'))
+    expect(createCalls.length).toBeGreaterThanOrEqual(1)
+    expect(sync.syncError).toBeNull()
+  })
+
+  it('建立任務後立刻刪除其所屬專案，task.create 因 TK004 失敗仍能自動用目前內容（無專案）補救', async () => {
+    const { sync, auth, tasks, collections } = setup()
+    tasks.isLoading = false
+    auth.session = fakeSession()
+    await collections.load()
+
+    const project = collections.addProject('建立任務後隨即被刪的專案')
+    const task = tasks.add('掛在快被刪專案下的任務', { projectId: project.id })
+    await tasks.flush() // 先讓 task.create(project_id=P) 這筆「舊快照」進 outbox
+    // 立刻刪除專案——removeProject() 會把這筆任務的 projectId 清成 null，
+    // 但 outbox 裡那筆「建立當下」的 task.create payload 已經是舊快照，
+    // 還帶著剛剛那個專案的 id，不會被這次刪除追溯改掉。
+    tasks.removeProject(project.id)
+    await tasks.flush()
+
+    let createAttempts = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options) => {
+      const u = String(url)
+      if (u.includes('/rpc/create_task')) {
+        createAttempts += 1
+        const body = JSON.parse((options as RequestInit).body as string) as { p_row: { project_id?: string } }
+        if (body.p_row.project_id) {
+          return {
+            ok: false,
+            status: 400,
+            text: async () =>
+              JSON.stringify({ code: 'TK004', message: `project ${project.id} 不存在或尚未歸屬工作區` }),
+          } as Response
+        }
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      return { ok: true, json: async () => [] } as Response
+    })
+
+    await sync.start()
+    await vi.waitFor(async () => {
+      expect(await loadOutbox()).toEqual([])
+    })
+    // 第一次帶著已失效的 project_id 失敗，第二次（自動重排）不帶專案才成功
+    expect(createAttempts).toBeGreaterThanOrEqual(2)
+    expect(tasks.items.find((t) => t.id === task.id)?.projectId).toBeNull()
+    expect(sync.syncError).toBeNull()
   })
 
   it('本地已刪的標籤，即使拉取還拿到遠端活列，也不該被合併回來', async () => {

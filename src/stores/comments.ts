@@ -51,6 +51,11 @@ export const useCommentsStore = defineStore('comments', () => {
   /** mergeRemote() 這次動到的 id，下一次 flush() 消費後清空——理由跟 stores/tasks.ts 的 remoteMergedIds 一致。 */
   let remoteMergedIds = new Set<string>()
 
+  /** 供 stores/sync.ts 的 drainOutbox() 呼叫，理由同 stores/tasks.ts 的 invalidatePendingSync()。 */
+  function invalidatePendingSync(id: string): void {
+    persistedIndex.delete(id)
+  }
+
   async function load(): Promise<void> {
     items.value = await loadComments()
     persistedIndex = new Map(items.value.map((c) => [c.id, JSON.stringify(c)]))
@@ -149,5 +154,5 @@ export const useCommentsStore = defineStore('comments', () => {
     items.value = [...rows]
   }
 
-  return { items, forTask, load, flush, add, update, remove, mergeRemote }
+  return { items, forTask, load, flush, invalidatePendingSync, add, update, remove, mergeRemote }
 })
