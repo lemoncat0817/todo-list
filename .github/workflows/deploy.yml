@@ -50,7 +50,11 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - uses: supabase/setup-cli@v1
+      # v1 底層用 node20 執行期，GitHub 正在淘汰 node20 runner（跑起來會被
+      # 強制轉到 node24 並跳出棄用警告）；v2 起改成 composite + Bun 安裝
+      # CLI，不再宣告 node runtime，介面（version 輸入/輸出）沒變，直接
+      # 升版不影響用法。
+      - uses: supabase/setup-cli@v3
         if: steps.guard.outputs.configured == 'true'
         with:
           version: latest
