@@ -21,20 +21,37 @@ jobs:
   migrate:
     name: 推送資料庫 migration
     runs-on: ubuntu-latest
-    # 沒設定這三個值就整個跳過（不是失敗）——跟下面建置那步「沒設定
-    # VITE_SUPABASE_URL/ANON_KEY 時同步功能整個隱藏」同一個原則：沒接
-    # Supabase 的 fork 一樣要能正常部署純前端，不能因為缺 secrets 卡住。
-    # 之前這一步是完全手動（見對話紀錄），漏推的話正式環境的 schema
-    # 會悄悄落後於 repo 裡的 migrations，直到有人手動發現才補推。
+    # 只用 vars 當粗篩（job 層級的 if 不能讀 secrets，見下面 guard 步驟的
+    # 註解）：完全沒設定 Supabase 的 fork 直接整個跳過這個 job。
     if: >
       (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') &&
-      vars.VITE_SUPABASE_URL != '' && secrets.SUPABASE_ACCESS_TOKEN != '' && secrets.SUPABASE_DB_PASSWORD != ''
+      vars.VITE_SUPABASE_URL != ''
     steps:
+      # job 層級的 if 只能讀 github/inputs/needs/vars，讀不到 secrets
+      # （actionlint 會直接擋下來）；細篩「secrets 是否真的設定」只能
+      # 放在步驟層級。沒設定時讓這個 job 正常成功、只是後面步驟全部
+      # 略過，而不是讓它失敗擋下部署——跟「沒接 Supabase 時同步功能
+      # 整個隱藏」同一個原則：沒設定不是錯誤。
+      - name: 檢查是否已設定推送 migration 所需的 secrets
+        id: guard
+        run: |
+          if [ -n "$SUPABASE_ACCESS_TOKEN" ] && [ -n "$SUPABASE_DB_PASSWORD" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::尚未設定 SUPABASE_ACCESS_TOKEN／SUPABASE_DB_PASSWORD，略過推送 migration"
+          fi
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
       - uses: actions/checkout@v7
+        if: steps.guard.outputs.configured == 'true'
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: supabase/setup-cli@v1
+        if: steps.guard.outputs.configured == 'true'
         with:
           version: latest
 
@@ -43,9 +60,11 @@ jobs:
       # 就多一個可能跟 VITE_SUPABASE_URL 兜不起來的來源。
       - name: 從 VITE_SUPABASE_URL 取出 project ref
         id: project
+        if: steps.guard.outputs.configured == 'true'
         run: echo "ref=$(echo '${{ vars.VITE_SUPABASE_URL }}' | sed -E 's#https://([^.]+)\..*#\1#')" >> "$GITHUB_OUTPUT"
 
       - name: 連結正式環境專案
+        if: steps.guard.outputs.configured == 'true'
         run: supabase link --project-ref ${{ steps.project.outputs.ref }}
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -54,6 +73,7 @@ jobs:
       # 套用遠端 migration history 裡還沒有的檔案，順序對不上會直接報錯
       # 而不是默默跳過，出問題會讓這個 job 失敗、擋下後面的前端部署。
       - name: 推送尚未套用到正式環境的 migrations
+        if: steps.guard.outputs.configured == 'true'
         run: supabase db push --yes
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
