@@ -18,12 +18,59 @@ permissions:
   id-token: write
 
 jobs:
+  migrate:
+    name: 推送資料庫 migration
+    runs-on: ubuntu-latest
+    # 沒設定這三個值就整個跳過（不是失敗）——跟下面建置那步「沒設定
+    # VITE_SUPABASE_URL/ANON_KEY 時同步功能整個隱藏」同一個原則：沒接
+    # Supabase 的 fork 一樣要能正常部署純前端，不能因為缺 secrets 卡住。
+    # 之前這一步是完全手動（見對話紀錄），漏推的話正式環境的 schema
+    # 會悄悄落後於 repo 裡的 migrations，直到有人手動發現才補推。
+    if: >
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') &&
+      vars.VITE_SUPABASE_URL != '' && secrets.SUPABASE_ACCESS_TOKEN != '' && secrets.SUPABASE_DB_PASSWORD != ''
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # project ref 直接從 VITE_SUPABASE_URL 取（https://<ref>.supabase.co），
+      # 不另外開一個 SUPABASE_PROJECT_ID——兩個值本來就該永遠一致，多一個
+      # 就多一個可能跟 VITE_SUPABASE_URL 兜不起來的來源。
+      - name: 從 VITE_SUPABASE_URL 取出 project ref
+        id: project
+        run: echo "ref=$(echo '${{ vars.VITE_SUPABASE_URL }}' | sed -E 's#https://([^.]+)\..*#\1#')" >> "$GITHUB_OUTPUT"
+
+      - name: 連結正式環境專案
+        run: supabase link --project-ref ${{ steps.project.outputs.ref }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      # --yes：CI 是非互動環境，不加會卡在確認提示上。db push 本身只會
+      # 套用遠端 migration history 裡還沒有的檔案，順序對不上會直接報錯
+      # 而不是默默跳過，出問題會讓這個 job 失敗、擋下後面的前端部署。
+      - name: 推送尚未套用到正式環境的 migrations
+        run: supabase db push --yes
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
   build:
     name: 建置
     runs-on: ubuntu-latest
-    # 只有在手動觸發、或 CI 完整通過（success）時才執行建置與部署，
-    # 避免 CI 失敗時將有問題的程式碼發布至正式機。
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    needs: migrate
+    # migrate 沒設定 Supabase 時會是 skipped 不是 success，這裡要放行；
+    # 只有它真的失敗（推送出錯）才擋下後面的部署，避免發布依賴新 schema
+    # 卻還沒真的推上去的前端。跟原本「CI 失敗時不部署」是同一個防線，
+    # 只是多擋一種「資料庫沒跟上」的情形。
+    if: >
+      always() &&
+      (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     steps:
       - uses: actions/checkout@v7
         with:
