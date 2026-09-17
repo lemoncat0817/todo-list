@@ -7,7 +7,7 @@ const clientMocks = vi.hoisted(() => ({
   upsertNotificationPrefs: vi.fn(),
   markNotificationRead: vi.fn(),
   markAllNotificationsRead: vi.fn(),
-  DEFAULT_NOTIFICATION_PREFS: { notifyOnMention: true, notifyOnAssignment: true, dailyDigestEnabled: false },
+  DEFAULT_NOTIFICATION_PREFS: { notifyOnMention: true, notifyOnAssignment: true, notifyOnDue: true, dailyDigestEnabled: false },
 }))
 vi.mock('@/sync/notificationsClient', () => clientMocks)
 
@@ -164,18 +164,22 @@ describe('notifications store — 偏好設定', () => {
     const { notifications, auth } = setup()
     auth.session = fakeSession()
     clientMocks.fetchNotificationPrefs.mockResolvedValue({
-      notifyOnMention: false, notifyOnAssignment: true, dailyDigestEnabled: true,
+      notifyOnMention: false, notifyOnAssignment: true, notifyOnDue: true, dailyDigestEnabled: true,
     })
 
     await notifications.refreshPrefs()
 
-    expect(notifications.prefs).toEqual({ notifyOnMention: false, notifyOnAssignment: true, dailyDigestEnabled: true })
+    expect(notifications.prefs).toEqual({
+      notifyOnMention: false, notifyOnAssignment: true, notifyOnDue: true, dailyDigestEnabled: true,
+    })
   })
 
   it('refreshPrefs 失敗時寫入錯誤，不覆蓋既有偏好', async () => {
     const { notifications, auth } = setup()
     auth.session = fakeSession()
-    notifications.prefs = { notifyOnMention: false, notifyOnAssignment: true, dailyDigestEnabled: true }
+    notifications.prefs = {
+      notifyOnMention: false, notifyOnAssignment: true, notifyOnDue: true, dailyDigestEnabled: true,
+    }
     clientMocks.fetchNotificationPrefs.mockRejectedValue(new Error('network error'))
     vi.spyOn(console, 'error').mockImplementation(() => {})
 

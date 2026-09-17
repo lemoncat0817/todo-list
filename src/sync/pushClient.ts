@@ -21,11 +21,59 @@ function urlBase64ToUint8Array(base64Url: string): Uint8Array<ArrayBuffer> {
   return bytes
 }
 
+/**
+ * 取得或註冊 Service Worker。
+ * 包含逾時防護，避免在未註冊 worker 或特殊環境下 navigator.serviceWorker.ready 無限掛起。
+ */
+async function getOrRegisterServiceWorker(): Promise<ServiceWorkerRegistration> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    throw new Error('此瀏覽器不支援 Service Worker')
+  }
+
+  // 若環境支援 getRegistration，先嘗試取得；若無註冊，則主動註冊 sw.js
+  if (typeof navigator.serviceWorker.getRegistration === 'function') {
+    const reg = await navigator.serviceWorker.getRegistration('./')
+    if (!reg && typeof navigator.serviceWorker.register === 'function') {
+      const swUrl = new URL('sw.js', document.baseURI).href
+      await navigator.serviceWorker.register(swUrl, { scope: './' })
+    }
+  }
+
+  if ('ready' in navigator.serviceWorker) {
+    const readyPromise = navigator.serviceWorker.ready
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('等待 Service Worker 就緒逾時')), 5000),
+    )
+    return await Promise.race([readyPromise, timeoutPromise])
+  }
+
+  throw new Error('無法取得 Service Worker 註冊資訊')
+}
+
 /** 目前這個瀏覽器有沒有一組還在生效的推播訂閱——跟資料庫裡存的是否一致由呼叫端自己決定要不要同步。 */
 export async function getExistingSubscription(): Promise<PushSubscription | null> {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null
-  const registration = await navigator.serviceWorker.ready
-  return registration.pushManager.getSubscription()
+  if (
+    typeof navigator === 'undefined' ||
+    !('serviceWorker' in navigator) ||
+    typeof window === 'undefined' ||
+    !('PushManager' in window)
+  ) {
+    return null
+  }
+
+  // 避免在尚未註冊 Service Worker 時卡在 navigator.serviceWorker.ready
+  if (typeof navigator.serviceWorker.getRegistration === 'function') {
+    const reg = await navigator.serviceWorker.getRegistration('./')
+    if (!reg) return null
+    return await reg.pushManager.getSubscription()
+  }
+
+  if ('ready' in navigator.serviceWorker) {
+    const registration = await navigator.serviceWorker.ready
+    return registration.pushManager.getSubscription()
+  }
+
+  return null
 }
 
 /**
@@ -34,7 +82,7 @@ export async function getExistingSubscription(): Promise<PushSubscription | null
  * 顯示看得到的通知，瀏覽器會直接拒絕沒有這個旗標的訂閱請求。
  */
 export async function subscribeToPush(accessToken: string): Promise<void> {
-  const registration = await navigator.serviceWorker.ready
+  const registration = await getOrRegisterServiceWorker()
   const subscription = await registration.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
@@ -47,11 +95,12 @@ export async function subscribeToPush(accessToken: string): Promise<void> {
     throw new Error('瀏覽器回傳的推播訂閱缺少必要欄位')
   }
 
+  const timezone = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' : 'UTC'
   const url = `${SUPABASE_URL}/rest/v1/${TABLE}?on_conflict=user_id,endpoint`
   const res = await fetch(url, {
     method: 'POST',
     headers: headers(accessToken, { Prefer: 'resolution=merge-duplicates,return=minimal' }),
-    body: JSON.stringify([{ endpoint: json.endpoint, p256dh, auth }]),
+    body: JSON.stringify([{ endpoint: json.endpoint, p256dh, auth, timezone }]),
   })
   if (!res.ok) {
     // 存進資料庫失敗的話，訂閱留在瀏覽器端也沒有用——伺服器完全不知道

@@ -82,7 +82,19 @@
           有到期時間的任務到點時通知我
         </label>
 
-        <p class="text-xs text-ink-faint">
+        <p v-if="!prefs.remindersEnabled" class="text-xs text-ink-faint">
+          開啟後在任務到期時會收到通知提醒。
+        </p>
+        <p v-else-if="isPushConfigured && auth.status === 'signed-in' && push.subscribed" class="text-xs text-ink-faint">
+          已啟用背景推播：<strong class="font-medium text-ink-soft">分頁關閉也能在背景接收推播</strong>。
+        </p>
+        <p v-else-if="isPushConfigured && auth.status === 'signed-in'" class="text-xs text-ink-faint">
+          目前僅在分頁開著時提醒；開啟下方推播通知後，<strong class="font-medium text-ink-soft">分頁關閉也能收到</strong>。
+        </p>
+        <p v-else-if="isPushConfigured && auth.status !== 'signed-in'" class="text-xs text-ink-faint">
+          目前為本機提醒模式（<strong class="font-medium text-ink-soft">分頁開著才會提醒</strong>）；登入後可開啟背景推播。
+        </p>
+        <p v-else class="text-xs text-ink-faint">
           這是純前端工具，沒有伺服器，所以<strong class="font-medium text-ink-soft">只有在這個分頁開著的時候</strong>才會提醒。
           分頁關掉就不會響。
         </p>
@@ -96,7 +108,9 @@
       <section v-if="isPushConfigured" class="flex flex-col gap-2">
         <h3 class="text-sm font-medium text-ink-soft">推播通知</h3>
 
-        <p v-if="auth.status !== 'signed-in'" class="text-sm text-ink-faint">登入後才能開啟。</p>
+        <p v-if="auth.status !== 'signed-in'" class="text-sm text-ink-faint">
+          登入後才能開啟。開啟後即使分頁關閉，到期與協作事件也能在背景收到推播。
+        </p>
         <p v-else-if="push.isIosNotStandalone" class="text-sm text-ink-faint">
           iOS 上要先把這個網站加到主畫面（分享→加入主畫面）才能開啟推播通知，
           Safari 分頁裡沒有這個功能。
@@ -112,9 +126,8 @@
         </label>
 
         <p v-if="push.error" role="alert" class="text-xs text-danger-ink">{{ push.error }}</p>
-        <p class="text-xs text-ink-faint">
-          跟上面的到期提醒不同，這個<strong class="font-medium text-ink-soft">分頁關掉也收得到</strong>——實際會通知
-          哪些事件，由下面的「通知偏好」決定。
+        <p v-if="auth.status === 'signed-in'" class="text-xs text-ink-faint">
+          開啟後分頁關閉也能收到通知，實際接收哪些項目由下方的「通知偏好」決定。
         </p>
       </section>
 
@@ -126,6 +139,11 @@
       <section v-if="isSyncConfigured && auth.status === 'signed-in'" class="flex flex-col gap-2">
         <h3 class="text-sm font-medium text-ink-soft">通知偏好</h3>
 
+        <label class="flex items-center gap-2 text-[15px] text-ink">
+          <input type="checkbox" :checked="notifications.prefs.notifyOnDue" class="size-4 accent-accent"
+            @change="notifications.setPref({ notifyOnDue: ($event.target as HTMLInputElement).checked })">
+          任務到期時通知我
+        </label>
         <label class="flex items-center gap-2 text-[15px] text-ink">
           <input type="checkbox" :checked="notifications.prefs.notifyOnMention" class="size-4 accent-accent"
             @change="notifications.setPref({ notifyOnMention: ($event.target as HTMLInputElement).checked })">
@@ -278,8 +296,23 @@ async function toggleReminders(event: Event): Promise<void> {
 }
 
 async function togglePush(event: Event): Promise<void> {
-  const wantsOn = (event.target as HTMLInputElement).checked
-  if (wantsOn) await push.enable()
-  else await push.disable()
+  const target = event.target as HTMLInputElement
+  const wantsOn = target.checked
+  if (wantsOn) {
+    await push.enable()
+    if (!push.subscribed) {
+      target.checked = false
+      return
+    }
+    if (!prefs.remindersEnabled) {
+      await reminders.enable()
+      permission.value = reminders.permission()
+    }
+  } else {
+    await push.disable()
+    if (push.subscribed) {
+      target.checked = true
+    }
+  }
 }
 </script>

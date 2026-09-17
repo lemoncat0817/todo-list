@@ -18,12 +18,22 @@ describe('fetchNotificationPrefs', () => {
   it('有偏好列時正確改名回 camelCase', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
-      json: async () => [{ notify_on_mention: false, notify_on_assignment: true, daily_digest_enabled: true }],
+      json: async () => [
+        {
+          notify_on_mention: false,
+          notify_on_assignment: true,
+          notify_on_due: true,
+          daily_digest_enabled: true,
+          timezone: 'Asia/Taipei',
+        },
+      ],
     } as Response)
     await expect(fetchNotificationPrefs('token')).resolves.toEqual({
       notifyOnMention: false,
       notifyOnAssignment: true,
+      notifyOnDue: true,
       dailyDigestEnabled: true,
+      timezone: 'Asia/Taipei',
     })
   })
 })
@@ -31,11 +41,13 @@ describe('fetchNotificationPrefs', () => {
 describe('upsertNotificationPrefs', () => {
   it('只送真的有帶到的欄位，不會把其餘欄位一併覆蓋成 undefined', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, text: async () => '' } as Response)
-    await upsertNotificationPrefs('token', { notifyOnMention: false })
+    await upsertNotificationPrefs('token', { notifyOnDue: false, timezone: 'Asia/Taipei' })
 
     const [url, options] = fetchMock.mock.calls[0]!
     expect(String(url)).toContain('/rest/v1/notification_prefs?on_conflict=user_id')
-    expect(JSON.parse(String((options as RequestInit).body))).toEqual([{ notify_on_mention: false }])
+    expect(JSON.parse(String((options as RequestInit).body))).toEqual([
+      { notify_on_due: false, timezone: 'Asia/Taipei' },
+    ])
   })
 })
 

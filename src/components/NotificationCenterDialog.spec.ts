@@ -43,6 +43,19 @@ describe('NotificationCenterDialog.vue', () => {
     expect(w.text()).toContain('寫週報')
   })
 
+  it('到期提醒顯示到期標籤與任務名稱', () => {
+    const pinia = setup()
+    useTasksStore().items = [makeTask('交報告', false, { id: 't-due' })]
+    useNotificationsStore().mergeRemote([
+      { id: 'n-due', actorId: null, kind: 'due', taskId: 't-due', body: '交報告', readAt: null, createdAt: 1, updatedAt: 1 },
+    ])
+    const w = mountWith(NotificationCenterDialog, pinia, { props: { open: true } })
+
+    expect(w.text()).toContain('到期提醒')
+    expect(w.text()).toContain('任務已到期')
+    expect(w.text()).toContain('交報告')
+  })
+
   it('任務已被刪除時顯示對應說法，不是空白', () => {
     const pinia = setup()
     useNotificationsStore().mergeRemote([

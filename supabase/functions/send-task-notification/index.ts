@@ -32,7 +32,7 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails('mailto:admin@example.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
 }
 
-type NotificationKind = 'mention' | 'assignment'
+type NotificationKind = 'mention' | 'assignment' | 'due'
 
 interface NotificationPayload {
   user_id: string
@@ -53,7 +53,7 @@ function isNotificationPayload(value: unknown): value is NotificationPayload {
   const v = value as Record<string, unknown>
   return (
     typeof v.user_id === 'string' &&
-    (v.kind === 'mention' || v.kind === 'assignment') &&
+    (v.kind === 'mention' || v.kind === 'assignment' || v.kind === 'due') &&
     typeof v.task_id === 'string' &&
     typeof v.body === 'string'
   )
@@ -62,6 +62,7 @@ function isNotificationPayload(value: unknown): value is NotificationPayload {
 const TITLES: Record<NotificationKind, string> = {
   mention: '有人在留言裡提到你',
   assignment: '有人指派了一個任務給你',
+  due: '任務到期提醒',
 }
 
 /** 通知內文截斷成摘要——推播的顯示空間有限，留言內容或任務名稱都不需要整段。 */

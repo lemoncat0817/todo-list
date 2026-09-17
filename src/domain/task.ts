@@ -264,7 +264,7 @@ export function normalizeAttachment(raw: unknown): StoredAttachment | null {
   }
 }
 
-const NOTIFICATION_KINDS: readonly NotificationKind[] = ['mention', 'assignment']
+const NOTIFICATION_KINDS: readonly NotificationKind[] = ['mention', 'assignment', 'due']
 
 export function normalizeNotification(raw: unknown): StoredNotification | null {
   if (!isRecord(raw)) return null

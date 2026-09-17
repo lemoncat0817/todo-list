@@ -23,8 +23,14 @@
             :class="n.readAt === null ? 'bg-accent-soft/40' : ''" @click="notifications.markRead(n.id)">
             <span class="flex items-center gap-1.5 text-[15px] text-ink">
               <span v-if="n.readAt === null" class="size-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
-              <span class="font-medium">{{ memberName(n.actorId) }}</span>
-              {{ n.kind === 'mention' ? '在留言裡提到你' : '把任務指派給你' }}
+              <template v-if="n.kind === 'due'">
+                <span class="font-medium text-danger-ink">到期提醒</span>
+                任務已到期
+              </template>
+              <template v-else>
+                <span class="font-medium">{{ memberName(n.actorId) }}</span>
+                {{ n.kind === 'mention' ? '在留言裡提到你' : '把任務指派給你' }}
+              </template>
             </span>
             <span class="truncate text-sm text-ink-soft">{{ taskName(n.taskId) }}</span>
             <span class="text-xs text-ink-faint">{{ formatTimestamp(n.createdAt) }}</span>

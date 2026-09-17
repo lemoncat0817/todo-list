@@ -382,7 +382,7 @@ export interface StoredAttachment {
   updatedAt: number
 }
 
-export type NotificationKind = 'mention' | 'assignment'
+export type NotificationKind = 'mention' | 'assignment' | 'due'
 
 /**
  * 通知中心（M4）。跟 activity 一樣完全由伺服器端 trigger 產生

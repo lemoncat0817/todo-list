@@ -20,21 +20,22 @@ describe('DataDialog.vue — 通知偏好區塊', () => {
     expect(w.text()).not.toContain('通知偏好')
   })
 
-  it('已登入時顯示三顆開關，狀態來自 notifications.prefs', () => {
+  it('已登入時顯示四顆開關，狀態來自 notifications.prefs', () => {
     const pinia = freshPinia()
     useAuthStore().status = 'signed-in'
     const notifications = useNotificationsStore()
-    notifications.prefs = { notifyOnMention: false, notifyOnAssignment: true, dailyDigestEnabled: true }
+    notifications.prefs = { notifyOnDue: true, notifyOnMention: false, notifyOnAssignment: true, dailyDigestEnabled: true }
 
     const w = mountWith(DataDialog, pinia, { props: { open: true } })
     expect(w.text()).toContain('通知偏好')
     // 沒 stub Notification API，到期提醒那段判定成不支援、不出現開關，
-    // 所以這裡只有三顆，依序是提及／指派／每日摘要。
+    // 所以這裡只有四顆，依序是到期／提及／指派／每日摘要。
     const checkboxes = w.findAll('input[type="checkbox"]')
-    expect(checkboxes.length).toBe(3)
-    expect((checkboxes[0]!.element as HTMLInputElement).checked).toBe(false)
-    expect((checkboxes[1]!.element as HTMLInputElement).checked).toBe(true)
+    expect(checkboxes.length).toBe(4)
+    expect((checkboxes[0]!.element as HTMLInputElement).checked).toBe(true)
+    expect((checkboxes[1]!.element as HTMLInputElement).checked).toBe(false)
     expect((checkboxes[2]!.element as HTMLInputElement).checked).toBe(true)
+    expect((checkboxes[3]!.element as HTMLInputElement).checked).toBe(true)
   })
 
   it('切換其中一顆會呼叫 notifications.setPref() 帶上對應欄位', async () => {
@@ -45,9 +46,9 @@ describe('DataDialog.vue — 通知偏好區塊', () => {
 
     const w = mountWith(DataDialog, pinia, { props: { open: true } })
     const checkboxes = w.findAll('input[type="checkbox"]')
-    await checkboxes[1]?.setValue(false)
+    await checkboxes[0]?.setValue(false)
 
-    expect(setPrefSpy).toHaveBeenCalledWith({ notifyOnAssignment: false })
+    expect(setPrefSpy).toHaveBeenCalledWith({ notifyOnDue: false })
   })
 
   it('顯示 notifications.error', () => {

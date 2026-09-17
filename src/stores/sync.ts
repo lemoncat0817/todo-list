@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { clearOutbox, getMeta, getOrCreateDeviceId, loadOutbox, markOpAttempt, removeOp, setMeta } from '@/db'
 import {
+  META_DEVICE_ID,
   META_SYNC_ACCOUNT_ID,
   META_SYNC_LAST_PULLED_AT,
   type StoredActivity,
@@ -323,9 +324,18 @@ export const useSyncStore = defineStore('sync', () => {
    */
   async function reportDeviceCursor(token: string, syncedAt: number): Promise<void> {
     try {
-      const deviceId = await getOrCreateDeviceId()
-      // user_id 刻意不送：資料庫的 default auth.uid() 決定這筆屬於誰。
-      await upsertRows('device_cursors', [{ device_id: deviceId, last_synced_at: syncedAt }], token, 'device_id')
+      let deviceId = await getOrCreateDeviceId()
+      try {
+        await upsertRows('device_cursors', [{ device_id: deviceId, last_synced_at: syncedAt }], token, 'device_id')
+      } catch (err) {
+        if (err instanceof SyncHttpError && err.status === 403) {
+          deviceId = crypto.randomUUID()
+          await setMeta(META_DEVICE_ID, deviceId)
+          await upsertRows('device_cursors', [{ device_id: deviceId, last_synced_at: syncedAt }], token, 'device_id')
+        } else {
+          throw err
+        }
+      }
     } catch (error) {
       console.error('[sync] 回報裝置同步游標失敗', error)
     }

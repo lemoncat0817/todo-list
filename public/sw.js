@@ -79,9 +79,18 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('fetch', (event) => {
   const request = event.request
   // 只處理自己的 GET：POST 之類的請求快取起來沒有意義，
-  // 跨來源的資源也不該由我們代管。
-  if (request.method !== 'GET') return
-  if (new URL(request.url).origin !== self.location.origin) return
+  const url = new URL(request.url)
+  if (url.origin !== self.location.origin) return
+
+  // 開發環境（Vite 模組、原始碼請求、熱更新）不進行快取攔截，避免破壞 HMR
+  if (
+    url.pathname.startsWith('/@') ||
+    url.pathname.includes('/src/') ||
+    url.pathname.includes('/node_modules/') ||
+    url.searchParams.has('t')
+  ) {
+    return
+  }
 
   event.respondWith(
     (async () => {

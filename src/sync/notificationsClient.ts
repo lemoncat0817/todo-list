@@ -17,28 +17,34 @@ const TABLE_NOTIFICATIONS = 'notifications'
 export interface NotificationPrefs {
   notifyOnMention: boolean
   notifyOnAssignment: boolean
+  notifyOnDue: boolean
   dailyDigestEnabled: boolean
+  timezone?: string | undefined
 }
 
 /** 跟資料庫端 notify_user() 的 coalesce(..., true) 邏輯一致：沒有偏好列代表沿用預設值。 */
 export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   notifyOnMention: true,
   notifyOnAssignment: true,
+  notifyOnDue: true,
   dailyDigestEnabled: false,
 }
 
 export async function fetchNotificationPrefs(accessToken: string): Promise<NotificationPrefs> {
-  const url = `${SUPABASE_URL}/rest/v1/${TABLE_PREFS}?select=notify_on_mention,notify_on_assignment,daily_digest_enabled`
+  const url = `${SUPABASE_URL}/rest/v1/${TABLE_PREFS}?select=notify_on_mention,notify_on_assignment,notify_on_due,daily_digest_enabled,timezone`
   const res = await fetch(url, { headers: headers(accessToken) })
   if (!res.ok) throw new SyncHttpError(TABLE_PREFS, 'fetch', res.status, await safeText(res))
   const rows = (await res.json()) as Record<string, unknown>[]
   const row = rows[0]
   if (!row) return DEFAULT_NOTIFICATION_PREFS
-  return {
+  const prefs: NotificationPrefs = {
     notifyOnMention: row.notify_on_mention !== false,
     notifyOnAssignment: row.notify_on_assignment !== false,
+    notifyOnDue: row.notify_on_due !== false,
     dailyDigestEnabled: row.daily_digest_enabled === true,
   }
+  if (typeof row.timezone === 'string') prefs.timezone = row.timezone
+  return prefs
 }
 
 /** 只送真的變動的欄位——跟 apply_task_patch 那套補丁邏輯同樣的理由：不動的欄位不該被覆蓋成預設值。 */
@@ -46,7 +52,9 @@ export async function upsertNotificationPrefs(accessToken: string, patch: Partia
   const body: Record<string, unknown> = {}
   if (patch.notifyOnMention !== undefined) body.notify_on_mention = patch.notifyOnMention
   if (patch.notifyOnAssignment !== undefined) body.notify_on_assignment = patch.notifyOnAssignment
+  if (patch.notifyOnDue !== undefined) body.notify_on_due = patch.notifyOnDue
   if (patch.dailyDigestEnabled !== undefined) body.daily_digest_enabled = patch.dailyDigestEnabled
+  if (patch.timezone !== undefined) body.timezone = patch.timezone
 
   const url = `${SUPABASE_URL}/rest/v1/${TABLE_PREFS}?on_conflict=user_id`
   const res = await fetch(url, {

@@ -68,7 +68,7 @@ describe('subscribeToPush', () => {
     expect(String(url)).toContain('/rest/v1/push_subscriptions?on_conflict=user_id,endpoint')
     expect((options as RequestInit).method).toBe('POST')
     expect(JSON.parse(String((options as RequestInit).body))).toEqual([
-      { endpoint: sub.endpoint, p256dh: 'p256dh-value', auth: 'auth-value' },
+      { endpoint: sub.endpoint, p256dh: 'p256dh-value', auth: 'auth-value', timezone: expect.any(String) },
     ])
   })
 

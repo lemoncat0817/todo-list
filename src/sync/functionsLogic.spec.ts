@@ -3,9 +3,10 @@ import { describe, it, expect } from 'vitest'
 // 驗證 Edge Functions 邏輯合約與格式化規則（send-task-notification 與 send-daily-digest）
 describe('Edge Functions 邏輯驗證', () => {
   describe('send-task-notification', () => {
-    const TITLES: Record<'mention' | 'assignment', string> = {
+    const TITLES: Record<'mention' | 'assignment' | 'due', string> = {
       mention: '有人在留言裡提到你',
       assignment: '有人指派了一個任務給你',
+      due: '任務到期提醒',
     }
 
     function summarize(body: string): string {
@@ -18,7 +19,7 @@ describe('Edge Functions 邏輯驗證', () => {
       const v = value as Record<string, unknown>
       return (
         typeof v.user_id === 'string' &&
-        (v.kind === 'mention' || v.kind === 'assignment') &&
+        (v.kind === 'mention' || v.kind === 'assignment' || v.kind === 'due') &&
         typeof v.task_id === 'string' &&
         typeof v.body === 'string'
       )
@@ -27,6 +28,7 @@ describe('Edge Functions 邏輯驗證', () => {
     it('依 kind 正確產生通知標題', () => {
       expect(TITLES.mention).toBe('有人在留言裡提到你')
       expect(TITLES.assignment).toBe('有人指派了一個任務給你')
+      expect(TITLES.due).toBe('任務到期提醒')
     })
 
     it('內文摘要短於或等於 80 字元時保持原樣，超出 80 字元時截斷並加上省略號', () => {
@@ -51,6 +53,13 @@ describe('Edge Functions 邏輯驗證', () => {
       expect(isNotificationPayload({
         user_id: 'u-1',
         kind: 'assignment',
+        task_id: 't-1',
+        body: 'task name',
+      })).toBe(true)
+
+      expect(isNotificationPayload({
+        user_id: 'u-1',
+        kind: 'due',
         task_id: 't-1',
         body: 'task name',
       })).toBe(true)

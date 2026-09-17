@@ -68,7 +68,14 @@ export const usePushStore = defineStore('push', () => {
       subscribed.value = true
     } catch (e) {
       console.error('[push] 訂閱失敗', e)
-      error.value = '開啟推播通知失敗，請稍後再試一次'
+      const msg = e instanceof Error ? e.message : String(e)
+      const isAbort = (typeof DOMException !== 'undefined' && e instanceof DOMException && e.name === 'AbortError') || (e instanceof Error && e.name === 'AbortError')
+      if (isAbort || msg.includes('push service error')) {
+        error.value =
+          '瀏覽器推播服務連線失敗。若您使用 Brave 瀏覽器，請前往 brave://settings/privacy 開啟「使用 Google 服務進行推播傳訊 (Use Google services for push messaging)」，重啟瀏覽器後即可啟用。'
+      } else {
+        error.value = '開啟推播通知失敗，請稍後再試一次'
+      }
     } finally {
       loading.value = false
     }
