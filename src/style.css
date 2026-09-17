@@ -232,6 +232,11 @@
     pointer-events: none;
     transition: opacity 0.1s ease 0.15s;
   }
+  [data-tooltip-align="right"]::after {
+    left: auto;
+    right: 0;
+    transform: none;
+  }
   [data-tooltip]:hover::after,
   [data-tooltip]:focus-visible::after {
     opacity: 1;

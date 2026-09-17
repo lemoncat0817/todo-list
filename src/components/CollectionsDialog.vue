@@ -1,15 +1,55 @@
 <template>
   <dialog ref="dialogEl"
-    class="m-auto max-h-[calc(100dvh-2rem)] w-[min(92vw,34rem)] overflow-y-auto rounded-xl border border-line bg-surface p-0 text-ink shadow-lg backdrop:bg-black/40 backdrop:backdrop-blur-sm"
+    class="m-auto max-h-[calc(100dvh-2rem)] w-[min(92vw,40rem)] overflow-y-auto overflow-x-hidden rounded-xl border border-line bg-surface p-0 text-ink shadow-lg backdrop:bg-black/40 backdrop:backdrop-blur-sm"
     @close="emit('close')" @cancel="emit('close')">
-    <div class="flex flex-col gap-5 p-5">
+    <div class="flex flex-col gap-4 p-5">
       <h2 class="text-lg font-semibold tracking-tight">管理專案與標籤</h2>
 
-      <section class="flex flex-col gap-2">
-        <h3 class="text-sm font-medium text-ink-soft">專案</h3>
+      <!-- 分段頁籤切換 -->
+      <div role="tablist" aria-label="管理分類" class="grid grid-cols-3 gap-1 rounded-lg bg-sunken p-1 text-sm font-medium">
+        <button
+          id="tab-projects"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'projects'"
+          aria-controls="panel-projects"
+          :class="activeTab === 'projects' ? 'bg-surface text-ink shadow-sm' : 'text-ink-soft hover:text-ink'"
+          class="rounded-md py-1.5 text-center transition-all"
+          @click="switchTab('projects')"
+        >
+          專案
+        </button>
+        <button
+          id="tab-tags"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'tags'"
+          aria-controls="panel-tags"
+          :class="activeTab === 'tags' ? 'bg-surface text-ink shadow-sm' : 'text-ink-soft hover:text-ink'"
+          class="rounded-md py-1.5 text-center transition-all"
+          @click="switchTab('tags')"
+        >
+          標籤
+        </button>
+        <button
+          id="tab-filters"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'filters'"
+          aria-controls="panel-filters"
+          :class="activeTab === 'filters' ? 'bg-surface text-ink shadow-sm' : 'text-ink-soft hover:text-ink'"
+          class="rounded-md py-1.5 text-center transition-all"
+          @click="switchTab('filters')"
+        >
+          篩選器
+        </button>
+      </div>
+
+      <section id="panel-projects" v-show="activeTab === 'projects'" role="tabpanel" aria-labelledby="tab-projects" class="flex flex-col gap-2">
+        <h3 class="sr-only">專案</h3>
 
         <p v-if="collections.visibleProjects.length === 0" class="text-sm text-ink-faint">
-          還沒有專案。專案用來把任務分成幾個大方向，標籤則適合跨專案的情境。
+          還沒有專案。
         </p>
 
         <ul v-else class="flex flex-col gap-1.5">
@@ -33,6 +73,7 @@
 
             <button v-if="workspace.canManageProjects" type="button" :aria-label="`複製專案「${project.name}」`"
               data-tooltip="複製成新專案，只帶結構，不含已完成任務與留言"
+              data-tooltip-align="right"
               class="grid size-8 shrink-0 place-items-center rounded-md text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
               @click="duplicateProject(project.id)">
               <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true" fill="none" stroke="currentColor"
@@ -53,11 +94,9 @@
           </li>
         </ul>
 
-        <p v-if="workspace.canManageProjects" class="text-xs text-ink-faint">刪除專案時，底下的任務會移到未分類，不會跟著被刪除。</p>
-
         <div v-if="workspace.canManageProjects" class="flex gap-2">
           <label class="sr-only" for="new-project">新專案名稱</label>
-          <input id="new-project" v-model.trim="newProjectName" placeholder="新增專案…"
+          <input id="new-project" ref="newProjectInputEl" v-model.trim="newProjectName" placeholder="新增專案…"
             :aria-invalid="projectNameError !== null"
             class="h-9 min-w-0 grow rounded-lg border border-line bg-surface px-2.5 text-[15px] text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
             @keydown.enter.prevent="createProject">
@@ -70,8 +109,8 @@
         <p v-if="projectNameError" class="text-xs text-danger-ink">{{ projectNameError }}</p>
       </section>
 
-      <section class="flex flex-col gap-2">
-        <h3 class="text-sm font-medium text-ink-soft">標籤</h3>
+      <section id="panel-tags" v-show="activeTab === 'tags'" role="tabpanel" aria-labelledby="tab-tags" class="flex flex-col gap-2">
+        <h3 class="sr-only">標籤</h3>
 
         <p v-if="collections.visibleTags.length === 0" class="text-sm text-ink-faint">還沒有標籤。</p>
 
@@ -107,7 +146,7 @@
 
         <div v-if="workspace.canWriteCollections" class="flex gap-2">
           <label class="sr-only" for="new-tag">新標籤名稱</label>
-          <input id="new-tag" v-model.trim="newTagName" placeholder="新增標籤…"
+          <input id="new-tag" ref="newTagInputEl" v-model.trim="newTagName" placeholder="新增標籤…"
             :aria-invalid="tagNameError !== null"
             class="h-9 min-w-0 grow rounded-lg border border-line bg-surface px-2.5 text-[15px] text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
             @keydown.enter.prevent="createTag">
@@ -120,8 +159,8 @@
         <p v-if="tagNameError" class="text-xs text-danger-ink">{{ tagNameError }}</p>
       </section>
 
-      <section class="flex flex-col gap-2">
-        <h3 class="text-sm font-medium text-ink-soft">篩選器</h3>
+      <section id="panel-filters" v-show="activeTab === 'filters'" role="tabpanel" aria-labelledby="tab-filters" class="flex flex-col gap-2">
+        <h3 class="sr-only">篩選器</h3>
 
         <ul v-if="collections.visibleFilters.length > 0" class="flex flex-col gap-1.5">
           <li v-for="filter in collections.visibleFilters" :key="filter.id"
@@ -155,7 +194,7 @@
 
           <div class="flex gap-2">
             <label class="sr-only" for="new-filter-name">篩選器名稱</label>
-            <input id="new-filter-name" v-model.trim="newFilterName" placeholder="名稱，例如「今天的要事」"
+            <input id="new-filter-name" ref="newFilterNameInputEl" v-model.trim="newFilterName" placeholder="名稱，例如「今天的要事」"
               class="h-9 min-w-0 grow rounded-lg border border-line bg-surface px-2.5 text-[15px] text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none">
           </div>
           <div class="relative flex gap-2">
@@ -255,7 +294,15 @@ import { findByNormalizedName } from '@/domain/filtering'
  * 刪除不跳確認對話框，與專案其他破壞性操作一致（稽核 P15/P16）：
  * 做完之後可復原，比先攔一次再讓人盲目按下「確定」有用。
  */
-const props = defineProps<{ open: boolean }>()
+const props = withDefaults(
+  defineProps<{
+    open: boolean
+    target?: 'projects' | 'tags' | 'filters'
+  }>(),
+  {
+    target: 'projects',
+  },
+)
 const emit = defineEmits<{ close: [] }>()
 
 const collections = useCollectionsStore()
@@ -266,6 +313,9 @@ const router = useRouter()
 
 const dialogEl = useTemplateRef<HTMLDialogElement>('dialogEl')
 const queryInputEl = useTemplateRef<HTMLInputElement>('queryInputEl')
+const newProjectInputEl = useTemplateRef<HTMLInputElement>('newProjectInputEl')
+const newTagInputEl = useTemplateRef<HTMLInputElement>('newTagInputEl')
+const newFilterNameInputEl = useTemplateRef<HTMLInputElement>('newFilterNameInputEl')
 const newProjectName = ref('')
 const newTagName = ref('')
 const newFilterName = ref('')
@@ -347,6 +397,20 @@ const suggestionResult = computed(() =>
 const suggestions = computed(() => suggestionResult.value.suggestions)
 const showSuggestions = computed(() => suggestionsOpen.value && suggestions.value.length > 0)
 
+const activeTab = ref<'projects' | 'tags' | 'filters'>(props.target)
+
+async function switchTab(tab: 'projects' | 'tags' | 'filters'): Promise<void> {
+  activeTab.value = tab
+  await nextTick()
+  if (tab === 'tags' && newTagInputEl.value) {
+    newTagInputEl.value.focus()
+  } else if (tab === 'filters' && newFilterNameInputEl.value) {
+    newFilterNameInputEl.value.focus()
+  } else if (tab === 'projects' && newProjectInputEl.value) {
+    newProjectInputEl.value.focus()
+  }
+}
+
 /** 輸入內容一變，先前選到的建議項目大多已經不對應了。 */
 watch(newFilterQuery, () => {
   activeSuggestion.value = -1
@@ -354,11 +418,31 @@ watch(newFilterQuery, () => {
 
 watch(
   () => props.open,
-  (open) => {
+  async (open) => {
     const el = dialogEl.value
     if (!el) return
-    if (open && !el.open) el.showModal()
+    if (open && !el.open) {
+      activeTab.value = props.target
+      el.showModal()
+      await nextTick()
+      if (props.target === 'tags' && newTagInputEl.value) {
+        newTagInputEl.value.focus()
+      } else if (props.target === 'filters' && newFilterNameInputEl.value) {
+        newFilterNameInputEl.value.focus()
+      } else if (newProjectInputEl.value) {
+        newProjectInputEl.value.focus()
+      }
+    }
     if (!open && el.open) el.close()
+  },
+)
+
+watch(
+  () => props.target,
+  (target) => {
+    if (props.open) {
+      void switchTab(target)
+    }
   },
 )
 

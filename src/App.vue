@@ -31,7 +31,7 @@
           </svg>
         </button>
       </div>
-      <AppSidebar :collapsed="prefs.sidebarCollapsed" @manage="isManaging = true" @data="isDataOpen = true"
+      <AppSidebar :collapsed="prefs.sidebarCollapsed" @manage="openManage" @data="isDataOpen = true"
         @account="isAccountOpen = true" @members="isMembersOpen = true" />
     </aside>
 
@@ -68,7 +68,7 @@
     <TaskDetailPanel v-if="isWide" :task="detailTask" @close="ui.closeDetail()" />
     <TaskDetailDialog v-else :task="detailTask" @close="ui.closeDetail()" />
 
-    <CollectionsDialog :open="isManaging" @close="isManaging = false" />
+    <CollectionsDialog :open="isManaging" :target="manageTarget" @close="isManaging = false" />
     <DataDialog :open="isDataOpen" @close="isDataOpen = false" />
     <AccountDialog v-if="isSyncConfigured" :open="isAccountOpen" @close="isAccountOpen = false" />
     <MembersDialog v-if="isSyncConfigured" :open="isMembersOpen" @close="isMembersOpen = false" />
@@ -124,6 +124,7 @@ const isDesktop = useMediaQuery('(min-width: 1024px)')
 const isWide = useMediaQuery('(min-width: 1280px)')
 
 const isManaging = ref(false)
+const manageTarget = ref<'projects' | 'tags' | 'filters'>('projects')
 const isHelpOpen = ref(false)
 const isDataOpen = ref(false)
 const isAccountOpen = ref(false)
@@ -148,7 +149,8 @@ watch(isDesktop, (desktop) => {
 })
 
 /** 抽屜裡開對話框：兩個 modal 疊在一起會讓焦點鎖定互相打架，先關掉抽屜。 */
-function openManage(): void {
+function openManage(target?: 'projects' | 'tags' | 'filters'): void {
+  manageTarget.value = target ?? 'projects'
   ui.closeSidebar()
   isManaging.value = true
 }

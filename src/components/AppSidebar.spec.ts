@@ -120,6 +120,22 @@ describe('AppSidebar.vue', () => {
     const w = mountSidebar()
     await w.find('button[aria-label="管理專案與標籤"]').trigger('click')
     expect(w.emitted('manage')).toBeTruthy()
+    expect(w.emitted('manage')?.[0]).toEqual(['projects'])
+  })
+
+  it('標籤與篩選器管理按鈕各自分配 manage 事件與目標參數', async () => {
+    const w = mountSidebar()
+    await w.find('button[aria-label="管理標籤"]').trigger('click')
+    expect(w.emitted('manage')?.[0]).toEqual(['tags'])
+
+    await w.find('button[aria-label="管理篩選器"]').trigger('click')
+    expect(w.emitted('manage')?.[1]).toEqual(['filters'])
+  })
+
+  it('篩選器在沒有資料時也常態顯示「還沒有篩選器」', () => {
+    const w = mountSidebar()
+    expect(w.text()).toContain('篩選器')
+    expect(w.text()).toContain('還沒有篩選器')
   })
 
   it('資料與提醒是按鈕而不是連結——它開的是對話框，不是一個可分享的位置', async () => {
@@ -158,6 +174,8 @@ describe('AppSidebar.vue', () => {
     it('次要入口（統計／資料與提醒／管理按鈕）收合時不顯示——沒有圖示可用，展開回去才拿得到', () => {
       const w = mountCollapsed()
       expect(w.find('button[aria-label="管理專案與標籤"]').exists()).toBe(false)
+      expect(w.find('button[aria-label="管理標籤"]').exists()).toBe(false)
+      expect(w.find('button[aria-label="管理篩選器"]').exists()).toBe(false)
       expect(w.text()).not.toContain('統計')
       expect(w.text()).not.toContain('資料與提醒')
     })

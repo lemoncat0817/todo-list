@@ -57,6 +57,16 @@
         </RouterLink>
       </li>
     </ul>
+
+    <ul v-if="collections.visibleFilters.length > 0" class="flex flex-col gap-1 border-t border-line pt-3">
+      <li v-for="filter in collections.visibleFilters" :key="filter.id">
+        <RouterLink :to="{ path: '/filter', query: { q: filter.query } }" :class="collapsedLinkClass"
+          :title="filter.name" @click="emit('navigate')">
+          <span class="size-2.5 shrink-0 rounded-full" :style="{ backgroundColor: filter.color }"
+            aria-hidden="true" />
+        </RouterLink>
+      </li>
+    </ul>
   </nav>
 
   <nav v-else aria-label="檢視" class="flex h-full min-h-0 flex-col gap-4 overflow-y-auto px-3 py-4">
@@ -108,8 +118,9 @@
       <div class="flex items-center justify-between gap-1 pl-2.5 pr-1">
         <h2 class="text-xs font-semibold uppercase tracking-wide text-ink-faint">專案</h2>
         <button v-if="workspace.canWriteCollections || workspace.canManageProjects" type="button" aria-label="管理專案與標籤"
+          title="新增或管理專案"
           class="grid size-6 place-items-center rounded text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
-          @click="emit('manage')">
+          @click="emit('manage', 'projects')">
           <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true" fill="none" stroke="currentColor"
             stroke-width="1.6" stroke-linecap="round">
             <path d="M8 3.5v9M3.5 8h9" />
@@ -133,7 +144,18 @@
     </section>
 
     <section class="flex flex-col gap-1">
-      <h2 class="px-2.5 text-xs font-semibold uppercase tracking-wide text-ink-faint">標籤</h2>
+      <div class="flex items-center justify-between gap-1 pl-2.5 pr-1">
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-ink-faint">標籤</h2>
+        <button v-if="workspace.canWriteCollections" type="button" aria-label="管理標籤"
+          title="新增或管理標籤"
+          class="grid size-6 place-items-center rounded text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
+          @click="emit('manage', 'tags')">
+          <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true" fill="none" stroke="currentColor"
+            stroke-width="1.6" stroke-linecap="round">
+            <path d="M8 3.5v9M3.5 8h9" />
+          </svg>
+        </button>
+      </div>
       <p v-if="collections.visibleTags.length === 0" class="px-2.5 text-sm text-ink-faint">還沒有標籤</p>
       <ul v-else class="flex flex-col gap-0.5">
         <li v-for="tag in collections.visibleTags" :key="tag.id">
@@ -147,9 +169,21 @@
       </ul>
     </section>
 
-    <section v-if="collections.visibleFilters.length > 0" class="flex flex-col gap-1">
-      <h2 class="px-2.5 text-xs font-semibold uppercase tracking-wide text-ink-faint">篩選器</h2>
-      <ul class="flex flex-col gap-0.5">
+    <section class="flex flex-col gap-1">
+      <div class="flex items-center justify-between gap-1 pl-2.5 pr-1">
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-ink-faint">篩選器</h2>
+        <button v-if="workspace.canWriteCollections" type="button" aria-label="管理篩選器"
+          title="新增或管理篩選器"
+          class="grid size-6 place-items-center rounded text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
+          @click="emit('manage', 'filters')">
+          <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true" fill="none" stroke="currentColor"
+            stroke-width="1.6" stroke-linecap="round">
+            <path d="M8 3.5v9M3.5 8h9" />
+          </svg>
+        </button>
+      </div>
+      <p v-if="collections.visibleFilters.length === 0" class="px-2.5 text-sm text-ink-faint">還沒有篩選器</p>
+      <ul v-else class="flex flex-col gap-0.5">
         <li v-for="filter in collections.visibleFilters" :key="filter.id">
           <RouterLink :to="{ path: '/filter', query: { q: filter.query } }" :class="linkClass"
             @click="emit('navigate')">
@@ -250,8 +284,8 @@ withDefaults(defineProps<{ /** 桌面版收合成僅圖示的窄行——抽屜�
 const emit = defineEmits<{
   /** 點了任一連結——抽屜模式下要順手關掉自己 */
   navigate: []
-  /** 開啟專案／標籤管理 */
-  manage: []
+  /** 開啟專案／標籤／篩選器管理 */
+  manage: [target?: 'projects' | 'tags' | 'filters']
   /** 開啟匯出／匯入與提醒設定 */
   data: []
   /** 開啟帳號與同步設定 */
