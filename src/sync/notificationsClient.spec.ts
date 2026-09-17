@@ -4,6 +4,7 @@ import {
   fetchNotificationPrefs,
   markAllNotificationsRead,
   markNotificationRead,
+  markNotificationUnread,
   upsertNotificationPrefs,
 } from './notificationsClient'
 
@@ -60,6 +61,18 @@ describe('markNotificationRead', () => {
     expect(String(url)).toContain('/rest/v1/notifications?id=eq.n1')
     expect((options as RequestInit).method).toBe('PATCH')
     expect(JSON.parse(String((options as RequestInit).body))).toHaveProperty('read_at')
+  })
+})
+
+describe('markNotificationUnread', () => {
+  it('PATCH 指定 id，將 read_at 設為 null', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, text: async () => '' } as Response)
+    await markNotificationUnread('token', 'n1')
+
+    const [url, options] = fetchMock.mock.calls[0]!
+    expect(String(url)).toContain('/rest/v1/notifications?id=eq.n1')
+    expect((options as RequestInit).method).toBe('PATCH')
+    expect(JSON.parse(String((options as RequestInit).body))).toEqual({ read_at: null })
   })
 })
 

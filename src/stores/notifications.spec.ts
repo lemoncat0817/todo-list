@@ -6,6 +6,7 @@ const clientMocks = vi.hoisted(() => ({
   fetchNotificationPrefs: vi.fn(),
   upsertNotificationPrefs: vi.fn(),
   markNotificationRead: vi.fn(),
+  markNotificationUnread: vi.fn(),
   markAllNotificationsRead: vi.fn(),
   DEFAULT_NOTIFICATION_PREFS: { notifyOnMention: true, notifyOnAssignment: true, notifyOnDue: true, dailyDigestEnabled: false },
 }))
@@ -151,6 +152,60 @@ describe('notifications store — markRead／markAllRead', () => {
 
     expect(notifications.items[0]?.readAt).not.toBeNull()
     expect(notifications.error).toBe('標記已讀沒有同步到其他裝置，請稍後再試一次')
+    expect(useFlashStore().message).toBe(notifications.error)
+  })
+
+  it('markUnread 樂觀更新本地狀態，將 readAt 設為 null，並呼叫 markNotificationUnread', async () => {
+    const { notifications, auth } = setup()
+    auth.session = fakeSession()
+    notifications.mergeRemote([
+      { id: 'n1', actorId: null, kind: 'mention', taskId: 't1', body: '', readAt: 12345, createdAt: 1, updatedAt: 1 },
+    ])
+
+    await notifications.markUnread('n1')
+
+    expect(notifications.items[0]?.readAt).toBeNull()
+    expect(notifications.unreadCount).toBe(1)
+    expect(clientMocks.markNotificationUnread).toHaveBeenCalledWith('token-123', 'n1')
+  })
+
+  it('markUnread 對已是未讀的通知是 no-op，不會重打網路', async () => {
+    const { notifications, auth } = setup()
+    auth.session = fakeSession()
+    notifications.mergeRemote([
+      { id: 'n1', actorId: null, kind: 'mention', taskId: 't1', body: '', readAt: null, createdAt: 1, updatedAt: 1 },
+    ])
+
+    await notifications.markUnread('n1')
+
+    expect(clientMocks.markNotificationUnread).not.toHaveBeenCalled()
+  })
+
+  it('markUnread 沒登入時什麼都不做', async () => {
+    const { notifications } = setup()
+    notifications.mergeRemote([
+      { id: 'n1', actorId: null, kind: 'mention', taskId: 't1', body: '', readAt: 12345, createdAt: 1, updatedAt: 1 },
+    ])
+
+    await notifications.markUnread('n1')
+
+    expect(notifications.items[0]?.readAt).toBe(12345)
+    expect(clientMocks.markNotificationUnread).not.toHaveBeenCalled()
+  })
+
+  it('markUnread 網路失敗時本地未讀狀態保留，並把錯誤送到畫面', async () => {
+    const { notifications, auth } = setup()
+    auth.session = fakeSession()
+    notifications.mergeRemote([
+      { id: 'n1', actorId: null, kind: 'mention', taskId: 't1', body: '', readAt: 12345, createdAt: 1, updatedAt: 1 },
+    ])
+    clientMocks.markNotificationUnread.mockRejectedValue(new Error('network error'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await notifications.markUnread('n1')
+
+    expect(notifications.items[0]?.readAt).toBeNull()
+    expect(notifications.error).toBe('標記未讀沒有同步到其他裝置，請稍後再試一次')
     expect(useFlashStore().message).toBe(notifications.error)
   })
 })

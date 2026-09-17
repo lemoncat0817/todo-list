@@ -75,6 +75,16 @@ export async function markNotificationRead(accessToken: string, id: string): Pro
   if (!res.ok) throw new SyncHttpError(TABLE_NOTIFICATIONS, 'upsert', res.status, await safeText(res))
 }
 
+export async function markNotificationUnread(accessToken: string, id: string): Promise<void> {
+  const url = `${SUPABASE_URL}/rest/v1/${TABLE_NOTIFICATIONS}?id=eq.${id}`
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: headers(accessToken, { Prefer: 'return=minimal' }),
+    body: JSON.stringify({ read_at: null }),
+  })
+  if (!res.ok) throw new SyncHttpError(TABLE_NOTIFICATIONS, 'upsert', res.status, await safeText(res))
+}
+
 /** 過濾條件是 read_at=is.null，不是帶一串 id——RLS 本來就只認得到自己的列，不需要呼叫端自己蒐集 id。 */
 export async function markAllNotificationsRead(accessToken: string): Promise<void> {
   const url = `${SUPABASE_URL}/rest/v1/${TABLE_NOTIFICATIONS}?read_at=is.null`

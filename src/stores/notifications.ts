@@ -7,6 +7,7 @@ import {
   fetchNotificationPrefs,
   markAllNotificationsRead,
   markNotificationRead,
+  markNotificationUnread,
   upsertNotificationPrefs,
   type NotificationPrefs,
 } from '@/sync/notificationsClient'
@@ -92,6 +93,23 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
   }
 
+  async function markUnread(id: string): Promise<void> {
+    const target = items.value.find((n) => n.id === id)
+    if (!target || target.readAt === null) return
+    const token = auth().session?.access_token
+    if (!token) return
+    const now = Date.now()
+    items.value = items.value.map((n) => (n.id === id ? { ...n, readAt: null, updatedAt: now } : n))
+    void persist()
+    try {
+      await markNotificationUnread(token, id)
+    } catch (err) {
+      console.error('[notifications] 標記未讀失敗', err)
+      error.value = '標記未讀沒有同步到其他裝置，請稍後再試一次'
+      useFlashStore().error(error.value)
+    }
+  }
+
   async function markAllRead(): Promise<void> {
     const token = auth().session?.access_token
     if (!token || unreadCount.value === 0) return
@@ -114,5 +132,5 @@ export const useNotificationsStore = defineStore('notifications', () => {
     return useAuthStore()
   }
 
-  return { items, sorted, prefs, unreadCount, error, load, persist, mergeRemote, refreshPrefs, setPref, markRead, markAllRead }
+  return { items, sorted, prefs, unreadCount, error, load, persist, mergeRemote, refreshPrefs, setPref, markRead, markUnread, markAllRead }
 })

@@ -103,6 +103,33 @@ describe('NotificationCenterDialog.vue', () => {
     expect(notifications.unreadCount).toBe(0)
   })
 
+  it('已讀通知點擊「標記為未讀」按鈕會呼叫 markUnread 並恢復未讀狀態', async () => {
+    const pinia = setup()
+    useTasksStore().items = [makeTask('寫週報', false, { id: 't1' })]
+    const notifications = useNotificationsStore()
+    notifications.mergeRemote([
+      { id: 'n1', actorId: 'bob', kind: 'mention', taskId: 't1', body: 'x', readAt: 12345, createdAt: 1, updatedAt: 1 },
+    ])
+    const w = mountWith(NotificationCenterDialog, pinia, { props: { open: true } })
+    const unreadButton = w.find('button[aria-label="標記為未讀"]')
+    expect(unreadButton.exists()).toBe(true)
+
+    await unreadButton.trigger('click')
+
+    expect(notifications.items[0]?.readAt).toBeNull()
+    expect(notifications.unreadCount).toBe(1)
+  })
+
+  it('未讀通知不顯示「標記為未讀」按鈕，保持介面簡潔', () => {
+    const pinia = setup()
+    useTasksStore().items = [makeTask('寫週報', false, { id: 't1' })]
+    useNotificationsStore().mergeRemote([
+      { id: 'n1', actorId: 'bob', kind: 'mention', taskId: 't1', body: 'x', readAt: null, createdAt: 1, updatedAt: 1 },
+    ])
+    const w = mountWith(NotificationCenterDialog, pinia, { props: { open: true } })
+    expect(w.find('button[aria-label="標記為未讀"]').exists()).toBe(false)
+  })
+
   it('顯示 notifications.error', () => {
     const pinia = setup()
     useNotificationsStore().error = '標記已讀沒有同步到其他裝置，請稍後再試一次'
