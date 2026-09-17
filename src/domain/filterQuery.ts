@@ -58,10 +58,15 @@ type Token =
 
 const OPERATORS: Record<string, Token> = {
   '&': { kind: 'and' },
+  '＆': { kind: 'and' },
   '|': { kind: 'or' },
+  '｜': { kind: 'or' },
   '!': { kind: 'not' },
+  '！': { kind: 'not' },
   '(': { kind: 'lparen' },
+  '（': { kind: 'lparen' },
   ')': { kind: 'rparen' },
+  '）': { kind: 'rparen' },
 }
 
 function tokenize(input: string): Token[] {
@@ -126,12 +131,14 @@ function wordToNode(word: string, quoted: boolean): FilterNode {
       return { type: 'date', value: 'today' }
     case 'overdue':
     case '逾期':
+    case '已逾期':
       return { type: 'date', value: 'overdue' }
     case 'upcoming':
     case '即將到來':
       return { type: 'date', value: 'upcoming' }
     case 'nodate':
     case '無日期':
+    case '沒有日期':
       return { type: 'date', value: 'nodate' }
     case 'done':
     case '已完成':
@@ -363,7 +370,7 @@ export interface FilterTokenRange {
  * 這裡沒有重用 tokenize 是因為它要處理的是「游標所在、可能還沒打完」的半成品，
  * tokenize 面對的是打完、準備解析的完整字串——兩者對「不完整輸入」的容錯需求不同。
  */
-const TOKEN_BOUNDARY = /[\s&|!()"「」]/
+const TOKEN_BOUNDARY = /[\s&|!()"「」＆｜！（）]/
 
 function tokenBounds(input: string, cursor: number): FilterTokenRange {
   let start = cursor
@@ -375,20 +382,26 @@ function tokenBounds(input: string, cursor: number): FilterTokenRange {
 
 /** 名稱含運算子或空白時要加引號，否則插入後的字串會被切成好幾個詞。 */
 function quoteIfNeeded(name: string): string {
-  return /[\s&|!()]/.test(name) ? `"${name}"` : name
+  return /[\s&|!()"「」＆｜！（）]/.test(name) ? `"${name}"` : name
 }
 
 const KEYWORD_SUGGESTIONS: readonly { token: string; hint: string }[] = [
-  { token: 'today', hint: '今天或更早到期' },
-  { token: 'overdue', hint: '已逾期' },
-  { token: 'upcoming', hint: '未來幾天內到期' },
-  { token: 'nodate', hint: '沒有到期日' },
-  { token: 'done', hint: '已完成' },
-  { token: 'todo', hint: '未完成' },
+  { token: '今天', hint: '今天或更早到期' },
+  { token: '逾期', hint: '已逾期' },
+  { token: '即將到來', hint: '未來幾天內到期' },
+  { token: '無日期', hint: '沒有到期日' },
+  { token: '未完成', hint: '未完成的任務' },
+  { token: '已完成', hint: '已完成的任務' },
   { token: 'p1', hint: '優先度最高' },
   { token: 'p2', hint: '優先度較高' },
   { token: 'p3', hint: '優先度較低' },
   { token: 'p4', hint: '優先度最低' },
+  { token: 'today', hint: '今天或更早到期' },
+  { token: 'overdue', hint: '已逾期' },
+  { token: 'upcoming', hint: '未來幾天內到期' },
+  { token: 'nodate', hint: '沒有到期日' },
+  { token: 'todo', hint: '未完成' },
+  { token: 'done', hint: '已完成' },
 ]
 
 function matchCollections(
@@ -439,9 +452,9 @@ export function suggestFilterTokens(
  * 讓從沒寫過查詢語法的人也能一鍵開始，而不必先讀完語法說明才敢動手打字。
  */
 export const FILTER_QUERY_PRESETS: readonly { label: string; query: string }[] = [
-  { label: '今天要做的', query: 'today' },
-  { label: '已逾期', query: 'overdue' },
-  { label: '今天的要事', query: 'today & p1' },
-  { label: '即將到來', query: 'upcoming' },
-  { label: '未完成且非低優先', query: 'todo & !p4' },
+  { label: '今天要做的', query: '今天' },
+  { label: '已逾期', query: '逾期' },
+  { label: '今天的要事', query: '今天 & p1' },
+  { label: '即將到來', query: '即將到來' },
+  { label: '未完成且非低優先', query: '未完成 & !p4' },
 ]

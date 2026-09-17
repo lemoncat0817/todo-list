@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  FILTER_QUERY_PRESETS,
   compileFilter,
   evaluateFilter,
   findUnresolvedNames,
@@ -31,6 +32,13 @@ describe('parseFilterQuery', () => {
   it('中文關鍵字與英文關鍵字等價', () => {
     expect(parse('逾期')).toEqual(parse('overdue'))
     expect(parse('已完成')).toEqual(parse('done'))
+  })
+
+  it('支援全形運算子與括號（＆ ｜ ！ （ ））', () => {
+    expect(parse('今天 ＆ p1')).toEqual(parse('today & p1'))
+    expect(parse('今天 ｜ 逾期')).toEqual(parse('today | overdue'))
+    expect(parse('！已完成')).toEqual(parse('!done'))
+    expect(parse('（今天 ｜ 逾期） ＆ p1')).toEqual(parse('(today | overdue) & p1'))
   })
 
   it('& 的優先序高於 |', () => {
@@ -218,4 +226,25 @@ describe('suggestFilterTokens', () => {
     const { range } = suggestFilterTokens('overdue', 2)
     expect(range).toEqual({ start: 0, end: 7 })
   })
+
+  it('支援中文關鍵字建議與自動完成', () => {
+    const { suggestions: emptySuggestions } = suggestFilterTokens('', 0)
+    expect(emptySuggestions.map((s) => s.label)).toContain('今天')
+    expect(emptySuggestions.map((s) => s.label)).toContain('逾期')
+
+    const { suggestions: jinSuggestions } = suggestFilterTokens('今', 1)
+    expect(jinSuggestions.map((s) => s.label)).toEqual(['今天'])
+  })
 })
+
+describe('FILTER_QUERY_PRESETS', () => {
+  it('所有快速填入範本皆為合法的篩選語法且能成功編譯', () => {
+    for (const preset of FILTER_QUERY_PRESETS) {
+      const parsed = parseFilterQuery(preset.query)
+      expect(parsed.ok, `範本「${preset.label}」語法應合法: ${preset.query}`).toBe(true)
+      const compiled = compileFilter(preset.query, ctx)
+      expect(compiled, `範本「${preset.label}」應能編譯成述詞`).not.toBeNull()
+    }
+  })
+})
+

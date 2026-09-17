@@ -164,7 +164,7 @@
               role="combobox" aria-autocomplete="list" :aria-expanded="showSuggestions"
               aria-controls="filter-query-suggestions"
               :aria-activedescendant="activeSuggestion >= 0 ? `filter-suggestion-${activeSuggestion}` : undefined"
-              placeholder="today &amp; p1" autocomplete="off"
+              placeholder="今天 &amp; p1" autocomplete="off"
               class="h-9 min-w-0 grow rounded-lg border bg-surface px-2.5 font-mono text-sm text-ink placeholder:text-ink-faint focus:outline-none"
               :class="queryError === null ? 'border-line focus:border-accent' : 'border-danger'"
               @input="syncQueryCursor" @click="syncQueryCursor" @keyup="syncQueryCursor"
@@ -208,13 +208,14 @@
             </p>
           </template>
           <p class="text-xs text-ink-faint">
-            可用：<span class="font-mono">today</span>、<span class="font-mono">overdue</span>、
-            <span class="font-mono">upcoming</span>、<span class="font-mono">nodate</span>、
-            <span class="font-mono">done</span>、<span class="font-mono">p1</span>–<span
-              class="font-mono">p4</span>、<span class="font-mono">#專案</span>、
-            <span class="font-mono">@標籤</span>，以及 <span class="font-mono">&amp;</span>
-            <span class="font-mono">|</span> <span class="font-mono">!</span>
-            <span class="font-mono">( )</span>
+            可用：<span class="font-mono">今天</span>、<span class="font-mono">逾期</span>、
+            <span class="font-mono">即將到來</span>、<span class="font-mono">無日期</span>、
+            <span class="font-mono">未完成</span>、<span class="font-mono">已完成</span>、
+            <span class="font-mono">p1</span>–<span class="font-mono">p4</span>、
+            <span class="font-mono">#專案</span>、<span class="font-mono">@標籤</span>，以及
+            <span class="font-mono">&amp;</span> <span class="font-mono">|</span>
+            <span class="font-mono">!</span> <span class="font-mono">( )</span>
+            <span class="text-ink-subtle">（亦相容 today、overdue 等英文）</span>
           </p>
         </div>
       </section>
