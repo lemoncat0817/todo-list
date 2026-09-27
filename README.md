@@ -8,8 +8,8 @@
 **線上版本：[lemoncat0817.github.io/todo-list](https://lemoncat0817.github.io/todo-list/)**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./docs/screenshots/01-task-overview-dark.png">
-  <img alt="Todo List 待辦清單主畫面" src="./docs/screenshots/01-task-overview.png" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/screenshots/01-task-overview-dark.webp">
+  <img alt="Todo List 待辦清單主畫面" src="./docs/screenshots/01-task-overview.webp" width="100%">
 </picture>
 
 ## 畫面預覽
@@ -19,32 +19,32 @@
 提供直覺流暢的待辦清單檢視，支援自然語言快速新增、P1–P4 優先度分級、到期時間與標籤標記；側邊詳情面板提供完整子任務樹、循環重複規則設定與即時編輯。
 
 |                        待辦清單主畫面                        |                       任務詳情與子任務展開                       |
-| :----------------------------------------------------------: | :--------------------------------------------------------------: |
-| ![待辦清單主畫面](./docs/screenshots/01-task-overview.png)   | ![任務詳情與子任務展開](./docs/screenshots/02-task-detail.png)   |
+| :---: | :---: |
+| <img src="./docs/screenshots/01-task-overview.webp" alt="待辦清單主畫面" width="100%">   | <img src="./docs/screenshots/02-task-detail.webp" alt="任務詳情與子任務展開" width="100%">   |
 
 ### 專案看板與多元檢視
 
 專案內建卡片看板（Board View），依工作流程區段自由拖曳排程；提供「今天」、「即將到來」、「收件匣」等多元時間維度，智慧按日期群組掌控未來進度。
 
 |                        專案卡片看板檢視                         |                        時間維度與即將到來檢視                         |
-| :-------------------------------------------------------------: | :-------------------------------------------------------------------: |
-| ![專案卡片看板檢視](./docs/screenshots/03-board-view.png)       | ![時間維度與即將到來檢視](./docs/screenshots/04-upcoming-view.png)    |
+| :---: | :---: |
+| <img src="./docs/screenshots/03-board-view.webp" alt="專案卡片看板檢視" width="100%">       | <img src="./docs/screenshots/04-upcoming-view.webp" alt="時間維度與即將到來檢視" width="100%">    |
 
 ### 專案管理與進階篩選
 
 集中管理專案與標籤階層，支援色彩自訂與快速切換；內建強大的篩選器查詢語言（Filter Query Language），支援 `&`、`|`、`!` 等邏輯運算子與精準條件組合。
 
 |                      專案、標籤與色彩管理                       |                   自訂進階篩選查詢（Filter Query）                    |
-| :-------------------------------------------------------------: | :-------------------------------------------------------------------: |
-| ![專案、標籤與色彩管理](./docs/screenshots/05-collections-management.png) | ![自訂進階篩選查詢](./docs/screenshots/06-filter-query.png)          |
+| :---: | :---: |
+| <img src="./docs/screenshots/05-collections-management.webp" alt="專案、標籤與色彩管理" width="100%"> | <img src="./docs/screenshots/06-filter-query.webp" alt="自訂進階篩選查詢" width="100%">          |
 
 ### 快捷操作與生產力統計
 
 全域命令面板（`Cmd`/`Ctrl`+`K`）支援模糊搜尋指令、快速跳轉檢視與任務搜尋；生產力統計儀表板視覺化呈現完成率、連續完成天數與 14 天趨勢長條圖。
 
 |                     全域命令面板（Cmd+K）                      |                        任務完成數據與回顧統計                         |
-| :------------------------------------------------------------: | :-------------------------------------------------------------------: |
-| ![全域命令面板](./docs/screenshots/07-command-palette.png)     | ![任務完成數據與回顧統計](./docs/screenshots/08-productivity-stats.png) |
+| :---: | :---: |
+| <img src="./docs/screenshots/07-command-palette.webp" alt="全域命令面板" width="100%">     | <img src="./docs/screenshots/08-productivity-stats.webp" alt="任務完成數據與回顧統計" width="100%"> |
 
 ## 功能
 
