@@ -104,3 +104,4 @@ None — framework defaults apply.
 | Gate | Outcome | Approver | Date | Version | Conditions |
 |------|---------|----------|------|---------|------------|
 | G1 | Approved | Technical Owner | 2026-10-06 | `7c74d34` | None. Recorded by an AI agent at the approver's instruction. |
+| G5 | Approved | Code Owner | 2026-10-06 | `1e31bd7` | None. Recorded by an AI agent at the approver's instruction. |
