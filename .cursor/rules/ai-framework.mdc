@@ -1,0 +1,17 @@
+---
+description: AI Engineering Framework — where this project's process is defined
+alwaysApply: true
+---
+
+# AI Engineering Framework
+
+This project follows the AI Engineering Framework in `.ai/` (version: `.ai/VERSION`). The root `AGENTS.md` is its constitution: read it before acting unless it is already in your context. `AGENTS.md` and the files in `.ai/` take precedence over this rule.
+
+- Workflow commands: `/quick`, `/new-project`, `/new-feature`, `/bug-fix`, `/refactor`, `/implement`, `/release` — the skills in `.cursor/skills/`.
+- Stage commands: `/clarify <change>` — the Clarify round on a draft spec before G2; `/analyze <change>` — the consistency check on a draft plan: it runs `scripts/analyze.py`, which writes only the plan's *Consistency check* section (`RC-CONSISTENT`); `/status` — where each change waits and what comes next (`scripts/status.py`, read-only).
+- Size every request first (`.ai/workflows/implementation.md` §7.6). C1 and C2 run the Quick track (`.ai/workflows/quick.md`): one opening message, then straight to G5. C3 and C4 wait for the assessment to be confirmed.
+- One chat runs the whole workflow, wearing each stage's role; subagents only for parallel tasks and the independent C3/C4 review (`AGENTS.md` §3).
+- Specs state WHAT, never HOW: ACs are Given/When/Then blocks, and technology in a request goes to *Deferred technical notes* (`.ai/workflows/new-feature.md` §7).
+- Agent roles: `.ai/agents/`; the subagents in `.cursor/agents/` serve the two subagent cases.
+
+Project rules belong in the project section of `AGENTS.md` or in `docs/project.md`.
