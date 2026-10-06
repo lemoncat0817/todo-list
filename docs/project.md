@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | Change | N/A — project-level artifact |
-| Status | Proposed |
+| Status | Approved |
 | Owner | Tech Lead Agent |
 | Approver | Technical Owner (G1) |
 | Upstream | `/new-project` Adopt. No `docs/discovery.md` — the operator stated no problem, users, or goals. |
@@ -103,3 +103,4 @@ None — framework defaults apply.
 
 | Gate | Outcome | Approver | Date | Version | Conditions |
 |------|---------|----------|------|---------|------------|
+| G1 | Approved | Technical Owner | 2026-10-06 | `7c74d34` | None. Recorded by an AI agent at the approver's instruction. |
